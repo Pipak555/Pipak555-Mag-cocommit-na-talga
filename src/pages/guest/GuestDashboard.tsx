@@ -139,7 +139,7 @@ const GuestDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer">
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/guest/bookings')}>
             <CardHeader>
               <Calendar className="w-8 h-8 text-secondary mb-2" />
               <CardTitle>My Bookings</CardTitle>
@@ -147,7 +147,7 @@ const GuestDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer">
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/guest/wallet')}>
             <CardHeader>
               <Wallet className="w-8 h-8 text-accent mb-2" />
               <CardTitle>E-Wallet</CardTitle>

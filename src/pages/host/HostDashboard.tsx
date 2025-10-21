@@ -101,12 +101,12 @@ const HostDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer">
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/host/bookings')}>
             <CardHeader>
               <Calendar className="w-8 h-8 text-secondary mb-2" />
-              <CardTitle>Calendar</CardTitle>
+              <CardTitle>Bookings</CardTitle>
               <CardDescription>
-                Manage availability and bookings
+                Manage booking requests
               </CardDescription>
             </CardHeader>
           </Card>

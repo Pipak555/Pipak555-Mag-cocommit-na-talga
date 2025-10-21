@@ -14,6 +14,10 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import CreateListing from "./pages/host/CreateListing";
 import ManageListings from "./pages/host/ManageListings";
 import BrowseListings from "./pages/guest/BrowseListings";
+import ListingDetails from "./pages/guest/ListingDetails";
+import MyBookings from "./pages/guest/MyBookings";
+import HostBookings from "./pages/host/HostBookings";
+import Wallet from "./pages/guest/Wallet";
 import ManageUsers from "./pages/admin/ManageUsers";
 import ReviewListings from "./pages/admin/ReviewListings";
 import NotFound from "./pages/NotFound";
@@ -35,8 +39,12 @@ const App = () => (
             <Route path="/host/dashboard" element={<HostDashboard />} />
             <Route path="/host/create-listing" element={<CreateListing />} />
             <Route path="/host/listings" element={<ManageListings />} />
+            <Route path="/host/bookings" element={<HostBookings />} />
             <Route path="/guest/dashboard" element={<GuestDashboard />} />
             <Route path="/guest/browse" element={<BrowseListings />} />
+            <Route path="/guest/listing/:id" element={<ListingDetails />} />
+            <Route path="/guest/bookings" element={<MyBookings />} />
+            <Route path="/guest/wallet" element={<Wallet />} />
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
             <Route path="/admin/users" element={<ManageUsers />} />
             <Route path="/admin/listings" element={<ReviewListings />} />
