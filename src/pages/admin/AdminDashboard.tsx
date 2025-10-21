@@ -83,7 +83,7 @@ const AdminDashboard = () => {
 
         {/* Admin Tools */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer">
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/admin/users')}>
             <CardHeader>
               <Users className="w-8 h-8 text-primary mb-2" />
               <CardTitle>User Management</CardTitle>
@@ -93,7 +93,7 @@ const AdminDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer">
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/admin/listings')}>
             <CardHeader>
               <Home className="w-8 h-8 text-primary mb-2" />
               <CardTitle>Listings Review</CardTitle>

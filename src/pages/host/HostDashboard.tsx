@@ -81,7 +81,7 @@ const HostDashboard = () => {
 
         {/* Main Actions */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer">
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/host/create-listing')}>
             <CardHeader>
               <Plus className="w-8 h-8 text-primary mb-2" />
               <CardTitle>Create New Listing</CardTitle>
@@ -91,7 +91,7 @@ const HostDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer">
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/host/listings')}>
             <CardHeader>
               <Home className="w-8 h-8 text-primary mb-2" />
               <CardTitle>My Listings</CardTitle>

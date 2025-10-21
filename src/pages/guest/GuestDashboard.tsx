@@ -103,7 +103,7 @@ const GuestDashboard = () => {
         <div className="mb-8">
           <h3 className="text-2xl font-bold mb-6">Browse Categories</h3>
           <div className="grid md:grid-cols-3 gap-6">
-            <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer">
+            <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/guest/browse')}>
               <CardHeader className="text-center">
                 <img src={homeIcon} alt="Homes" className="w-20 h-20 mx-auto mb-4" />
                 <CardTitle>Homes</CardTitle>

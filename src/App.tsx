@@ -11,6 +11,11 @@ import AdminLogin from "./pages/auth/AdminLogin";
 import HostDashboard from "./pages/host/HostDashboard";
 import GuestDashboard from "./pages/guest/GuestDashboard";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import CreateListing from "./pages/host/CreateListing";
+import ManageListings from "./pages/host/ManageListings";
+import BrowseListings from "./pages/guest/BrowseListings";
+import ManageUsers from "./pages/admin/ManageUsers";
+import ReviewListings from "./pages/admin/ReviewListings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,8 +33,13 @@ const App = () => (
             <Route path="/guest/login" element={<GuestLogin />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/host/dashboard" element={<HostDashboard />} />
+            <Route path="/host/create-listing" element={<CreateListing />} />
+            <Route path="/host/listings" element={<ManageListings />} />
             <Route path="/guest/dashboard" element={<GuestDashboard />} />
+            <Route path="/guest/browse" element={<BrowseListings />} />
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
+            <Route path="/admin/users" element={<ManageUsers />} />
+            <Route path="/admin/listings" element={<ReviewListings />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
