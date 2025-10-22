@@ -1,34 +1,32 @@
-# StayHub - Firebase Hosting Platform
+# StayHub - Multi-Role Booking Platform
 
-A complete web application with Host, Guest, and Admin dashboards built using Firebase Free Plan (Spark).
+A comprehensive booking platform with Host, Guest, and Admin portals built with React, TypeScript, and Firebase.
 
-## Features
+## 🌟 Features
 
 ### 🏠 Host Portal
-- Email authentication
 - Create and manage listings (Homes, Experiences, Services)
-- Save drafts
+- Upload multiple images per listing
+- Manage booking requests (approve/decline)
 - Real-time messaging with guests
-- Calendar management
-- Payment tracking (simulated)
-- Points & rewards system
+- Track earnings and transactions
+- View booking calendar
 
 ### 👤 Guest Portal
-- Browse listings by category
-- Search and filter functionality
-- Favorites/wishlist
-- Booking management
-- E-wallet (simulated)
-- Personalized recommendations
-- Social sharing
+- Browse and search listings by category
+- View detailed listing information with galleries
+- Book listings with date selection
+- Manage bookings and view history
+- Leave reviews and ratings
+- Favorite listings
+- E-wallet for payments and deposits
+- Message hosts
 
 ### 🛠️ Admin Portal
-- Platform analytics dashboard
-- User management
-- Listing moderation
-- Payment approval system
-- Policy management
-- Report generation
+- Review and approve/reject new listings
+- Manage all users and their roles
+- Monitor platform activity
+- Full access to bookings and transactions
 
 ## Tech Stack
 
@@ -87,62 +85,21 @@ A complete web application with Host, Guest, and Admin dashboards built using Fi
    VITE_FIREBASE_APP_ID=your_app_id
    ```
 
-### 4. Set Up Firestore Security Rules
+### 4. Deploy Security Rules
 
-Go to Firestore Database > Rules and add:
+The project includes pre-configured security rules:
 
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // User profiles
-    match /users/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
-    }
-    
-    // Listings
-    match /listings/{listingId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.hostId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.hostId == request.auth.uid;
-    }
-    
-    // Messages
-    match /messages/{threadId}/messages/{messageId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-    }
-    
-    // Admin-only collections
-    match /policies/{policyId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-  }
-}
-```
+#### Firestore Rules
+1. Go to Firestore Database > Rules
+2. Copy the contents of `firestore.rules` from your project root
+3. Paste and publish
 
-### 5. Set Up Storage Rules
+#### Storage Rules
+1. Go to Storage > Rules
+2. Copy the contents of `storage.rules` from your project root
+3. Paste and publish
 
-Go to Storage > Rules and add:
-
-```javascript
-rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    match /listings/{listingId}/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
-    }
-    
-    match /users/{userId}/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
-    }
-  }
-}
-```
+See `FIREBASE_SETUP.md` for detailed security rules documentation.
 
 ## Installation
 
@@ -200,17 +157,19 @@ src/
 
 ### Firestore Collections
 - `users` - User profiles with role information
-- `listings` - Host listings with category, pricing, location
-- `bookings` - Guest bookings with payment status
-- `messages` - Real-time chat threads
-- `policies` - Admin-managed platform policies
+- `listings` - Host listings with details, images, pricing
+- `bookings` - Booking requests and confirmations
+- `reviews` - Guest reviews and ratings
+- `messages` - Direct messaging between users
+- `transactions` - Wallet and payment transactions
 
-### Client-Side Features
-- Simulated payment processing
-- Points & rewards system
-- E-wallet balance tracking
-- Favorites/wishlist management
-- AI-assisted listing descriptions (optional)
+### Key Features
+- Role-based access control (Host, Guest, Admin)
+- Image upload to Firebase Storage
+- Real-time booking management
+- Review and rating system
+- E-wallet and transactions
+- Secure Firebase Security Rules
 
 ## Testing
 
