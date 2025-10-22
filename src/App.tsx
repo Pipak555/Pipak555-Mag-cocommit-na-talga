@@ -20,6 +20,10 @@ import HostBookings from "./pages/host/HostBookings";
 import Wallet from "./pages/guest/Wallet";
 import ManageUsers from "./pages/admin/ManageUsers";
 import ReviewListings from "./pages/admin/ReviewListings";
+import AccountSettings from "./pages/shared/AccountSettings";
+import HostMessages from "./pages/host/Messages";
+import GuestMessages from "./pages/guest/Messages";
+import Analytics from "./pages/admin/Analytics";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,14 +44,18 @@ const App = () => (
             <Route path="/host/create-listing" element={<CreateListing />} />
             <Route path="/host/listings" element={<ManageListings />} />
             <Route path="/host/bookings" element={<HostBookings />} />
+            <Route path="/host/messages" element={<HostMessages />} />
             <Route path="/guest/dashboard" element={<GuestDashboard />} />
             <Route path="/guest/browse" element={<BrowseListings />} />
             <Route path="/guest/listing/:id" element={<ListingDetails />} />
             <Route path="/guest/bookings" element={<MyBookings />} />
             <Route path="/guest/wallet" element={<Wallet />} />
+            <Route path="/guest/messages" element={<GuestMessages />} />
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
             <Route path="/admin/users" element={<ManageUsers />} />
             <Route path="/admin/listings" element={<ReviewListings />} />
+            <Route path="/admin/analytics" element={<Analytics />} />
+            <Route path="/settings" element={<AccountSettings />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

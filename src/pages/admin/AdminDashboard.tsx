@@ -113,7 +113,7 @@ const AdminDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer">
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/admin/analytics')}>
             <CardHeader>
               <TrendingUp className="w-8 h-8 text-secondary mb-2" />
               <CardTitle>Analytics</CardTitle>

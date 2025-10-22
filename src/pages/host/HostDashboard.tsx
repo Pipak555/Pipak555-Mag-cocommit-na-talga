@@ -111,7 +111,7 @@ const HostDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer">
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/host/messages')}>
             <CardHeader>
               <MessageSquare className="w-8 h-8 text-secondary mb-2" />
               <CardTitle>Messages</CardTitle>

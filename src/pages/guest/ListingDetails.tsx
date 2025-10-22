@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
-import { ArrowLeft, MapPin, Users, Star } from "lucide-react";
+import { ArrowLeft, MapPin, Users, Star, Share2 } from "lucide-react";
 import { toast } from "sonner";
+import { ReviewList } from "@/components/reviews/ReviewList";
 import type { Listing } from "@/types";
 
 const ListingDetails = () => {
@@ -65,6 +66,24 @@ const ListingDetails = () => {
     }
   };
 
+  const handleShare = async () => {
+    const url = window.location.href;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: listing?.title,
+          text: listing?.description,
+          url: url,
+        });
+      } catch (error) {
+        console.log('Share cancelled');
+      }
+    } else {
+      navigator.clipboard.writeText(url);
+      toast.success("Link copied to clipboard!");
+    }
+  };
+
   if (!listing) return <div className="p-6">Loading...</div>;
 
   return (
@@ -90,7 +109,13 @@ const ListingDetails = () => {
           </div>
 
           <div>
-            <Badge className="mb-2">{listing.category}</Badge>
+            <div className="flex items-center justify-between mb-2">
+              <Badge>{listing.category}</Badge>
+              <Button variant="outline" size="sm" onClick={handleShare}>
+                <Share2 className="h-4 w-4 mr-2" />
+                Share
+              </Button>
+            </div>
             <h1 className="text-3xl font-bold mb-2">{listing.title}</h1>
             <div className="flex items-center text-muted-foreground mb-4">
               <MapPin className="h-4 w-4 mr-1" />
@@ -168,6 +193,11 @@ const ListingDetails = () => {
               </CardContent>
             </Card>
           </div>
+        </div>
+
+        {/* Reviews Section */}
+        <div className="mt-12">
+          <ReviewList listingId={listing.id} />
         </div>
       </div>
     </div>
