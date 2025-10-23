@@ -5,10 +5,9 @@ import { getListings, toggleFavorite } from "@/lib/firestore";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { ListingCard } from "@/components/listings/ListingCard";
+import { AdvancedFilter, FilterValues } from "@/components/filters/AdvancedFilter";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Search } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import type { Listing } from "@/types";
 
@@ -18,18 +17,23 @@ const BrowseListings = () => {
   const [listings, setListings] = useState<Listing[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [category, setCategory] = useState<string>('all');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [filters, setFilters] = useState<FilterValues>({
+    location: '',
+    guests: 1,
+    category: 'all'
+  });
 
   useEffect(() => {
     loadListings();
     if (user) loadFavorites();
-  }, [category, user]);
+  }, [user]);
 
   const loadListings = async () => {
     try {
-      const filters = category !== 'all' ? { category, status: 'approved' } : { status: 'approved' };
-      const data = await getListings(filters);
+      const listingFilters = filters.category !== 'all' 
+        ? { category: filters.category, status: 'approved' } 
+        : { status: 'approved' };
+      const data = await getListings(listingFilters);
       setListings(data);
     } catch (error) {
       toast.error("Failed to load listings");
@@ -60,10 +64,31 @@ const BrowseListings = () => {
     }
   };
 
-  const filteredListings = listings.filter(listing =>
-    listing.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    listing.location.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredListings = listings.filter(listing => {
+    // Location filter
+    if (filters.location && !listing.location.toLowerCase().includes(filters.location.toLowerCase())) {
+      return false;
+    }
+    
+    // Guest capacity filter
+    if (filters.guests > listing.maxGuests) {
+      return false;
+    }
+    
+    // Price range filter
+    if (filters.minPrice && listing.price < filters.minPrice) {
+      return false;
+    }
+    if (filters.maxPrice && listing.price > filters.maxPrice) {
+      return false;
+    }
+    
+    return true;
+  });
+
+  const handleFilterChange = (newFilters: FilterValues) => {
+    setFilters(newFilters);
+  };
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -79,28 +104,8 @@ const BrowseListings = () => {
 
         <h1 className="text-3xl font-bold mb-6">Browse Listings</h1>
 
-        <div className="flex gap-4 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input
-              placeholder="Search by title or location..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          
-          <Select value={category} onValueChange={setCategory}>
-            <SelectTrigger className="w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              <SelectItem value="home">Homes</SelectItem>
-              <SelectItem value="experience">Experiences</SelectItem>
-              <SelectItem value="service">Services</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="mb-6">
+          <AdvancedFilter onFilterChange={handleFilterChange} />
         </div>
 
         {loading ? (

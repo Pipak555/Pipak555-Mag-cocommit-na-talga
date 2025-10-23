@@ -19,12 +19,17 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
     description: '',
     category: 'home' as 'home' | 'experience' | 'service',
     price: '',
+    discount: '',
+    promo: '',
     location: '',
     maxGuests: '',
     bedrooms: '',
     bathrooms: '',
     amenities: '',
   });
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const [blockedDates, setBlockedDates] = useState<string[]>([]);
+  const [saveAsDraft, setSaveAsDraft] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,13 +43,17 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         description: formData.description,
         category: formData.category,
         price: Number(formData.price),
+        discount: formData.discount ? Number(formData.discount) : undefined,
+        promo: formData.promo || undefined,
         location: formData.location,
         maxGuests: Number(formData.maxGuests),
         bedrooms: formData.bedrooms ? Number(formData.bedrooms) : undefined,
         bathrooms: formData.bathrooms ? Number(formData.bathrooms) : undefined,
         amenities: formData.amenities.split(',').map(a => a.trim()).filter(Boolean),
+        availableDates,
+        blockedDates,
         images: [],
-        status: 'pending',
+        status: saveAsDraft ? 'draft' : 'pending',
       });
 
       if (images.length > 0) {
@@ -112,6 +121,30 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                 value={formData.price}
                 onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                 required
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="discount">Discount (%)</Label>
+              <Input
+                id="discount"
+                type="number"
+                min="0"
+                max="100"
+                value={formData.discount}
+                onChange={(e) => setFormData({ ...formData, discount: e.target.value })}
+                placeholder="Optional discount percentage"
+              />
+            </div>
+            <div>
+              <Label htmlFor="promo">Promo Description</Label>
+              <Input
+                id="promo"
+                value={formData.promo}
+                onChange={(e) => setFormData({ ...formData, promo: e.target.value })}
+                placeholder="e.g., 'Summer Special'"
               />
             </div>
           </div>
@@ -189,9 +222,25 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
             </div>
           </div>
 
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? "Creating..." : "Create Listing"}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              type="submit"
+              disabled={loading}
+              className="flex-1"
+              onClick={() => setSaveAsDraft(false)}
+            >
+              {loading ? "Creating..." : "Publish Listing"}
+            </Button>
+            <Button
+              type="submit"
+              variant="outline"
+              disabled={loading}
+              className="flex-1"
+              onClick={() => setSaveAsDraft(true)}
+            >
+              {loading ? "Saving..." : "Save as Draft"}
+            </Button>
+          </div>
         </form>
       </CardContent>
     </Card>

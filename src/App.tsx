@@ -24,6 +24,8 @@ import AccountSettings from "./pages/shared/AccountSettings";
 import HostMessages from "./pages/host/Messages";
 import GuestMessages from "./pages/guest/Messages";
 import Analytics from "./pages/admin/Analytics";
+import Reports from "./pages/admin/Reports";
+import Policies from "./pages/admin/Policies";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -55,6 +57,8 @@ const App = () => (
             <Route path="/admin/users" element={<ManageUsers />} />
             <Route path="/admin/listings" element={<ReviewListings />} />
             <Route path="/admin/analytics" element={<Analytics />} />
+            <Route path="/admin/reports" element={<Reports />} />
+            <Route path="/admin/policies" element={<Policies />} />
             <Route path="/settings" element={<AccountSettings />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

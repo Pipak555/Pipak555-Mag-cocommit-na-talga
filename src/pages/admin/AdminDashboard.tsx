@@ -123,7 +123,7 @@ const AdminDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer">
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/admin/reports')}>
             <CardHeader>
               <FileText className="w-8 h-8 text-secondary mb-2" />
               <CardTitle>Reports</CardTitle>
@@ -133,7 +133,7 @@ const AdminDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer">
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/admin/policies')}>
             <CardHeader>
               <Settings className="w-8 h-8 text-muted-foreground mb-2" />
               <CardTitle>Policies & Settings</CardTitle>

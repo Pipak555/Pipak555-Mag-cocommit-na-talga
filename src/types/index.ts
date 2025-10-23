@@ -5,13 +5,17 @@ export interface Listing {
   description: string;
   category: 'home' | 'experience' | 'service';
   price: number;
+  discount?: number; // percentage discount
+  promo?: string; // promo code or description
   location: string;
   images: string[];
   amenities: string[];
   maxGuests: number;
   bedrooms?: number;
   bathrooms?: number;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'draft' | 'pending' | 'approved' | 'rejected';
+  availableDates?: string[]; // array of ISO date strings
+  blockedDates?: string[]; // dates when property is not available
   createdAt: string;
   updatedAt: string;
 }
@@ -65,4 +69,24 @@ export interface UserProfile {
   points: number;
   walletBalance: number;
   favorites: string[];
+  coupons?: Coupon[];
+}
+
+export interface Coupon {
+  id: string;
+  code: string;
+  discount: number; // percentage
+  validUntil: string;
+  used: boolean;
+  minSpend?: number;
+}
+
+export interface ServiceFee {
+  id: string;
+  bookingId: string;
+  hostId: string;
+  amount: number;
+  percentage: number;
+  status: 'pending' | 'collected';
+  createdAt: string;
 }
