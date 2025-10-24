@@ -50,31 +50,66 @@ const Landing = () => {
       </section>
 
       {/* Categories Section */}
-      <section className="py-20 bg-muted/50">
+      <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-6">
-          <h2 className="text-3xl font-bold text-center mb-12">Explore Categories</h2>
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold mb-4">Explore Categories</h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              Discover the perfect experience for your needs
+            </p>
+          </div>
           
-          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            <Card className="p-8 text-center shadow-soft hover:shadow-hover transition-smooth cursor-pointer bg-gradient-card">
-              <img src={homeIcon} alt="Home" className="w-24 h-24 mx-auto mb-4" />
-              <Home className="w-8 h-8 mx-auto mb-3 text-primary" />
-              <h3 className="text-xl font-semibold mb-2">Homes</h3>
-              <p className="text-muted-foreground">Discover comfortable stays for your next adventure</p>
-            </Card>
+          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+            <Link to="/guest/browse" className="group block">
+              <Card className="p-8 text-center shadow-medium hover:shadow-hover transition-all duration-300 border-2 border-transparent hover:border-primary/50 bg-card h-full">
+                <div className="mb-6 relative">
+                  <div className="w-32 h-32 mx-auto mb-4 rounded-2xl overflow-hidden bg-primary/5 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <img src={homeIcon} alt="Home" className="w-24 h-24 object-contain" />
+                  </div>
+                  <div className="w-14 h-14 mx-auto rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                    <Home className="w-7 h-7 text-primary" />
+                  </div>
+                </div>
+                <h3 className="text-2xl font-bold mb-3 group-hover:text-primary transition-colors">Homes</h3>
+                <p className="text-muted-foreground text-base leading-relaxed">
+                  Discover comfortable stays for your next adventure
+                </p>
+              </Card>
+            </Link>
 
-            <Card className="p-8 text-center shadow-soft hover:shadow-hover transition-smooth cursor-pointer bg-gradient-card">
-              <img src={experienceIcon} alt="Experience" className="w-24 h-24 mx-auto mb-4" />
-              <Compass className="w-8 h-8 mx-auto mb-3 text-secondary" />
-              <h3 className="text-xl font-semibold mb-2">Experiences</h3>
-              <p className="text-muted-foreground">Unique activities hosted by local experts</p>
-            </Card>
+            <Link to="/guest/browse" className="group block">
+              <Card className="p-8 text-center shadow-medium hover:shadow-hover transition-all duration-300 border-2 border-transparent hover:border-secondary/50 bg-card h-full">
+                <div className="mb-6 relative">
+                  <div className="w-32 h-32 mx-auto mb-4 rounded-2xl overflow-hidden bg-secondary/5 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <img src={experienceIcon} alt="Experience" className="w-24 h-24 object-contain" />
+                  </div>
+                  <div className="w-14 h-14 mx-auto rounded-full bg-secondary/10 flex items-center justify-center group-hover:bg-secondary/20 transition-colors">
+                    <Compass className="w-7 h-7 text-secondary" />
+                  </div>
+                </div>
+                <h3 className="text-2xl font-bold mb-3 group-hover:text-secondary transition-colors">Experiences</h3>
+                <p className="text-muted-foreground text-base leading-relaxed">
+                  Unique activities hosted by local experts
+                </p>
+              </Card>
+            </Link>
 
-            <Card className="p-8 text-center shadow-soft hover:shadow-hover transition-smooth cursor-pointer bg-gradient-card">
-              <img src={serviceIcon} alt="Service" className="w-24 h-24 mx-auto mb-4" />
-              <Wrench className="w-8 h-8 mx-auto mb-3 text-accent" />
-              <h3 className="text-xl font-semibold mb-2">Services</h3>
-              <p className="text-muted-foreground">Professional services for your property</p>
-            </Card>
+            <Link to="/guest/browse" className="group block">
+              <Card className="p-8 text-center shadow-medium hover:shadow-hover transition-all duration-300 border-2 border-transparent hover:border-accent/50 bg-card h-full">
+                <div className="mb-6 relative">
+                  <div className="w-32 h-32 mx-auto mb-4 rounded-2xl overflow-hidden bg-accent/5 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <img src={serviceIcon} alt="Service" className="w-24 h-24 object-contain" />
+                  </div>
+                  <div className="w-14 h-14 mx-auto rounded-full bg-accent/10 flex items-center justify-center group-hover:bg-accent/20 transition-colors">
+                    <Wrench className="w-7 h-7 text-accent" />
+                  </div>
+                </div>
+                <h3 className="text-2xl font-bold mb-3 group-hover:text-accent transition-colors">Services</h3>
+                <p className="text-muted-foreground text-base leading-relaxed">
+                  Professional services for your property
+                </p>
+              </Card>
+            </Link>
           </div>
         </div>
       </section>

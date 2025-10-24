@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Shield, ArrowLeft } from 'lucide-react';
+import { Shield, ArrowLeft, Mail, Lock } from 'lucide-react';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 const AdminLogin = () => {
   const [email, setEmail] = useState('');
@@ -31,53 +32,76 @@ const AdminLogin = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-background flex items-center justify-center p-6">
-      <div className="w-full max-w-md">
-        <Link to="/" className="inline-flex items-center text-muted-foreground hover:text-foreground mb-6 transition-smooth">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Home
-        </Link>
-        
-        <Card className="shadow-medium">
-          <CardHeader className="text-center">
-            <div className="w-16 h-16 bg-accent rounded-full flex items-center justify-center mx-auto mb-4">
-              <Shield className="w-8 h-8 text-accent-foreground" />
+    <div className="min-h-screen bg-background flex flex-col">
+      <header className="border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+        <div className="container mx-auto px-6 py-4 flex justify-between items-center">
+          <Button variant="ghost" onClick={() => navigate('/')}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Home
+          </Button>
+          <ThemeToggle />
+        </div>
+      </header>
+      
+      <div className="flex-1 flex items-center justify-center p-6">
+        <Card className="w-full max-w-md shadow-medium border-border/50">
+          <CardHeader className="space-y-4 text-center pb-8">
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-accent/10 flex items-center justify-center">
+              <Shield className="w-8 h-8 text-accent" />
             </div>
-            <CardTitle className="text-2xl">Admin Portal</CardTitle>
-            <CardDescription>
-              Secure access for platform administrators
-            </CardDescription>
+            <div>
+              <CardTitle className="text-3xl font-bold">Admin Portal</CardTitle>
+              <CardDescription className="text-base mt-2">
+                Platform management and oversight
+              </CardDescription>
+            </div>
           </CardHeader>
           
           <CardContent>
-            <form onSubmit={handleSignIn} className="space-y-4">
+            <form onSubmit={handleSignIn} className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="admin@stayhub.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
+                <Label htmlFor="email" className="text-base">Email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="admin@stayhub.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="pl-10 h-12"
+                  />
+                </div>
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
+                <Label htmlFor="password" className="text-base">Password</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className="pl-10 h-12"
+                  />
+                </div>
               </div>
               
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Signing in...' : 'Sign In'}
+              <Button type="submit" className="w-full h-12 text-base" disabled={loading}>
+                {loading ? 'Signing in...' : 'Sign In as Admin'}
               </Button>
             </form>
+            
+            <div className="mt-8 p-4 bg-accent/10 rounded-lg border border-accent/20">
+              <p className="text-sm text-muted-foreground text-center">
+                <Shield className="w-4 h-4 inline mr-1 text-accent" />
+                Admin access is restricted. Contact support if you need access.
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>
