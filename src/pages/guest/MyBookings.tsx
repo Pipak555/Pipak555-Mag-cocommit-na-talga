@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Calendar as CalendarIcon } from "lucide-react";
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 import type { Booking } from "@/types";
 
 const MyBookings = () => {
@@ -43,14 +44,26 @@ const MyBookings = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-4xl mx-auto">
-        <Button variant="ghost" onClick={() => navigate('/guest/dashboard')} className="mb-6">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Dashboard
-        </Button>
-
-        <h1 className="text-3xl font-bold mb-6">My Bookings</h1>
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-soft">
+        <div className="container mx-auto px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => navigate('/guest/dashboard')}>
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div className="p-2 rounded-lg bg-secondary/10">
+              <CalendarIcon className="w-5 h-5 text-secondary" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold">My Bookings</h1>
+              <p className="text-xs text-muted-foreground">View your trips</p>
+            </div>
+          </div>
+          <ThemeToggle />
+        </div>
+      </header>
+      
+      <div className="max-w-4xl mx-auto p-6">
 
         {loading ? (
           <p>Loading...</p>

@@ -5,8 +5,9 @@ import { getBookings, updateBooking } from "@/lib/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Calendar } from "lucide-react";
 import { toast } from "sonner";
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 import type { Booking } from "@/types";
 
 const HostBookings = () => {
@@ -44,14 +45,26 @@ const HostBookings = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-6xl mx-auto">
-        <Button variant="ghost" onClick={() => navigate('/host/dashboard')} className="mb-6">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Dashboard
-        </Button>
-
-        <h1 className="text-3xl font-bold mb-6">Booking Requests</h1>
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-soft">
+        <div className="container mx-auto px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => navigate('/host/dashboard')}>
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div className="p-2 rounded-lg bg-secondary/10">
+              <Calendar className="w-5 h-5 text-secondary" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold">Booking Requests</h1>
+              <p className="text-xs text-muted-foreground">Manage reservations</p>
+            </div>
+          </div>
+          <ThemeToggle />
+        </div>
+      </header>
+      
+      <div className="max-w-6xl mx-auto p-6">
 
         {loading ? (
           <p>Loading...</p>

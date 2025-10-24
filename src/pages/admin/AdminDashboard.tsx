@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield, Users, Home, DollarSign, TrendingUp, FileText, Settings, AlertCircle } from 'lucide-react';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 const AdminDashboard = () => {
   const { user, userRole, signOut } = useAuth();
@@ -23,21 +24,29 @@ const AdminDashboard = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card shadow-soft">
+      <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-soft">
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <Shield className="w-6 h-6 text-accent" />
-            <h1 className="text-xl font-bold">Admin Dashboard</h1>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-accent/10">
+              <Shield className="w-5 h-5 text-accent" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold">Admin Dashboard</h1>
+              <p className="text-xs text-muted-foreground">Platform management</p>
+            </div>
           </div>
-          <Button variant="outline" onClick={handleSignOut}>Sign Out</Button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Button variant="outline" onClick={handleSignOut}>Sign Out</Button>
+          </div>
         </div>
       </header>
 
       <div className="container mx-auto px-6 py-8">
         {/* Welcome Section */}
-        <div className="mb-8">
+        <div className="mb-8 p-6 rounded-xl bg-gradient-accent text-white">
           <h2 className="text-3xl font-bold mb-2">Platform Overview</h2>
-          <p className="text-muted-foreground">{user?.email}</p>
+          <p className="text-white/90">{user?.email}</p>
         </div>
 
         {/* Platform Stats */}

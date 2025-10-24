@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Search, Heart, MapPin, Calendar, Wallet, Settings, User } from 'lucide-react';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 import homeIcon from '@/assets/category-home.png';
 import experienceIcon from '@/assets/category-experience.png';
 import serviceIcon from '@/assets/category-service.png';
@@ -27,35 +28,44 @@ const GuestDashboard = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card shadow-soft">
+      <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-soft">
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <User className="w-6 h-6 text-secondary" />
-            <h1 className="text-xl font-bold">Guest Dashboard</h1>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-secondary/10">
+              <User className="w-5 h-5 text-secondary" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold">Guest Dashboard</h1>
+              <p className="text-xs text-muted-foreground">Discover your next adventure</p>
+            </div>
           </div>
-          <Button variant="outline" onClick={handleSignOut}>Sign Out</Button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Button variant="outline" onClick={handleSignOut}>Sign Out</Button>
+          </div>
         </div>
       </header>
 
       <div className="container mx-auto px-6 py-8">
         {/* Welcome Section */}
-        <div className="mb-8">
+        <div className="mb-8 p-6 rounded-xl bg-gradient-to-r from-secondary to-secondary/80 text-white">
           <h2 className="text-3xl font-bold mb-2">Discover Your Next Adventure</h2>
-          <p className="text-muted-foreground">{user?.email}</p>
+          <p className="text-white/90">{user?.email}</p>
         </div>
 
         {/* Search Bar */}
-        <Card className="shadow-medium mb-8">
+        <Card className="shadow-medium mb-8 border-border/50">
           <CardContent className="pt-6">
             <div className="flex gap-4">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <Input 
                   placeholder="Search destinations, experiences, services..." 
-                  className="pl-10"
+                  className="pl-10 h-12"
+                  onClick={() => navigate('/guest/browse')}
                 />
               </div>
-              <Button>Search</Button>
+              <Button className="h-12 px-8" onClick={() => navigate('/guest/browse')}>Search</Button>
             </div>
           </CardContent>
         </Card>
