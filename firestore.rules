@@ -1,84 +1,123 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper functions
     function isSignedIn() {
       return request.auth != null;
     }
-    
-    function isAdmin() {
-      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+
+    // Helpers to check conversation participants for users and hosts
+    function userConvHasParticipant(userId, convId) {
+      return exists(/databases/$(database)/documents/users/$(userId)/conversations/$(convId)) &&
+        get(/databases/$(database)/documents/users/$(userId)/conversations/$(convId)).data.participants.hasAny([request.auth.uid]);
     }
-    
-    function isHost() {
-      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'host';
+
+    function hostConvHasParticipant(hostId, convId) {
+      return exists(/databases/$(database)/documents/hosts/$(hostId)/conversations/$(convId)) &&
+        get(/databases/$(database)/documents/hosts/$(hostId)/conversations/$(convId)).data.participants.hasAny([request.auth.uid]);
     }
-    
-    function isGuest() {
-      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'guest';
-    }
-    
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-    
-    // Users collection
+
+    // Users collection - users control their own document
     match /users/{userId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isOwner(userId);
-      allow update: if isOwner(userId) || isAdmin();
-      allow delete: if isAdmin();
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+
+      // Conversations under a user
+      match /conversations/{convId} {
+        allow read: if isSignedIn() && (
+          request.auth.uid == userId || userConvHasParticipant(userId, convId)
+        );
+
+        allow create, update: if isSignedIn() && (
+          request.auth.uid == userId ||
+          (request.resource.data.participants is list && request.resource.data.participants.hasAny([request.auth.uid])) ||
+          userConvHasParticipant(userId, convId)
+        );
+
+        allow delete: if isSignedIn() && request.auth.uid == userId;
+
+        match /messages/{messageId} {
+          allow read: if isSignedIn() && (
+            request.auth.uid == userId || userConvHasParticipant(userId, convId)
+          );
+
+          allow create: if isSignedIn() && (
+            request.resource.data.from == request.auth.uid &&
+            (request.auth.uid == userId || userConvHasParticipant(userId, convId))
+          );
+
+          allow update, delete: if isSignedIn() && resource.data.from == request.auth.uid;
+        }
+      }
     }
-    
-    // Listings collection
-    match /listings/{listingId} {
-      allow read: if true; // Public read for browsing
-      allow create: if isHost();
-      allow update: if isAdmin() || (isHost() && resource.data.hostId == request.auth.uid);
-      allow delete: if isAdmin() || (isHost() && resource.data.hostId == request.auth.uid);
+
+    // Hosts collection - hosts control their data
+    match /hosts/{hostId} {
+      // listings
+      match /listings/{listingId} {
+        allow read: if true;
+        allow write: if isSignedIn() && request.auth.uid == hostId;
+      }
+
+      // bookings under a host
+      match /bookings/{bookingId} {
+        allow read: if isSignedIn() && (
+          request.auth.uid == hostId ||
+          (resource.data.guestId == request.auth.uid) ||
+          (request.resource.data.guestId == request.auth.uid)
+        );
+
+        allow create: if isSignedIn() && request.auth.uid == request.resource.data.guestId;
+        allow update: if isSignedIn() && (
+          request.auth.uid == hostId || (resource.data.guestId == request.auth.uid)
+        );
+        allow delete: if isSignedIn() && (
+          request.auth.uid == hostId || (resource.data.guestId == request.auth.uid)
+        );
+      }
+
+      // draft listings (hosts only)
+      match /drafts/{draftId} {
+        allow read, write: if isSignedIn() && request.auth.uid == hostId;
+      }
+
+      // host-side conversations and messages
+      match /conversations/{convId} {
+        allow read: if isSignedIn() && (
+          request.auth.uid == hostId || hostConvHasParticipant(hostId, convId)
+        );
+
+        allow create, update: if isSignedIn() && (
+          request.auth.uid == hostId ||
+          (request.resource.data.participants is list && request.resource.data.participants.hasAny([request.auth.uid])) ||
+          hostConvHasParticipant(hostId, convId)
+        );
+
+        allow delete: if isSignedIn() && request.auth.uid == hostId;
+
+        match /messages/{messageId} {
+          allow read: if isSignedIn() && (
+            request.auth.uid == hostId || hostConvHasParticipant(hostId, convId)
+          );
+
+          allow create: if isSignedIn() && (
+            request.resource.data.from == request.auth.uid &&
+            (request.auth.uid == hostId || hostConvHasParticipant(hostId, convId))
+          );
+
+          allow update, delete: if isSignedIn() && resource.data.from == request.auth.uid;
+        }
+      }
     }
-    
-    // Bookings collection
-    match /bookings/{bookingId} {
-      allow read: if isSignedIn() && (
-        resource.data.guestId == request.auth.uid || 
-        resource.data.hostId == request.auth.uid ||
-        isAdmin()
-      );
-      allow create: if isGuest() && request.resource.data.guestId == request.auth.uid;
-      allow update: if isAdmin() || 
-        (isHost() && resource.data.hostId == request.auth.uid) ||
-        (isGuest() && resource.data.guestId == request.auth.uid);
-      allow delete: if isAdmin();
-    }
-    
-    // Reviews collection
+
+    // Reviews (authenticated users)
     match /reviews/{reviewId} {
-      allow read: if true; // Public read
-      allow create: if isGuest() && request.resource.data.guestId == request.auth.uid;
-      allow update: if isOwner(resource.data.guestId) || isAdmin();
-      allow delete: if isAdmin();
-    }
-    
-    // Messages collection
-    match /messages/{messageId} {
-      allow read: if isSignedIn() && (
-        resource.data.senderId == request.auth.uid || 
-        resource.data.receiverId == request.auth.uid ||
-        isAdmin()
-      );
-      allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
-      allow update: if isOwner(resource.data.receiverId);
-      allow delete: if isAdmin();
-    }
-    
-    // Transactions collection
-    match /transactions/{transactionId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Admin-only analytics
+    match /analytics/{document=**} {
+      allow read, write: if isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
   }
 }
