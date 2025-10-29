@@ -53,6 +53,8 @@ export default {
         'gradient-hero': 'var(--gradient-hero)',
         'gradient-card': 'var(--gradient-card)',
         'gradient-accent': 'var(--gradient-accent)',
+        'gradient-brand': 'linear-gradient(135deg, #f97316 0%, #3b82f6 50%, #22c55e 100%)',
+        'gradient-mojo': 'linear-gradient(45deg, #f97316, #3b82f6, #22c55e)',
       },
       boxShadow: {
         'soft': 'var(--shadow-soft)',

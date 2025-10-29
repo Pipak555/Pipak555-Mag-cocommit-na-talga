@@ -64,6 +64,7 @@ export interface Transaction {
 
 export interface UserProfile {
   email: string;
+  fullName: string;
   role: 'host' | 'guest' | 'admin';
   createdAt: string;
   points: number;

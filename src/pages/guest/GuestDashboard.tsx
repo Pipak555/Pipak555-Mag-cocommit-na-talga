@@ -6,12 +6,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Search, Heart, MapPin, Calendar, Wallet, Settings, User } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import Logo from '@/components/shared/Logo';
 import homeIcon from '@/assets/category-home.png';
 import experienceIcon from '@/assets/category-experience.png';
 import serviceIcon from '@/assets/category-service.png';
 
 const GuestDashboard = () => {
-  const { user, userRole, signOut } = useAuth();
+  const { user, userRole, userProfile, signOut } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -31,11 +32,14 @@ const GuestDashboard = () => {
       <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-soft">
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
+            <Logo size="sm" />
             <div className="p-2 rounded-lg bg-secondary/10">
               <User className="w-5 h-5 text-secondary" />
             </div>
             <div>
-              <h1 className="text-lg font-bold">Guest Dashboard</h1>
+              <h1 className="text-lg font-bold">
+                Welcome, {userProfile?.fullName || 'Guest'}!
+              </h1>
               <p className="text-xs text-muted-foreground">Discover your next adventure</p>
             </div>
           </div>

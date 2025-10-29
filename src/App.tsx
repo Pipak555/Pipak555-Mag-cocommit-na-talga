@@ -9,6 +9,8 @@ import Landing from "./pages/Landing";
 import HostLogin from "./pages/auth/HostLogin";
 import GuestLogin from "./pages/auth/GuestLogin";
 import AdminLogin from "./pages/auth/AdminLogin";
+import EmailVerification from "./pages/auth/EmailVerification";
+import VerificationPending from "./pages/auth/VerificationPending";
 import HostDashboard from "./pages/host/HostDashboard";
 import GuestDashboard from "./pages/guest/GuestDashboard";
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -44,6 +46,8 @@ const App = () => (
             <Route path="/host/login" element={<HostLogin />} />
             <Route path="/guest/login" element={<GuestLogin />} />
             <Route path="/admin/login" element={<AdminLogin />} />
+            <Route path="/verify-email" element={<EmailVerification />} />
+            <Route path="/verification-pending" element={<VerificationPending />} />
             <Route path="/host/dashboard" element={<HostDashboard />} />
             <Route path="/host/create-listing" element={<CreateListing />} />
             <Route path="/host/listings" element={<ManageListings />} />

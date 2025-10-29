@@ -26,7 +26,8 @@ const BrowseListings = () => {
   useEffect(() => {
     loadListings();
     if (user) loadFavorites();
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, filters.category]);
 
   const loadListings = async () => {
     try {
@@ -55,11 +56,19 @@ const BrowseListings = () => {
       toast.error("Please login to add favorites");
       return;
     }
+    // Optimistic update
+    const wasFavorite = favorites.includes(listingId);
+    const optimistic = wasFavorite
+      ? favorites.filter(id => id !== listingId)
+      : [...favorites, listingId];
+    setFavorites(optimistic);
     try {
       const newFavorites = await toggleFavorite(user.uid, listingId, favorites);
       setFavorites(newFavorites);
       toast.success(newFavorites.includes(listingId) ? "Added to favorites" : "Removed from favorites");
     } catch (error) {
+      // Revert on error
+      setFavorites(favorites);
       toast.error("Failed to update favorites");
     }
   };
@@ -104,6 +113,23 @@ const BrowseListings = () => {
 
         <h1 className="text-3xl font-bold mb-6">Browse Listings</h1>
 
+        {/* Category Chips/Tabs */}
+        <div className="mb-4 flex flex-wrap gap-2">
+          {['all','home','experience','service'].map((cat) => (
+            <button
+              key={cat}
+              className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                (filters.category === cat)
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-background border-border text-foreground hover:bg-muted'
+              }`}
+              onClick={() => setFilters({ ...filters, category: cat as any })}
+            >
+              {cat === 'all' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1)}
+            </button>
+          ))}
+        </div>
+
         <div className="mb-6">
           <AdvancedFilter onFilterChange={handleFilterChange} />
         </div>
@@ -112,7 +138,8 @@ const BrowseListings = () => {
           <p>Loading...</p>
         ) : filteredListings.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-muted-foreground">No listings found</p>
+            <p className="text-muted-foreground mb-2">No listings found</p>
+            <p className="text-sm text-muted-foreground">Try a different category or adjust filters.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

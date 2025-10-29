@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import type { Message } from "@/types";
 
 export const Messages = () => {
-  const { user } = useAuth();
+  const { user, userProfile } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [selectedChat, setSelectedChat] = useState<string | null>(null);

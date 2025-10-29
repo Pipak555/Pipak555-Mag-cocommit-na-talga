@@ -42,6 +42,7 @@ const AccountSettings = () => {
     try {
       await updateDoc(doc(db, 'users', user.uid), {
         email: profile.email,
+        fullName: profile.fullName,
       });
       toast.success("Profile updated successfully!");
     } catch (error) {
@@ -96,6 +97,16 @@ const AccountSettings = () => {
                 <CardDescription>Update your account details</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="fullName">Full Name</Label>
+                  <Input
+                    id="fullName"
+                    type="text"
+                    value={profile.fullName}
+                    onChange={(e) => setProfile({ ...profile, fullName: e.target.value })}
+                    placeholder="Enter your full name"
+                  />
+                </div>
                 <div>
                   <Label htmlFor="email">Email</Label>
                   <Input

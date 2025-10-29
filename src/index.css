@@ -17,21 +17,21 @@ All colors MUST be HSL.
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 15%;
 
-    /* Warm coral for primary brand color */
-    --primary: 2 78% 67%;
+    /* Mojo Dojo Casa House brand colors */
+    --primary: 25 95% 53%; /* Orange */
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 2 90% 75%;
+    --primary-glow: 25 100% 60%;
 
-    /* Deep teal for trust */
-    --secondary: 184 65% 45%;
+    /* Blue for trust and stability */
+    --secondary: 217 91% 60%;
     --secondary-foreground: 0 0% 100%;
 
     /* Soft neutrals */
     --muted: 0 0% 96%;
     --muted-foreground: 240 5% 45%;
 
-    /* Amber for rewards */
-    --accent: 38 92% 50%;
+    /* Green for growth and nature */
+    --accent: 142 76% 36%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84.2% 60.2%;
@@ -39,19 +39,19 @@ All colors MUST be HSL.
 
     --border: 240 6% 90%;
     --input: 240 6% 90%;
-    --ring: 2 78% 67%;
+    --ring: 25 95% 53%;
 
     --radius: 0.75rem;
 
-    /* Gradients */
-    --gradient-hero: linear-gradient(135deg, hsl(2 78% 67%) 0%, hsl(2 90% 75%) 100%);
+    /* Gradients - Mojo Dojo Casa House brand */
+    --gradient-hero: linear-gradient(135deg, hsl(25 95% 53%) 0%, hsl(217 91% 60%) 50%, hsl(142 76% 36%) 100%);
     --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(0 0% 98%) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(38 92% 50%) 0%, hsl(45 100% 60%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(25 95% 53%) 0%, hsl(217 91% 60%) 50%, hsl(142 76% 36%) 100%);
 
     /* Shadows */
     --shadow-soft: 0 4px 20px -2px hsl(240 10% 15% / 0.08);
     --shadow-medium: 0 8px 30px -4px hsl(240 10% 15% / 0.12);
-    --shadow-hover: 0 12px 40px -6px hsl(2 78% 67% / 0.2);
+    --shadow-hover: 0 12px 40px -6px hsl(25 95% 53% / 0.2);
 
     /* Transitions */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -68,17 +68,17 @@ All colors MUST be HSL.
     --popover: 240 10% 12%;
     --popover-foreground: 0 0% 95%;
 
-    --primary: 2 78% 67%;
+    --primary: 25 95% 53%;
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 2 90% 75%;
+    --primary-glow: 25 100% 60%;
 
-    --secondary: 184 65% 45%;
+    --secondary: 217 91% 60%;
     --secondary-foreground: 0 0% 100%;
 
     --muted: 240 10% 18%;
     --muted-foreground: 240 5% 65%;
 
-    --accent: 38 92% 50%;
+    --accent: 142 76% 36%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 62.8% 30.6%;
@@ -86,7 +86,7 @@ All colors MUST be HSL.
 
     --border: 240 10% 20%;
     --input: 240 10% 20%;
-    --ring: 2 78% 67%;
+    --ring: 25 95% 53%;
   }
 }
 

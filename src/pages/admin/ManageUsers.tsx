@@ -52,6 +52,7 @@ const ManageUsers = () => {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Full Name</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Points</TableHead>
@@ -62,6 +63,7 @@ const ManageUsers = () => {
             <TableBody>
               {users.map((user) => (
                 <TableRow key={user.id}>
+                  <TableCell className="font-medium">{user.fullName || 'N/A'}</TableCell>
                   <TableCell>{user.email}</TableCell>
                   <TableCell>
                     <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>

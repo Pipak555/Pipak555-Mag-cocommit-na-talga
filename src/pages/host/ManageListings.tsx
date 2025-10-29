@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { getListings, deleteListing } from "@/lib/firestore";
+import { Badge } from "@/components/ui/badge";
 import { ListingCard } from "@/components/listings/ListingCard";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Plus, Home } from "lucide-react";
@@ -94,8 +95,21 @@ const ManageListings = () => {
             {listings.map((listing) => (
               <div key={listing.id} className="group">
                 <ListingCard listing={listing} />
+                <div className="mt-2 flex items-center justify-between">
+                  <Badge variant={listing.status === 'draft' ? 'secondary' : 'default'}>
+                    {listing.status.charAt(0).toUpperCase() + listing.status.slice(1)}
+                  </Badge>
+                  <span className="text-sm text-muted-foreground">{listing.category}</span>
+                </div>
                 <div className="mt-3 flex gap-2">
-                  <Button variant="outline" size="sm" className="flex-1 hover:bg-primary hover:text-primary-foreground">Edit</Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="flex-1 hover:bg-primary hover:text-primary-foreground"
+                    onClick={() => navigate(`/host/create-listing?edit=${listing.id}`)}
+                  >
+                    {listing.status === 'draft' ? 'Resume' : 'Edit'}
+                  </Button>
                   <Button 
                     variant="destructive" 
                     size="sm" 

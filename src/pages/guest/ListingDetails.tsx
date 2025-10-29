@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
-import { ArrowLeft, MapPin, Users, Star, Share2 } from "lucide-react";
+import { ArrowLeft, MapPin, Users, Star, Share2, Link as LinkIcon } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { ReviewList } from "@/components/reviews/ReviewList";
 import type { Listing } from "@/types";
@@ -84,6 +85,24 @@ const ListingDetails = () => {
     }
   };
 
+  const shareTo = (platform: 'facebook' | 'twitter' | 'whatsapp') => {
+    const url = encodeURIComponent(window.location.href);
+    const text = encodeURIComponent(listing?.title || 'Check this out');
+    let shareUrl = '';
+    switch (platform) {
+      case 'facebook':
+        shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${url}`;
+        break;
+      case 'twitter':
+        shareUrl = `https://twitter.com/intent/tweet?url=${url}&text=${text}`;
+        break;
+      case 'whatsapp':
+        shareUrl = `https://api.whatsapp.com/send?text=${text}%20${url}`;
+        break;
+    }
+    window.open(shareUrl, '_blank', 'noopener,noreferrer');
+  };
+
   if (!listing) return <div className="p-6">Loading...</div>;
 
   return (
@@ -111,10 +130,28 @@ const ListingDetails = () => {
           <div>
             <div className="flex items-center justify-between mb-2">
               <Badge>{listing.category}</Badge>
-              <Button variant="outline" size="sm" onClick={handleShare}>
-                <Share2 className="h-4 w-4 mr-2" />
-                Share
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={handleShare}>
+                  <Share2 className="h-4 w-4 mr-2" />
+                  Share
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" aria-label="More share options">
+                      <Share2 className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(window.location.href); toast.success('Link copied'); }}>
+                      <LinkIcon className="h-4 w-4 mr-2" /> Copy link
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => shareTo('facebook')}>Share to Facebook</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => shareTo('twitter')}>Share to Twitter</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => shareTo('whatsapp')}>Share to WhatsApp</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
             <h1 className="text-3xl font-bold mb-2">{listing.title}</h1>
             <div className="flex items-center text-muted-foreground mb-4">

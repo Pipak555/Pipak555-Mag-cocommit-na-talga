@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, Home, Calendar, MessageSquare, DollarSign, Settings, Award } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import Logo from '@/components/shared/Logo';
 
 const HostDashboard = () => {
-  const { user, userRole, signOut } = useAuth();
+  const { user, userRole, userProfile, signOut } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -27,11 +28,14 @@ const HostDashboard = () => {
       <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-soft">
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
+            <Logo size="sm" />
             <div className="p-2 rounded-lg bg-primary/10">
               <Home className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-lg font-bold">Host Dashboard</h1>
+              <h1 className="text-lg font-bold">
+                Welcome, {userProfile?.fullName || 'Host'}!
+              </h1>
               <p className="text-xs text-muted-foreground">Manage your properties</p>
             </div>
           </div>
@@ -45,7 +49,7 @@ const HostDashboard = () => {
       <div className="container mx-auto px-6 py-8">
         {/* Welcome Section */}
         <div className="mb-8 p-6 rounded-xl bg-gradient-hero text-white">
-          <h2 className="text-3xl font-bold mb-2">Welcome back!</h2>
+          <h2 className="text-3xl font-bold mb-2">Welcome back, {userProfile?.fullName || 'Host'}!</h2>
           <p className="text-white/90">{user?.email}</p>
         </div>
 

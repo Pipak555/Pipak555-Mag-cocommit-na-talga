@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield, Users, Home, DollarSign, TrendingUp, FileText, Settings, AlertCircle } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import Logo from '@/components/shared/Logo';
 
 const AdminDashboard = () => {
-  const { user, userRole, signOut } = useAuth();
+  const { user, userRole, userProfile, signOut } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -27,11 +28,14 @@ const AdminDashboard = () => {
       <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-soft">
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
+            <Logo size="sm" />
             <div className="p-2 rounded-lg bg-accent/10">
               <Shield className="w-5 h-5 text-accent" />
             </div>
             <div>
-              <h1 className="text-lg font-bold">Admin Dashboard</h1>
+              <h1 className="text-lg font-bold">
+                Welcome, {userProfile?.fullName || 'Admin'}!
+              </h1>
               <p className="text-xs text-muted-foreground">Platform management</p>
             </div>
           </div>
@@ -46,7 +50,7 @@ const AdminDashboard = () => {
         {/* Welcome Section */}
         <div className="mb-8 p-6 rounded-xl bg-gradient-accent text-white">
           <h2 className="text-3xl font-bold mb-2">Platform Overview</h2>
-          <p className="text-white/90">{user?.email}</p>
+          <p className="text-white/90">Welcome back, {userProfile?.fullName || 'Admin'}! ({user?.email})</p>
         </div>
 
         {/* Platform Stats */}

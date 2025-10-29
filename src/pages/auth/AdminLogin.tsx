@@ -6,12 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Shield, ArrowLeft, Mail, Lock } from 'lucide-react';
+import { Shield, ArrowLeft, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import Logo from '@/components/shared/Logo';
 
 const AdminLogin = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { signIn } = useAuth();
   const navigate = useNavigate();
@@ -35,10 +37,13 @@ const AdminLogin = () => {
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
-          <Button variant="ghost" onClick={() => navigate('/')}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Home
-          </Button>
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" onClick={() => navigate('/')}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Home
+            </Button>
+            <Logo size="sm" />
+          </div>
           <ThemeToggle />
         </div>
       </header>
@@ -81,13 +86,20 @@ const AdminLogin = () => {
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <Input
                     id="password"
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    className="pl-10 h-12"
+                    className="pl-10 pr-10 h-12"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
                 </div>
               </div>
               

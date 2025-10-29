@@ -3,6 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Home, Compass, Wrench, Users, Building2, Shield } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import Footer from '@/components/shared/Footer';
+import Logo from '@/components/shared/Logo';
 import heroImage from '@/assets/hero-home.jpg';
 import homeIcon from '@/assets/category-home.png';
 import experienceIcon from '@/assets/category-experience.png';
@@ -14,9 +16,7 @@ const Landing = () => {
       {/* Header */}
       <header className="absolute top-0 left-0 right-0 z-50">
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold bg-gradient-hero bg-clip-text text-transparent">
-            StayHub
-          </h1>
+          <Logo size="md" />
           <ThemeToggle />
         </div>
       </header>
@@ -32,10 +32,10 @@ const Landing = () => {
         
         <div className="relative container mx-auto px-6 h-full flex flex-col justify-center">
           <h1 className="text-5xl md:text-6xl font-bold mb-6 max-w-2xl">
-            Welcome to <span className="bg-gradient-hero bg-clip-text text-transparent">StayHub</span>
+            Welcome to <span className="bg-gradient-to-r from-orange-500 via-blue-500 to-green-500 bg-clip-text text-transparent">Mojo Dojo Casa House</span>
           </h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-xl">
-            Connect hosts and guests for unique stays, experiences, and services
+            Your gateway to amazing stays. Connect hosts and guests for unique stays, experiences, and services
           </p>
           
           <div className="flex flex-wrap gap-4">
@@ -178,11 +178,7 @@ const Landing = () => {
       </section>
 
       {/* Footer */}
-      <footer className="bg-muted py-8">
-        <div className="container mx-auto px-6 text-center text-muted-foreground">
-          <p>&copy; 2025 StayHub. Built with Firebase & React.</p>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 };
