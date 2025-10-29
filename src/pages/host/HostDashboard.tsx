@@ -50,7 +50,7 @@ const HostDashboard = () => {
         {/* Welcome Section */}
         <div className="mb-8 p-6 rounded-xl bg-gradient-hero text-white">
           <h2 className="text-3xl font-bold mb-2">Welcome back, {userProfile?.fullName || 'Host'}!</h2>
-          <p className="text-white/90">{user?.email}</p>
+          <p className="text-white/90">{userProfile?.fullName || 'Host'}</p>
         </div>
 
         {/* Quick Stats */}

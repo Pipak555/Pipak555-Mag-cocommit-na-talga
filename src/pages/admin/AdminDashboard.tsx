@@ -50,7 +50,7 @@ const AdminDashboard = () => {
         {/* Welcome Section */}
         <div className="mb-8 p-6 rounded-xl bg-gradient-accent text-white">
           <h2 className="text-3xl font-bold mb-2">Platform Overview</h2>
-          <p className="text-white/90">Welcome back, {userProfile?.fullName || 'Admin'}! ({user?.email})</p>
+          <p className="text-white/90">Welcome back, {userProfile?.fullName || 'Admin'}!</p>
         </div>
 
         {/* Platform Stats */}

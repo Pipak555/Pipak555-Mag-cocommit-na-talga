@@ -54,7 +54,7 @@ const GuestDashboard = () => {
         {/* Welcome Section */}
         <div className="mb-8 p-6 rounded-xl bg-gradient-to-r from-secondary to-secondary/80 text-white">
           <h2 className="text-3xl font-bold mb-2">Discover Your Next Adventure</h2>
-          <p className="text-white/90">{user?.email}</p>
+          <p className="text-white/90">{userProfile?.fullName || 'Guest'}</p>
         </div>
 
         {/* Search Bar */}

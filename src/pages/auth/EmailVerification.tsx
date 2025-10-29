@@ -11,7 +11,7 @@ const EmailVerification = () => {
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [verificationStatus, setVerificationStatus] = useState<'verifying' | 'success' | 'error'>('verifying');
-  const { verifyEmail, sendVerificationEmail, user } = useAuth();
+  const { verifyEmail, sendVerificationEmail, user, userRole } = useAuth();
   const navigate = useNavigate();
 
   const actionCode = searchParams.get('oobCode');
@@ -42,6 +42,30 @@ const EmailVerification = () => {
     }
   };
 
+  // Auto-redirect after successful verification
+  useEffect(() => {
+    if (verificationStatus !== 'success') return;
+
+    const continueUrl = searchParams.get('continueUrl');
+    const redirect = () => {
+      if (continueUrl) {
+        navigate(continueUrl);
+        return;
+      }
+      if (user && userRole) {
+        if (userRole === 'guest') navigate('/guest/dashboard');
+        else if (userRole === 'host') navigate('/host/dashboard');
+        else if (userRole === 'admin') navigate('/admin/dashboard');
+        else navigate('/');
+      } else {
+        navigate('/guest/login');
+      }
+    };
+
+    const timer = setTimeout(redirect, 1200);
+    return () => clearTimeout(timer);
+  }, [verificationStatus, user, userRole, navigate, searchParams]);
+
   const handleResendVerification = async () => {
     setLoading(true);
     try {
@@ -68,10 +92,8 @@ const EmailVerification = () => {
       return {
         icon: <CheckCircle className="w-16 h-16 text-green-500" />,
         title: "Email Verified Successfully!",
-        description: "Your email has been verified. You can now sign in to your account and start using our platform.",
-        showButton: true,
-        buttonText: "Continue to Sign In",
-        buttonAction: () => navigate('/guest/login')
+        description: "Your email has been verified. Redirecting you now...",
+        showButton: false,
       };
     }
 

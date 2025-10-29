@@ -118,6 +118,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const verifyEmail = async (actionCode: string) => {
     await applyActionCode(auth, actionCode);
+    if (auth.currentUser) {
+      await auth.currentUser.reload();
+    }
   };
 
   const sendPasswordReset = async (email: string) => {

@@ -1,4 +1,5 @@
 {
+  
   "$schema": "https://ui.shadcn.com/schema.json",
   "style": "default",
   "rsc": false,
@@ -18,3 +19,5 @@
     "hooks": "@/hooks"
   }
 }
+
+
