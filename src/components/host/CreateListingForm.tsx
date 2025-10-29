@@ -5,6 +5,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { PayPalButton } from "@/components/payments/PayPalButton";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { useAuth } from "@/contexts/AuthContext";
 import { createListing, uploadListingImages } from "@/lib/firestore";
 import { toast } from "sonner";
@@ -29,7 +32,25 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
   });
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [blockedDates, setBlockedDates] = useState<string[]>([]);
+  const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
+    from: undefined,
+    to: undefined
+  });
   const [saveAsDraft, setSaveAsDraft] = useState(false);
+  const [showPayment, setShowPayment] = useState(false);
+  const SUBSCRIPTION_FEE = 10; // USD
+
+  const generateAvailableDates = (from: Date, to: Date): string[] => {
+    const dates: string[] = [];
+    const current = new Date(from);
+    
+    while (current <= to) {
+      dates.push(current.toISOString().split('T')[0]);
+      current.setDate(current.getDate() + 1);
+    }
+    
+    return dates;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,6 +58,12 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
 
     setLoading(true);
     try {
+      // Generate available dates from date range if provided
+      let finalAvailableDates = availableDates;
+      if (dateRange.from && dateRange.to) {
+        finalAvailableDates = generateAvailableDates(dateRange.from, dateRange.to);
+      }
+
       const listingId = await createListing({
         hostId: user.uid,
         title: formData.title,
@@ -50,7 +77,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         bedrooms: formData.bedrooms ? Number(formData.bedrooms) : undefined,
         bathrooms: formData.bathrooms ? Number(formData.bathrooms) : undefined,
         amenities: formData.amenities.split(',').map(a => a.trim()).filter(Boolean),
-        availableDates,
+        availableDates: finalAvailableDates,
         blockedDates,
         images: [],
         status: saveAsDraft ? 'draft' : 'pending',
@@ -71,7 +98,61 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
     }
   };
 
+  const createListingAfterPayment = async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      let finalAvailableDates = availableDates;
+      if (dateRange.from && dateRange.to) {
+        finalAvailableDates = generateAvailableDates(dateRange.from, dateRange.to);
+      }
+
+      const listingId = await createListing({
+        hostId: user.uid,
+        title: formData.title,
+        description: formData.description,
+        category: formData.category,
+        price: Number(formData.price),
+        discount: formData.discount ? Number(formData.discount) : undefined,
+        promo: formData.promo || undefined,
+        location: formData.location,
+        maxGuests: Number(formData.maxGuests),
+        bedrooms: formData.bedrooms ? Number(formData.bedrooms) : undefined,
+        bathrooms: formData.bathrooms ? Number(formData.bathrooms) : undefined,
+        amenities: formData.amenities.split(',').map(a => a.trim()).filter(Boolean),
+        availableDates: finalAvailableDates,
+        blockedDates,
+        images: [],
+        status: 'pending',
+      });
+
+      if (images.length > 0) {
+        const imageUrls = await uploadListingImages(images, listingId);
+        await createListing({ ...formData, images: imageUrls } as any);
+      }
+
+      toast.success("Payment received. Listing submitted for review!");
+      onSuccess();
+    } catch (error) {
+      toast.error("Failed to create listing after payment");
+      console.error(error);
+    } finally {
+      setLoading(false);
+      setShowPayment(false);
+    }
+  };
+
+  const handleProceedToPayment = () => {
+    if (!formData.title || !formData.description || !formData.price || !formData.location || !formData.maxGuests) {
+      toast.error("Please complete required fields before proceeding to payment.");
+      return;
+    }
+    setSaveAsDraft(false);
+    setShowPayment(true);
+  };
+
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle>Create New Listing</CardTitle>
@@ -201,6 +282,21 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
           </div>
 
           <div>
+            <Label htmlFor="dateRange">Availability Date Range</Label>
+            <DateRangePicker
+              value={dateRange}
+              onChange={setDateRange}
+              placeholder="Select your listing availability period"
+              className="mt-2"
+            />
+            {dateRange.from && dateRange.to && (
+              <p className="text-sm text-muted-foreground mt-2">
+                Available from {dateRange.from.toLocaleDateString()} to {dateRange.to.toLocaleDateString()}
+              </p>
+            )}
+          </div>
+
+          <div>
             <Label htmlFor="images">Images</Label>
             <div className="mt-2 flex items-center gap-2">
               <Input
@@ -224,12 +320,12 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
 
           <div className="flex gap-2">
             <Button
-              type="submit"
+              type="button"
               disabled={loading}
               className="flex-1"
-              onClick={() => setSaveAsDraft(false)}
+              onClick={handleProceedToPayment}
             >
-              {loading ? "Creating..." : "Publish Listing"}
+              {loading ? "Creating..." : `Pay & Publish`}
             </Button>
             <Button
               type="submit"
@@ -244,5 +340,37 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         </form>
       </CardContent>
     </Card>
+
+    <Dialog open={showPayment} onOpenChange={setShowPayment}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Complete Subscription to Publish</DialogTitle>
+          <DialogDescription>
+            Pay a one-time subscription fee to submit your listing for review.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="rounded-lg border p-4">
+            <div className="text-sm text-muted-foreground">Listing</div>
+            <div className="font-medium">{formData.title || 'Untitled Listing'}</div>
+            <div className="text-sm text-muted-foreground">Category: {formData.category}</div>
+            <div className="text-sm text-muted-foreground">Location: {formData.location || '-'}</div>
+            <div className="text-sm text-muted-foreground">
+              {dateRange.from && dateRange.to ? `Availability: ${dateRange.from.toLocaleDateString()} - ${dateRange.to.toLocaleDateString()}` : 'Availability: Not set'}
+            </div>
+          </div>
+
+          {user && (
+            <PayPalButton
+              amount={SUBSCRIPTION_FEE}
+              userId={user.uid}
+              description={`Host subscription for listing: ${formData.title || 'Untitled'}`}
+              onSuccess={createListingAfterPayment}
+            />
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 };
