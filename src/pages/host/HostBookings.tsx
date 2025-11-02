@@ -8,6 +8,16 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Calendar } from "lucide-react";
 import { toast } from "sonner";
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { Booking } from "@/types";
 
 const HostBookings = () => {
@@ -15,6 +25,9 @@ const HostBookings = () => {
   const { user } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [declineDialogOpen, setDeclineDialogOpen] = useState(false);
+  const [bookingToUpdate, setBookingToUpdate] = useState<{ id: string; action: 'confirmed' | 'cancelled' } | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -34,13 +47,27 @@ const HostBookings = () => {
     }
   };
 
-  const handleUpdateStatus = async (id: string, status: 'confirmed' | 'cancelled') => {
+  const handleUpdateStatus = (id: string, status: 'confirmed' | 'cancelled') => {
+    setBookingToUpdate({ id, action: status });
+    if (status === 'confirmed') {
+      setConfirmDialogOpen(true);
+    } else {
+      setDeclineDialogOpen(true);
+    }
+  };
+
+  const confirmStatusUpdate = async () => {
+    if (!bookingToUpdate) return;
     try {
-      await updateBooking(id, { status });
-      toast.success(`Booking ${status}`);
+      await updateBooking(bookingToUpdate.id, { status: bookingToUpdate.action });
+      toast.success(`Booking ${bookingToUpdate.action}`);
       loadBookings();
+      setBookingToUpdate(null);
     } catch (error) {
       toast.error("Failed to update booking");
+    } finally {
+      setConfirmDialogOpen(false);
+      setDeclineDialogOpen(false);
     }
   };
 
@@ -125,6 +152,43 @@ const HostBookings = () => {
           </div>
         )}
       </div>
+
+      {/* Confirm Booking Dialog */}
+      <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Booking?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to confirm this booking? The guest will be notified and the booking will be finalized.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setBookingToUpdate(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmStatusUpdate}>Confirm Booking</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Decline Booking Dialog */}
+      <AlertDialog open={declineDialogOpen} onOpenChange={setDeclineDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Decline Booking?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to decline this booking request? The guest will be notified and this action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setBookingToUpdate(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmStatusUpdate} 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Decline Booking
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getStorage, connectStorageEmulator } from 'firebase/storage';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -21,5 +21,57 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
+// Connect to emulators in development mode (localhost only)
+// This ensures local testing doesn't affect your deployed Firebase project
+// Set VITE_USE_EMULATORS=true in your .env file to enable emulator mode
+if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === 'true') {
+  console.log('🔥 Connecting to Firebase Emulators (Local Testing Mode)');
+  
+  try {
+    // Connect Auth emulator
+    try {
+      connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
+      console.log('✅ Auth emulator connected on port 9099');
+    } catch (error: any) {
+      if (error.message?.includes('already been initialized')) {
+        console.log('✅ Auth emulator already connected');
+      } else {
+        console.warn('⚠️  Auth emulator connection issue:', error.message);
+      }
+    }
+    
+    // Connect Firestore emulator
+    try {
+      connectFirestoreEmulator(db, 'localhost', 8080);
+      console.log('✅ Firestore emulator connected on port 8080');
+    } catch (error: any) {
+      if (error.message?.includes('already been initialized')) {
+        console.log('✅ Firestore emulator already connected');
+      } else {
+        console.warn('⚠️  Firestore emulator connection issue:', error.message);
+      }
+    }
+    
+    // Connect Storage emulator
+    try {
+      connectStorageEmulator(storage, 'localhost', 9199);
+      console.log('✅ Storage emulator connected on port 9199');
+    } catch (error: any) {
+      if (error.message?.includes('already been initialized')) {
+        console.log('✅ Storage emulator already connected');
+      } else {
+        console.warn('⚠️  Storage emulator connection issue:', error.message);
+      }
+    }
+    
+    console.log('📍 Emulator UI: http://localhost:4000');
+  } catch (error) {
+    console.error('❌ Error connecting to emulators:', error);
+  }
+} else if (import.meta.env.DEV) {
+  console.log('ℹ️  Running in development mode - using LIVE Firebase project');
+  console.log('   To use emulators, add VITE_USE_EMULATORS=true to your .env file');
+}
 
 export default app;

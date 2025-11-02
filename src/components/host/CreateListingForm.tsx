@@ -6,6 +6,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { PayPalButton } from "@/components/payments/PayPalButton";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { useAuth } from "@/contexts/AuthContext";
@@ -51,6 +61,8 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
   const [draftFound, setDraftFound] = useState(false); // whether a draft exists on mount
   const [showDraftDialog, setShowDraftDialog] = useState(false);
   const [draftId, setDraftId] = useState<string | null>(null); // will be `${uid}_draft`
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+  const [paymentConfirmOpen, setPaymentConfirmOpen] = useState(false);
   const SUBSCRIPTION_FEE = 10; // USD
 
   // debounce timer ref
@@ -196,29 +208,34 @@ const saveDraftToFirestore = useCallback(
   }, [saveDraftToFirestore, user]);
 
   // On mount: check if a draft exists for this user; if yes, prompt via custom dialog
-  useEffect(() => {
-    const checkDraft = async () => {
-      if (!user) return;
-      const id = getDraftDocId();
-      if (!id) return;
-      try {
-        const snap = await getDoc(doc(db, "listing", id));
-        if (snap.exists()) {
-          setDraftFound(true);
-          setShowDraftDialog(true);
-          setDraftId(id);
+    // On mount: check if a draft exists for this user; if yes, prompt via custom dialog
+    useEffect(() => {
+      const checkDraft = async () => {
+        if (!user) return;
+        const id = getDraftDocId();
+        if (!id) return;
+        try {
+          const snap = await getDoc(doc(db, "listing", id));
+          // Only show draft dialog if the document exists AND is actually a draft (status === "draft")
+          if (snap.exists()) {
+            const data = snap.data();
+            if (data.status === "draft") {
+              setDraftFound(true);
+              setShowDraftDialog(true);
+              setDraftId(id);
+            }
+          }
+        } catch (err: any) {
+          // Silently handle permission errors - just means no draft exists or user can't read it yet
+          if (err.code !== 'permission-denied') {
+            console.error("Failed to check draft:", err);
+          }
+          // Don't show error to user - it's expected if no draft exists
         }
-      } catch (err: any) {
-        // Silently handle permission errors - just means no draft exists or user can't read it yet
-        if (err.code !== 'permission-denied') {
-          console.error("Failed to check draft:", err);
-        }
-        // Don't show error to user - it's expected if no draft exists
-      }
-    };
-    checkDraft();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+      };
+      checkDraft();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user]);
 
   // Load the draft into form state
   const loadDraft = async () => {
@@ -262,6 +279,7 @@ const saveDraftToFirestore = useCallback(
       // nothing to delete; just reset and close dialog
       setShowDraftDialog(false);
       setDraftFound(false);
+      setDiscardConfirmOpen(false);
       return;
     }
     try {
@@ -269,6 +287,7 @@ const saveDraftToFirestore = useCallback(
       setDraftId(null);
       setShowDraftDialog(false);
       setDraftFound(false);
+      setDiscardConfirmOpen(false);
       // reset form
       setFormData({
         title: "",
@@ -297,13 +316,14 @@ const saveDraftToFirestore = useCallback(
   // If draft exists, we update that doc (change status to pending or published)
   // Otherwise create a new listing doc (using your createListing helper)
  // Around line 265-301, update persistListing:
-const persistListing = async (status: "pending" | "draft") => {
+ const persistListing = async (status: "pending" | "draft") => {
   if (!user) throw new Error("No user");
   const finalAvailableDates = dateRange.from && dateRange.to ? generateAvailableDates(dateRange.from, dateRange.to) : availableDates;
 
   // Check existing listing to preserve createdAt
   let existingCreatedAt = null;
-  if (draftId) {
+  if (draftId && status === "draft") {
+    // Only preserve createdAt if we're saving as draft
     try {
       const existing = await getDoc(doc(db, "listing", draftId));
       if (existing.exists()) {
@@ -338,14 +358,39 @@ const persistListing = async (status: "pending" | "draft") => {
   // Remove undefined values before saving to Firestore
   const payload = removeUndefined(payloadRaw);
 
-  if (draftId) {
-    await setDoc(doc(db, "listing", draftId), payload, { merge: true });
-    console.log("Listing updated with payload:", payload);
-    return draftId;
-  } else {
+  // If publishing (status === "pending"), always create a NEW listing (don't reuse draftId)
+  if (status === "pending") {
+    // Create a new listing document
     const newId = await createListing(payload);
     console.log("New listing created with ID:", newId, "Payload:", payload);
+    
+    // If we published from a draft, delete the draft document
+    if (draftId) {
+      try {
+        await deleteDoc(doc(db, "listing", draftId));
+        console.log("Draft deleted after publishing");
+      } catch (err) {
+        console.error("Error deleting draft:", err);
+      }
+    }
+    
+    // Clear draft state
+    setDraftId(null);
+    setDraftFound(false);
+    
     return newId;
+  } else {
+    // If saving as draft, update existing draft or create new one
+    if (draftId) {
+      await setDoc(doc(db, "listing", draftId), payload, { merge: true });
+      console.log("Draft updated with payload:", payload);
+      return draftId;
+    } else {
+      const newId = await createListing(payload);
+      console.log("New draft created with ID:", newId, "Payload:", payload);
+      setDraftId(newId);
+      return newId;
+    }
   }
 };
 
@@ -375,6 +420,11 @@ const persistListing = async (status: "pending" | "draft") => {
       }
 
       toast.success("Listing created successfully!");
+      
+      // Clear draft state after successful publish (safety measure - also cleared in persistListing)
+      setDraftId(null);
+      setDraftFound(false);
+      
       onSuccess();
     } catch (error) {
       console.error(error);
@@ -385,33 +435,43 @@ const persistListing = async (status: "pending" | "draft") => {
   };
 
   // Called after payment succeeds
-  const createListingAfterPayment = async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const listingId = await persistListing("pending");
-
-      if (images.length > 0) {
-        const imageUrls = await uploadListingImages(images, listingId);
-        await setDoc(doc(db, "listing", listingId), { images: imageUrls, updatedAt: serverTimestamp() }, { merge: true });
+    // Called after payment succeeds
+    const createListingAfterPayment = async () => {
+      if (!user) return;
+      setLoading(true);
+      try {
+        const listingId = await persistListing("pending");
+  
+        if (images.length > 0) {
+          const imageUrls = await uploadListingImages(images, listingId);
+          await setDoc(doc(db, "listing", listingId), { images: imageUrls, updatedAt: serverTimestamp() }, { merge: true });
+        }
+  
+        // Clear draft state after successful publish
+        setDraftId(null);
+        setDraftFound(false);
+        
+        toast.success("Payment received. Listing submitted for review!");
+        onSuccess();
+      } catch (error) {
+        console.error(error);
+        toast.error("Failed to create listing after payment");
+      } finally {
+        setLoading(false);
+        setShowPayment(false);
       }
-
-      toast.success("Payment received. Listing submitted for review!");
-      onSuccess();
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to create listing after payment");
-    } finally {
-      setLoading(false);
-      setShowPayment(false);
-    }
-  };
+    };
 
   const handleProceedToPayment = () => {
     if (!formData.title || !formData.description || !formData.price || !formData.location || !formData.maxGuests) {
       toast.error("Please complete required fields before proceeding to payment.");
       return;
     }
+    setPaymentConfirmOpen(true);
+  };
+
+  const confirmPayment = () => {
+    setPaymentConfirmOpen(false);
     setSaveAsDraft(false);
     setShowPayment(true);
   };
@@ -431,9 +491,9 @@ const persistListing = async (status: "pending" | "draft") => {
           <div className="mt-4 flex gap-2 justify-end">
             <Button
               variant="outline"
-              onClick={async () => {
-                // discard then close
-                await discardDraft();
+              onClick={() => {
+                setShowDraftDialog(false);
+                setDiscardConfirmOpen(true);
               }}
             >
               Discard Draft
@@ -673,6 +733,46 @@ const persistListing = async (status: "pending" | "draft") => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Discard Draft Confirmation */}
+      <AlertDialog open={discardConfirmOpen} onOpenChange={setDiscardConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard Draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to discard this draft? All unsaved changes will be permanently lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={discardDraft} 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Discard Draft
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Payment Confirmation */}
+      <AlertDialog open={paymentConfirmOpen} onOpenChange={setPaymentConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Proceed to Payment?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You're about to pay a one-time subscription fee of ${SUBSCRIPTION_FEE} to publish this listing. 
+              After payment, your listing will be submitted for admin review.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmPayment}>
+              Proceed to Payment
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };

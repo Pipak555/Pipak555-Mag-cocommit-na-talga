@@ -8,6 +8,16 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Plus, Home } from "lucide-react";
 import { toast } from "sonner";
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { Listing } from "@/types";
 
 const ManageListings = () => {
@@ -15,6 +25,8 @@ const ManageListings = () => {
   const { user } = useAuth();
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [listingToDelete, setListingToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -25,24 +37,35 @@ const ManageListings = () => {
   const loadListings = async () => {
     if (!user) return;
     try {
+      setLoading(true);
+      console.log("Loading listings for hostId:", user.uid);
       const data = await getListings({ hostId: user.uid });
+      console.log("Loaded listings:", data);
       setListings(data);
-    } catch (error) {
-      toast.error("Failed to load listings");
+    } catch (error: any) {
+      console.error("Failed to load listings:", error);
+      toast.error(`Failed to load listings: ${error.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm("Are you sure you want to delete this listing?")) {
-      try {
-        await deleteListing(id);
-        toast.success("Listing deleted");
-        loadListings();
-      } catch (error) {
-        toast.error("Failed to delete listing");
-      }
+  const handleDelete = (id: string) => {
+    setListingToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!listingToDelete) return;
+    try {
+      await deleteListing(listingToDelete);
+      toast.success("Listing deleted");
+      loadListings();
+      setListingToDelete(null);
+    } catch (error) {
+      toast.error("Failed to delete listing");
+    } finally {
+      setDeleteConfirmOpen(false);
     }
   };
 
@@ -124,6 +147,27 @@ const ManageListings = () => {
           </div>
         )}
       </div>
+
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Listing?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this listing? This action cannot be undone. 
+              Any associated bookings and reviews will be affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setListingToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmDelete} 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

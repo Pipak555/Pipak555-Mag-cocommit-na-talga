@@ -44,29 +44,61 @@ const EmailVerification = () => {
   }, [actionCode, mode, handleVerification]);
 
   // Auto-redirect after successful verification
+  // Auto-redirect after successful verification
   useEffect(() => {
     if (verificationStatus !== 'success') return;
 
-    const performRedirect = () => {
+    const performRedirect = async () => {
       const continueUrl = searchParams.get('continueUrl');
+      
+      // If continueUrl exists, use it
       if (continueUrl) {
-        navigate(continueUrl);
+        setTimeout(() => navigate(continueUrl), 1200);
         return;
       }
-      if (user && userRole) {
-        if (userRole === 'guest') navigate('/guest/dashboard');
-        else if (userRole === 'host') navigate('/host/dashboard');
-        else if (userRole === 'admin') navigate('/admin/dashboard');
-        else navigate('/');
-      } else {
-        navigate('/guest/login');
-      }
+
+      // Wait for user and userRole to be available
+      // Check up to 5 times with 300ms delay each (max 1.5 seconds)
+      let attempts = 0;
+      const maxAttempts = 5;
+      
+      const checkAndRedirect = async () => {
+        attempts++;
+        
+        // If user exists, check if we have userRole
+        if (user) {
+          // If userRole is available, redirect
+          if (userRole) {
+            if (userRole === 'guest') {
+              setTimeout(() => navigate('/guest/dashboard'), 800);
+            } else if (userRole === 'host') {
+              setTimeout(() => navigate('/host/dashboard'), 800);
+            } else if (userRole === 'admin') {
+              setTimeout(() => navigate('/admin/dashboard'), 800);
+            } else {
+              setTimeout(() => navigate('/'), 800);
+            }
+            return;
+          }
+          
+          // If we don't have userRole yet but user exists, try fetching it
+          if (attempts < maxAttempts) {
+            setTimeout(checkAndRedirect, 300);
+            return;
+          }
+        }
+        
+        // If we've exhausted attempts or no user, redirect to login
+        if (attempts >= maxAttempts || !user) {
+          setTimeout(() => navigate('/guest/login'), 800);
+        }
+      };
+
+      // Start checking after a short delay to allow auth state to update
+      setTimeout(checkAndRedirect, 500);
     };
 
-    // Wait a short moment for auth state to update after verification
-    // This gives time for onAuthStateChanged to fire and update user/userRole
-    const timer = setTimeout(performRedirect, 500);
-    return () => clearTimeout(timer);
+    performRedirect();
   }, [verificationStatus, user, userRole, navigate, searchParams]);
 
   const handleResendVerification = async () => {

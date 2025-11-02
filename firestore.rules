@@ -16,7 +16,8 @@ service cloud.firestore {
       
       // Only the host who owns the listing can update it
       allow update: if isSignedIn() && 
-        (resource.data.hostId == request.auth.uid || request.resource.data.hostId == request.auth.uid);
+        request.resource.data.hostId == request.auth.uid &&
+        resource.data.hostId == request.auth.uid;
       
       // Only the host who owns the listing can delete it
       allow delete: if isSignedIn() && 

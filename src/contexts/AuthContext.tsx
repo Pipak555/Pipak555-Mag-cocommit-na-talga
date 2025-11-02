@@ -116,10 +116,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await sendEmailVerification(user);
   };
 
-  const verifyEmail = async (actionCode: string) => {
+    const verifyEmail = async (actionCode: string) => {
     await applyActionCode(auth, actionCode);
+    // Reload the user to get the updated emailVerified status
     if (auth.currentUser) {
       await auth.currentUser.reload();
+      // Force update the context state
+      setUser(auth.currentUser);
     }
   };
 

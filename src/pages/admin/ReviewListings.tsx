@@ -5,12 +5,25 @@ import { ListingCard } from "@/components/listings/ListingCard";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { Listing } from "@/types";
 
 const ReviewListings = () => {
   const navigate = useNavigate();
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [listingToReview, setListingToReview] = useState<string | null>(null);
 
   useEffect(() => {
     loadPendingListings();
@@ -27,23 +40,41 @@ const ReviewListings = () => {
     }
   };
 
-  const handleApprove = async (id: string) => {
+  const handleApprove = (id: string) => {
+    setListingToReview(id);
+    setApproveDialogOpen(true);
+  };
+
+  const handleReject = (id: string) => {
+    setListingToReview(id);
+    setRejectDialogOpen(true);
+  };
+
+  const confirmApprove = async () => {
+    if (!listingToReview) return;
     try {
-      await updateListing(id, { status: 'approved' });
+      await updateListing(listingToReview, { status: 'approved' });
       toast.success("Listing approved");
       loadPendingListings();
+      setListingToReview(null);
     } catch (error) {
       toast.error("Failed to approve listing");
+    } finally {
+      setApproveDialogOpen(false);
     }
   };
 
-  const handleReject = async (id: string) => {
+  const confirmReject = async () => {
+    if (!listingToReview) return;
     try {
-      await updateListing(id, { status: 'rejected' });
+      await updateListing(listingToReview, { status: 'rejected' });
       toast.success("Listing rejected");
       loadPendingListings();
+      setListingToReview(null);
     } catch (error) {
       toast.error("Failed to reject listing");
+    } finally {
+      setRejectDialogOpen(false);
     }
   };
 
@@ -95,6 +126,43 @@ const ReviewListings = () => {
           </div>
         )}
       </div>
+
+      {/* Approve Listing Dialog */}
+      <AlertDialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Approve Listing?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to approve this listing? It will be published and visible to all users.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setListingToReview(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmApprove}>Approve</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reject Listing Dialog */}
+      <AlertDialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reject Listing?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to reject this listing? The host will be notified and the listing will not be published.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setListingToReview(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmReject} 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Reject
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
