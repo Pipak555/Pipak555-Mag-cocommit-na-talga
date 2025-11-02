@@ -31,7 +31,7 @@ const Analytics = () => {
   const loadAnalytics = async () => {
     try {
       const usersSnap = await getDocs(collection(db, 'users'));
-      const listingsSnap = await getDocs(collection(db, 'listings'));
+      const listingsSnap = await getDocs(collection(db, 'listing'));
       const bookingsSnap = await getDocs(collection(db, 'bookings'));
 
       const users = usersSnap.docs.map(doc => doc.data());

@@ -5,6 +5,57 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Top-level listing collection rules
+    match /listing/{listingId} {
+      // Anyone can read listings
+      allow read: if true;
+      
+      // Only signed-in users can create listings (must be the host)
+      allow create: if isSignedIn() && 
+        request.resource.data.hostId == request.auth.uid;
+      
+      // Only the host who owns the listing can update it
+      allow update: if isSignedIn() && 
+        (resource.data.hostId == request.auth.uid || request.resource.data.hostId == request.auth.uid);
+      
+      // Only the host who owns the listing can delete it
+      allow delete: if isSignedIn() && 
+        resource.data.hostId == request.auth.uid;
+    }
+
+    // Top-level bookings collection
+    match /bookings/{bookingId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == resource.data.guestId ||
+        request.auth.uid == resource.data.hostId
+      );
+      allow create: if isSignedIn() && request.resource.data.guestId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        request.auth.uid == resource.data.guestId ||
+        request.auth.uid == resource.data.hostId
+      );
+      allow delete: if isSignedIn() && (
+        request.auth.uid == resource.data.guestId ||
+        request.auth.uid == resource.data.hostId
+      );
+    }
+
+    // Top-level messages collection
+    match /messages/{messageId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == resource.data.senderId ||
+        request.auth.uid == resource.data.receiverId
+      );
+      allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.senderId == request.auth.uid;
+    }
+
+    // Top-level transactions collection
+    match /transactions/{transactionId} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+    }
+
     // Helpers to check conversation participants for users and hosts
     function userConvHasParticipant(userId, convId) {
       return exists(/databases/$(database)/documents/users/$(userId)/conversations/$(convId)) &&

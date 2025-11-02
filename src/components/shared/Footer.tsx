@@ -118,38 +118,39 @@ const Footer = () => {
             {/* Support */}
             <div>
               <h4 className="text-lg font-semibold mb-6 text-white">Support</h4>
-              <ul className="space-y-3">
-                <li>
-                  <Link to="/help" className="text-slate-300 hover:text-blue-400 transition-colors flex items-center group">
-                    <HelpCircle className="w-4 h-4 mr-2" />
-                    <span className="group-hover:translate-x-1 transition-transform">Help Center</span>
-                  </Link>
-                </li>
-                <li>
-                  <Link to="/contact" className="text-slate-300 hover:text-blue-400 transition-colors flex items-center group">
-                    <Mail className="w-4 h-4 mr-2" />
-                    <span className="group-hover:translate-x-1 transition-transform">Contact Us</span>
-                  </Link>
-                </li>
-                <li>
-                  <Link to="/safety" className="text-slate-300 hover:text-blue-400 transition-colors flex items-center group">
-                    <Shield className="w-4 h-4 mr-2" />
-                    <span className="group-hover:translate-x-1 transition-transform">Safety</span>
-                  </Link>
-                </li>
-                <li>
-                  <Link to="/accessibility" className="text-slate-300 hover:text-blue-400 transition-colors flex items-center group">
-                    <Users className="w-4 h-4 mr-2" />
-                    <span className="group-hover:translate-x-1 transition-transform">Accessibility</span>
-                  </Link>
-                </li>
-                <li>
-                  <Link to="/status" className="text-slate-300 hover:text-blue-400 transition-colors flex items-center group">
-                    <Globe className="w-4 h-4 mr-2" />
-                    <span className="group-hover:translate-x-1 transition-transform">System Status</span>
-                  </Link>
-                </li>
-              </ul>
+              // Replace the Support section links (lines 122-151) with:
+<ul className="space-y-3">
+  <li>
+    <a href="mailto:hello@mojodojocasahouse.com" className="text-slate-300 hover:text-blue-400 transition-colors flex items-center group">
+      <HelpCircle className="w-4 h-4 mr-2" />
+      <span className="group-hover:translate-x-1 transition-transform">Help Center</span>
+    </a>
+  </li>
+  <li>
+    <a href="mailto:hello@mojodojocasahouse.com" className="text-slate-300 hover:text-blue-400 transition-colors flex items-center group">
+      <Mail className="w-4 h-4 mr-2" />
+      <span className="group-hover:translate-x-1 transition-transform">Contact Us</span>
+    </a>
+  </li>
+  <li>
+    <a href="mailto:hello@mojodojocasahouse.com" className="text-slate-300 hover:text-blue-400 transition-colors flex items-center group">
+      <Shield className="w-4 h-4 mr-2" />
+      <span className="group-hover:translate-x-1 transition-transform">Safety</span>
+    </a>
+  </li>
+  <li>
+    <a href="mailto:hello@mojodojocasahouse.com" className="text-slate-300 hover:text-blue-400 transition-colors flex items-center group">
+      <Users className="w-4 h-4 mr-2" />
+      <span className="group-hover:translate-x-1 transition-transform">Accessibility</span>
+    </a>
+  </li>
+  <li>
+    <a href="mailto:hello@mojodojocasahouse.com" className="text-slate-300 hover:text-blue-400 transition-colors flex items-center group">
+      <Globe className="w-4 h-4 mr-2" />
+      <span className="group-hover:translate-x-1 transition-transform">System Status</span>
+    </a>
+  </li>
+</ul>
             </div>
 
             {/* Newsletter & Social */}
@@ -235,16 +236,16 @@ const Footer = () => {
               <p className="text-slate-400 text-sm">
                 © 2024 Mojo Dojo Casa House. All rights reserved.
               </p>
-                <div className="flex space-x-6">
-                  <Link to="/privacy" className="text-slate-400 hover:text-blue-400 text-sm transition-colors flex items-center">
-                    <Lock className="w-3 h-3 mr-1" />
-                    Privacy Policy
-                  </Link>
-                  <Link to="/terms" className="text-slate-400 hover:text-blue-400 text-sm transition-colors flex items-center">
-                    <FileText className="w-3 h-3 mr-1" />
-                    Terms of Service
-                  </Link>
-                </div>
+              <div className="flex space-x-6">
+  <a href="mailto:hello@mojodojocasahouse.com" className="text-slate-400 hover:text-blue-400 text-sm transition-colors flex items-center">
+    <Lock className="w-3 h-3 mr-1" />
+    Privacy Policy
+  </a>
+  <a href="mailto:hello@mojodojocasahouse.com" className="text-slate-400 hover:text-blue-400 text-sm transition-colors flex items-center">
+    <FileText className="w-3 h-3 mr-1" />
+    Terms of Service
+  </a>
+</div>
               </div>
 
               {/* Back to Top & Theme Toggle */}

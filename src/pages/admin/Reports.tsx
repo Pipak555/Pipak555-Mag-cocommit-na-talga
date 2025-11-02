@@ -30,7 +30,7 @@ const Reports = () => {
       const [bookingsSnap, usersSnap, listingsSnap] = await Promise.all([
         getDocs(collection(db, 'bookings')),
         getDocs(collection(db, 'users')),
-        getDocs(collection(db, 'listings'))
+        getDocs(collection(db, 'listing'))
       ]);
 
       const bookings = bookingsSnap.docs.map(doc => doc.data());

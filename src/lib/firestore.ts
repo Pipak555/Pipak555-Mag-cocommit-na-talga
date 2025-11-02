@@ -15,9 +15,51 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from './firebase';
 import type { Listing, Booking, Review, Message, Transaction } from '@/types';
 
-// Listings
+// ✅ Create or update listing (handles draft + normal publish)
+export const createOrUpdateListing = async (data: Omit<Listing, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const listingsRef = collection(db, 'listing');
+
+  // If it's a draft, check if one already exists for this host
+  if (data.status === 'draft' && data.hostId) {
+    const q = query(
+      listingsRef,
+      where('hostId', '==', data.hostId),
+      where('status', '==', 'draft')
+    );
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      const draftDoc = querySnapshot.docs[0];
+      await updateDoc(doc(db, 'listing', draftDoc.id), {
+        ...data,
+        updatedAt: new Date().toISOString(),
+      });
+      return draftDoc.id;
+    }
+  }
+
+  // Otherwise, create a new listing
+  const docRef = await addDoc(listingsRef, {
+    ...data,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  return docRef.id;
+};
+
+// ✅ Fetch existing draft for host (for auto-load + confirmation modal)
+export const getHostDraft = async (hostId: string) => {
+  const listingsRef = collection(db, 'listing');
+  const q = query(listingsRef, where('hostId', '==', hostId), where('status', '==', 'draft'));
+  const snapshot = await getDocs(q);
+  if (snapshot.empty) return null;
+  const docSnap = snapshot.docs[0];
+  return { id: docSnap.id, ...docSnap.data() } as Listing;
+};
+
+// 🏠 Normal listings functions
 export const createListing = async (data: Omit<Listing, 'id' | 'createdAt' | 'updatedAt'>) => {
-  const docRef = await addDoc(collection(db, 'listings'), {
+  const docRef = await addDoc(collection(db, 'listing'), {
     ...data,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -26,18 +68,18 @@ export const createListing = async (data: Omit<Listing, 'id' | 'createdAt' | 'up
 };
 
 export const updateListing = async (id: string, data: Partial<Listing>) => {
-  await updateDoc(doc(db, 'listings', id), {
+  await updateDoc(doc(db, 'listing', id), {
     ...data,
     updatedAt: new Date().toISOString(),
   });
 };
 
 export const deleteListing = async (id: string) => {
-  await deleteDoc(doc(db, 'listings', id));
+  await deleteDoc(doc(db, 'listing', id));
 };
 
 export const getListing = async (id: string) => {
-  const docSnap = await getDoc(doc(db, 'listings', id));
+  const docSnap = await getDoc(doc(db, 'listing', id));
   if (docSnap.exists()) {
     return { id: docSnap.id, ...docSnap.data() } as Listing;
   }
@@ -45,23 +87,80 @@ export const getListing = async (id: string) => {
 };
 
 export const getListings = async (filters?: { category?: string; status?: string; hostId?: string }) => {
-  let q = query(collection(db, 'listings'), orderBy('createdAt', 'desc'));
-  
-  if (filters?.category) {
-    q = query(q, where('category', '==', filters.category));
+  try {
+    console.log("getListings called with filters:", filters);
+    
+    // Start with base query - don't use orderBy with where clauses (requires composite index)
+    let q = query(collection(db, 'listing'));
+    
+    // Apply filters (skip empty strings)
+    if (filters?.category && filters.category.trim() !== '') {
+      q = query(q, where('category', '==', filters.category));
+    }
+    if (filters?.status && filters.status.trim() !== '') {
+      q = query(q, where('status', '==', filters.status));
+    }
+    if (filters?.hostId && filters.hostId.trim() !== '') {
+      q = query(q, where('hostId', '==', filters.hostId));
+    }
+    
+    // Execute query WITHOUT orderBy (avoids composite index requirement)
+    console.log("Executing Firestore query...");
+    const snapshot = await getDocs(q);
+    console.log(`Query successful, found ${snapshot.docs.length} raw documents`);
+    
+    // Process and filter documents
+    const listings = snapshot.docs
+      .map(doc => {
+        const data = doc.data();
+        console.log(`Processing document ${doc.id}:`, { 
+          hostId: data.hostId, 
+          status: data.status, 
+          category: data.category 
+        });
+        
+        // Filter out documents with invalid data (empty strings)
+        if (!data.hostId || data.hostId.trim() === '' || 
+            !data.status || data.status.trim() === '' ||
+            !data.category || data.category.trim() === '') {
+          console.warn(`Skipping listing ${doc.id} - missing required fields:`, {
+            hostId: data.hostId,
+            status: data.status,
+            category: data.category
+          });
+          return null;
+        }
+        
+        // Ensure createdAt exists for all listings
+        if (!data.createdAt) {
+          data.createdAt = new Date().toISOString();
+        }
+        return { id: doc.id, ...data } as Listing;
+      })
+      .filter((listing): listing is Listing => listing !== null);
+    
+    // Sort manually by createdAt (descending) - this avoids needing a composite index
+    listings.sort((a, b) => {
+      const dateA = new Date(a.createdAt).getTime();
+      const dateB = new Date(b.createdAt).getTime();
+      return dateB - dateA; // Descending (newest first)
+    });
+    
+    console.log(`Successfully processed ${listings.length} valid listings`);
+    return listings;
+  } catch (error: any) {
+    console.error("Error loading listings:", error);
+    console.error("Error details:", {
+      message: error.message,
+      code: error.code,
+      stack: error.stack,
+      filters: filters
+    });
+    throw error;
   }
-  if (filters?.status) {
-    q = query(q, where('status', '==', filters.status));
-  }
-  if (filters?.hostId) {
-    q = query(q, where('hostId', '==', filters.hostId));
-  }
-  
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Listing));
 };
 
-// Bookings
+// 📅 Bookings
 export const createBooking = async (data: Omit<Booking, 'id' | 'createdAt'>) => {
   const docRef = await addDoc(collection(db, 'bookings'), {
     ...data,
@@ -91,7 +190,7 @@ export const getBookings = async (filters?: { guestId?: string; hostId?: string;
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
 };
 
-// Reviews
+// ⭐ Reviews
 export const createReview = async (data: Omit<Review, 'id' | 'createdAt'>) => {
   const docRef = await addDoc(collection(db, 'reviews'), {
     ...data,
@@ -110,7 +209,7 @@ export const getListingReviews = async (listingId: string) => {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Review));
 };
 
-// Messages
+// 💬 Messages
 export const sendMessage = async (data: Omit<Message, 'id' | 'createdAt'>) => {
   const docRef = await addDoc(collection(db, 'messages'), {
     ...data,
@@ -130,7 +229,7 @@ export const getMessages = async (userId: string) => {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
 };
 
-// Transactions
+// 💳 Transactions
 export const createTransaction = async (data: Omit<Transaction, 'id' | 'createdAt'>) => {
   const docRef = await addDoc(collection(db, 'transactions'), {
     ...data,
@@ -149,7 +248,7 @@ export const getUserTransactions = async (userId: string) => {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
 };
 
-// Storage
+// 🖼️ Storage
 export const uploadImage = async (file: File, path: string) => {
   const storageRef = ref(storage, path);
   await uploadBytes(storageRef, file);
@@ -165,7 +264,7 @@ export const uploadListingImages = async (files: File[], listingId: string) => {
   return urls;
 };
 
-// User favorites
+// ❤️ Favorites
 export const toggleFavorite = async (userId: string, listingId: string, favorites: string[]) => {
   const newFavorites = favorites.includes(listingId)
     ? favorites.filter(id => id !== listingId)

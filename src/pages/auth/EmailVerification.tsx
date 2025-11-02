@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -17,19 +17,12 @@ const EmailVerification = () => {
   const actionCode = searchParams.get('oobCode');
   const mode = searchParams.get('mode');
 
-  useEffect(() => {
-    if (actionCode && mode === 'verifyEmail') {
-      handleVerification();
-    } else {
-      setVerificationStatus('error');
-    }
-  }, [actionCode, mode]);
-
-  const handleVerification = async () => {
+  const handleVerification = useCallback(async () => {
     if (!actionCode) return;
     
     setLoading(true);
     try {
+      // Apply verification
       await verifyEmail(actionCode);
       setVerificationStatus('success');
       toast.success('Email verified successfully!');
@@ -40,14 +33,22 @@ const EmailVerification = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [actionCode, verifyEmail]);
+
+  useEffect(() => {
+    if (actionCode && mode === 'verifyEmail') {
+      handleVerification();
+    } else {
+      setVerificationStatus('error');
+    }
+  }, [actionCode, mode, handleVerification]);
 
   // Auto-redirect after successful verification
   useEffect(() => {
     if (verificationStatus !== 'success') return;
 
-    const continueUrl = searchParams.get('continueUrl');
-    const redirect = () => {
+    const performRedirect = () => {
+      const continueUrl = searchParams.get('continueUrl');
       if (continueUrl) {
         navigate(continueUrl);
         return;
@@ -62,7 +63,9 @@ const EmailVerification = () => {
       }
     };
 
-    const timer = setTimeout(redirect, 1200);
+    // Wait a short moment for auth state to update after verification
+    // This gives time for onAuthStateChanged to fire and update user/userRole
+    const timer = setTimeout(performRedirect, 500);
     return () => clearTimeout(timer);
   }, [verificationStatus, user, userRole, navigate, searchParams]);
 
