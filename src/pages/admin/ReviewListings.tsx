@@ -31,10 +31,28 @@ const ReviewListings = () => {
 
   const loadPendingListings = async () => {
     try {
+      setLoading(true);
+      console.log('ReviewListings: Loading pending listings...');
       const data = await getListings({ status: 'pending' });
+      console.log(`ReviewListings: Found ${data.length} pending listings:`, data);
+      console.log('ReviewListings: Listing details:', data.map(l => ({ 
+        id: l.id, 
+        title: l.title, 
+        status: l.status,
+        hostId: l.hostId 
+      })));
       setListings(data);
-    } catch (error) {
-      toast.error("Failed to load listings");
+      if (data.length === 0) {
+        console.log('ReviewListings: No pending listings found. Check if listings exist with status "pending" in Firestore.');
+      }
+    } catch (error: any) {
+      console.error('ReviewListings: Error loading pending listings:', error);
+      console.error('ReviewListings: Error details:', {
+        message: error.message,
+        code: error.code,
+        stack: error.stack
+      });
+      toast.error(`Failed to load listings: ${error.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }

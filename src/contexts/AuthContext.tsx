@@ -13,6 +13,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
+import { sendWelcomeEmail } from '@/lib/emailjs';
 
 interface AuthContextType {
   user: User | null;
@@ -96,8 +97,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     
     await setDoc(doc(db, 'users', userCredential.user.uid), userData);
     
-    // Send verification email
-    await sendEmailVerification(userCredential.user);
+    try {
+      // Send Firebase verification email (contains the actual verification link)
+      await sendEmailVerification(userCredential.user, {
+        url: `${window.location.origin}/verify-email?mode=verifyEmail`,
+        handleCodeInApp: true,
+      });
+
+      // Send beautiful welcome email via EmailJS (non-blocking)
+      // This will show the beautiful template you created
+      sendWelcomeEmail(email, fullName, role).catch(error => {
+        console.error('Welcome email failed (non-critical):', error);
+      });
+    } catch (error) {
+      console.error('Error sending verification email:', error);
+      // Still try to send welcome email even if Firebase email fails
+      sendWelcomeEmail(email, fullName, role).catch(err => {
+        console.error('Welcome email also failed:', err);
+      });
+    }
     
     setUserRole(role);
     setUserProfile(userData);
@@ -116,7 +134,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await sendEmailVerification(user);
   };
 
-    const verifyEmail = async (actionCode: string) => {
+  const verifyEmail = async (actionCode: string) => {
     await applyActionCode(auth, actionCode);
     // Reload the user to get the updated emailVerified status
     if (auth.currentUser) {

@@ -1,21 +1,195 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Plus, Home, Calendar, MessageSquare, DollarSign, Settings, Award } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { getBookings } from '@/lib/firestore';
+import type { Booking } from '@/types';
+
+// Today's Schedule Component
+const TodaySchedule = () => {
+  const { user } = useAuth();
+  const [todayBookings, setTodayBookings] = useState<Booking[]>([]);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!user) return;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const unsubscribe = onSnapshot(
+      query(collection(db, 'bookings'), where('hostId', '==', user.uid)),
+      (snapshot) => {
+        const bookings = snapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as Booking))
+          .filter(booking => {
+            const checkIn = new Date(booking.checkIn);
+            checkIn.setHours(0, 0, 0, 0);
+            const checkOut = new Date(booking.checkOut);
+            checkOut.setHours(0, 0, 0, 0);
+            
+            // Include bookings that have check-in or check-out today
+            return (checkIn.getTime() === today.getTime() || 
+                    checkOut.getTime() === today.getTime()) &&
+                   (booking.status === 'confirmed' || booking.status === 'pending');
+          })
+          .sort((a, b) => new Date(a.checkIn).getTime() - new Date(b.checkIn).getTime());
+        
+        setTodayBookings(bookings);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user]);
+
+  return (
+    <Card className="shadow-medium">
+      <CardHeader>
+        <CardTitle>Today's Schedule</CardTitle>
+        <CardDescription>
+          {todayBookings.length > 0 
+            ? `${todayBookings.length} booking${todayBookings.length > 1 ? 's' : ''} today`
+            : 'No bookings scheduled for today'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {todayBookings.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
+            <p>You're all set! No check-ins or check-outs today.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {todayBookings.map((booking) => {
+              const checkIn = new Date(booking.checkIn);
+              const checkOut = new Date(booking.checkOut);
+              const isCheckIn = checkIn.toDateString() === new Date().toDateString();
+              const isCheckOut = checkOut.toDateString() === new Date().toDateString();
+
+              return (
+                <div
+                  key={booking.id}
+                  className="p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                  onClick={() => navigate('/host/bookings')}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">
+                        {isCheckIn && isCheckOut
+                          ? 'Check-in & Check-out'
+                          : isCheckIn
+                          ? 'Check-in'
+                          : 'Check-out'}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {checkIn.toLocaleDateString()} - {checkOut.toLocaleDateString()}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {booking.guests} guest{booking.guests > 1 ? 's' : ''} • ${booking.totalPrice}
+                      </p>
+                    </div>
+                    <Badge>{booking.status}</Badge>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
 
 const HostDashboard = () => {
   const { user, userRole, userProfile, signOut } = useAuth();
   const navigate = useNavigate();
+  const [stats, setStats] = useState({
+    activeListings: 0,
+    upcomingBookings: 0,
+    totalEarnings: 0,
+    rewardPoints: userProfile?.points || 0,
+  });
 
   useEffect(() => {
     if (!user || userRole !== 'host') {
       navigate('/host/login');
+      return;
     }
+
+    // Load real-time data
+    loadDashboardData();
+
+    // Set up real-time listeners
+    const listingsUnsubscribe = onSnapshot(
+      query(collection(db, 'listing'), where('hostId', '==', user.uid)),
+      (snapshot) => {
+        const activeListings = snapshot.docs.filter(
+          doc => doc.data().status === 'approved'
+        ).length;
+        setStats(prev => ({ ...prev, activeListings }));
+      }
+    );
+
+    const bookingsUnsubscribe = onSnapshot(
+      query(collection(db, 'bookings'), where('hostId', '==', user.uid)),
+      (snapshot) => {
+        const now = new Date();
+        const upcomingBookings = snapshot.docs.filter(doc => {
+          const booking = doc.data();
+          const checkIn = new Date(booking.checkIn);
+          return checkIn >= now && booking.status === 'confirmed';
+        }).length;
+
+        const totalEarnings = snapshot.docs
+          .filter(doc => doc.data().status === 'confirmed' || doc.data().status === 'completed')
+          .reduce((sum, doc) => sum + (doc.data().totalPrice || 0), 0);
+
+        setStats(prev => ({
+          ...prev,
+          upcomingBookings,
+          totalEarnings,
+        }));
+      }
+    );
+
+    return () => {
+      listingsUnsubscribe();
+      bookingsUnsubscribe();
+    };
   }, [user, userRole, navigate]);
+
+  const loadDashboardData = async () => {
+    if (!user) return;
+
+    try {
+      // Load bookings for today's schedule
+      const bookings = await getBookings({ hostId: user.uid });
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const todayBookings = bookings.filter(booking => {
+        const checkIn = new Date(booking.checkIn);
+        checkIn.setHours(0, 0, 0, 0);
+        return checkIn.getTime() === today.getTime();
+      });
+
+      // Update reward points from userProfile
+      if (userProfile?.points) {
+        setStats(prev => ({ ...prev, rewardPoints: userProfile.points }));
+      }
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+    }
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -46,7 +220,7 @@ const HostDashboard = () => {
         </div>
       </header>
 
-      <div className="container mx-auto px-6 py-8">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Welcome Section */}
         <div className="mb-8 p-6 rounded-xl bg-gradient-hero text-white">
           <h2 className="text-3xl font-bold mb-2">Welcome back, {userProfile?.fullName || 'Host'}!</h2>
@@ -54,40 +228,67 @@ const HostDashboard = () => {
         </div>
 
         {/* Quick Stats */}
-        <div className="grid md:grid-cols-4 gap-6 mb-8">
-          <Card className="shadow-soft hover:shadow-medium transition-all border-border/50">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group">
+            {/* Accent Bar */}
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-secondary to-accent" />
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Active Listings</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                Active Listings
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold bg-gradient-to-br from-primary to-primary-glow bg-clip-text text-transparent">0</div>
+              <div className="flex items-baseline justify-between">
+                <div className="text-4xl font-bold bg-gradient-to-br from-primary to-primary-glow bg-clip-text text-transparent">
+                  {stats.activeListings}
+                </div>
+              </div>
             </CardContent>
           </Card>
 
-          <Card className="shadow-soft hover:shadow-medium transition-all border-border/50">
+          <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-secondary via-primary to-accent" />
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Upcoming Bookings</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                Upcoming Bookings
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold bg-gradient-to-br from-secondary to-secondary/80 bg-clip-text text-transparent">0</div>
+              <div className="flex items-baseline justify-between">
+                <div className="text-4xl font-bold bg-gradient-to-br from-secondary to-secondary/80 bg-clip-text text-transparent">
+                  {stats.upcomingBookings}
+                </div>
+              </div>
             </CardContent>
           </Card>
 
-          <Card className="shadow-soft hover:shadow-medium transition-all border-border/50">
+          <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-accent via-primary to-secondary" />
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Earnings</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                Total Earnings
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">$0</div>
+              <div className="flex items-baseline justify-between">
+                <div className="text-4xl font-bold">${stats.totalEarnings.toFixed(2)}</div>
+              </div>
             </CardContent>
           </Card>
 
-          <Card className="shadow-soft hover:shadow-medium transition-all border-border/50">
+          <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-accent via-green-500 to-green-600" />
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Reward Points</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                Reward Points
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold bg-gradient-accent bg-clip-text text-transparent">0</div>
+              <div className="flex items-baseline justify-between">
+                <div className="text-4xl font-bold bg-gradient-accent bg-clip-text text-transparent">
+                  {stats.rewardPoints}
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -168,18 +369,7 @@ const HostDashboard = () => {
         </div>
 
         {/* Today's Schedule */}
-        <Card className="shadow-medium">
-          <CardHeader>
-            <CardTitle>Today's Schedule</CardTitle>
-            <CardDescription>No bookings scheduled for today</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-8 text-muted-foreground">
-              <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>You're all set! No check-ins or check-outs today.</p>
-            </div>
-          </CardContent>
-        </Card>
+        <TodaySchedule />
       </div>
     </div>
   );

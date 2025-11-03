@@ -1,11 +1,15 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Home, Compass, Wrench, Users, Building2, Shield } from 'lucide-react';
+import { VideoBackground } from '@/components/ui/video-background';
+import { Home, Compass, Wrench, Users, Building2, Shield, ChevronDown } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Footer from '@/components/shared/Footer';
 import Logo from '@/components/shared/Logo';
 import heroImage from '@/assets/hero-home.jpg';
+// Import video background (replace with your actual video file)
+// import landingVideo from '@/assets/videos/landing-hero.mp4';
+const landingVideo = '/videos/landing-hero.mp4'; // Fallback to public folder
 import homeIcon from '@/assets/category-home.png';
 import experienceIcon from '@/assets/category-experience.png';
 import serviceIcon from '@/assets/category-service.png';
@@ -14,44 +18,69 @@ const Landing = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="absolute top-0 left-0 right-0 z-50">
+      <header className="absolute top-0 left-0 right-0 z-50 bg-black/20 backdrop-blur-md border-b border-white/10">
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
           <Logo size="md" />
           <ThemeToggle />
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="relative h-[600px] overflow-hidden">
-        <div 
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${heroImage})` }}
-        >
-          <div className="absolute inset-0 bg-gradient-to-r from-background/90 to-background/40" />
+      {/* Hero Section with Video Background */}
+      <section className="relative min-h-screen overflow-hidden">
+        {/* Video Background */}
+        <VideoBackground 
+          src={landingVideo} 
+          overlay={true}
+          fallbackImage={heroImage}
+        />
+        
+        {/* Enhanced Overlay - Lighter and more balanced */}
+        <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-black/40 to-black/60 z-10" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent z-10" />
+        
+        {/* Animated Background Elements */}
+        <div className="absolute inset-0 overflow-hidden z-10">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/10 rounded-full blur-3xl animate-pulse" />
+          <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-secondary/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
         </div>
         
-        <div className="relative container mx-auto px-6 h-full flex flex-col justify-center">
-          <h1 className="text-5xl md:text-6xl font-bold mb-6 max-w-2xl">
-            Welcome to <span className="bg-gradient-to-r from-orange-500 via-blue-500 to-green-500 bg-clip-text text-transparent">Mojo Dojo Casa House</span>
-          </h1>
-          <p className="text-xl text-muted-foreground mb-8 max-w-xl">
-            Your gateway to amazing stays. Connect hosts and guests for unique stays, experiences, and services
-          </p>
-          
-          <div className="flex flex-wrap gap-4">
-            <Button size="lg" asChild className="shadow-hover transition-smooth">
-              <Link to="/guest/login">Browse Listings</Link>
-            </Button>
-            <Button size="lg" variant="outline" asChild className="transition-smooth">
-              <Link to="/host/login">Become a Host</Link>
-            </Button>
+        {/* Content */}
+        <div className="relative z-20 container mx-auto px-4 sm:px-6 lg:px-8 h-full flex flex-col justify-center animate-fadeInUp py-32">
+          <div className="max-w-3xl">
+            {/* Title with better contrast */}
+            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight text-white drop-shadow-2xl">
+              Welcome to{' '}
+              <span className="bg-gradient-to-r from-orange-400 via-blue-400 to-green-400 bg-clip-text text-transparent drop-shadow-lg">
+                Mojo Dojo Casa House
+              </span>
+            </h1>
+            
+            {/* Tagline with much better contrast */}
+            <p className="text-xl md:text-2xl text-white/95 mb-10 leading-relaxed max-w-2xl drop-shadow-lg font-medium">
+              Your gateway to amazing stays. Connect with hosts and guests for unique experiences
+            </p>
+            
+            {/* Buttons */}
+            <div className="flex flex-wrap gap-4">
+              <Button size="lg" asChild className="shadow-2xl hover:shadow-2xl hover:scale-105 transition-all h-14 px-8 text-lg bg-primary hover:bg-primary/90">
+                <Link to="/guest/login">Browse Listings</Link>
+              </Button>
+              <Button size="lg" variant="outline" asChild className="h-14 px-8 text-lg border-2 border-white/30 bg-white/10 backdrop-blur-md hover:bg-white/20 text-white hover:text-white">
+                <Link to="/host/login">Become a Host</Link>
+              </Button>
+            </div>
           </div>
+        </div>
+        
+        {/* Scroll Indicator */}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 animate-bounce">
+          <ChevronDown className="h-6 w-6 text-white drop-shadow-lg" />
         </div>
       </section>
 
       {/* Categories Section */}
-      <section className="py-20 bg-muted/30">
-        <div className="container mx-auto px-6">
+      <section className="py-16 md:py-20 bg-muted/30">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold mb-4">Explore Categories</h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">

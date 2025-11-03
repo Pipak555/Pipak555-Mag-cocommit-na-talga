@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
-import { ArrowLeft, MapPin, Users, Star, Share2, Link as LinkIcon } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ArrowLeft, MapPin, Users } from "lucide-react";
 import { toast } from "sonner";
 import { ReviewList } from "@/components/reviews/ReviewList";
+import { SocialShare } from "@/components/shared/SocialShare";
+import { ListingCard } from "@/components/listings/ListingCard";
 import type { Listing } from "@/types";
 
 const ListingDetails = () => {
@@ -67,41 +68,6 @@ const ListingDetails = () => {
     }
   };
 
-  const handleShare = async () => {
-    const url = window.location.href;
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: listing?.title,
-          text: listing?.description,
-          url: url,
-        });
-      } catch (error) {
-        console.log('Share cancelled');
-      }
-    } else {
-      navigator.clipboard.writeText(url);
-      toast.success("Link copied to clipboard!");
-    }
-  };
-
-  const shareTo = (platform: 'facebook' | 'twitter' | 'whatsapp') => {
-    const url = encodeURIComponent(window.location.href);
-    const text = encodeURIComponent(listing?.title || 'Check this out');
-    let shareUrl = '';
-    switch (platform) {
-      case 'facebook':
-        shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${url}`;
-        break;
-      case 'twitter':
-        shareUrl = `https://twitter.com/intent/tweet?url=${url}&text=${text}`;
-        break;
-      case 'whatsapp':
-        shareUrl = `https://api.whatsapp.com/send?text=${text}%20${url}`;
-        break;
-    }
-    window.open(shareUrl, '_blank', 'noopener,noreferrer');
-  };
 
   if (!listing) return <div className="p-6">Loading...</div>;
 
@@ -130,28 +96,15 @@ const ListingDetails = () => {
           <div>
             <div className="flex items-center justify-between mb-2">
               <Badge>{listing.category}</Badge>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={handleShare}>
-                  <Share2 className="h-4 w-4 mr-2" />
-                  Share
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon" aria-label="More share options">
-                      <Share2 className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(window.location.href); toast.success('Link copied'); }}>
-                      <LinkIcon className="h-4 w-4 mr-2" /> Copy link
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => shareTo('facebook')}>Share to Facebook</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => shareTo('twitter')}>Share to Twitter</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => shareTo('whatsapp')}>Share to WhatsApp</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
+              {listing && (
+                <SocialShare
+                  url={window.location.href}
+                  title={listing.title}
+                  description={listing.description}
+                  variant="outline"
+                  size="sm"
+                />
+              )}
             </div>
             <h1 className="text-3xl font-bold mb-2">{listing.title}</h1>
             <div className="flex items-center text-muted-foreground mb-4">
@@ -236,6 +189,79 @@ const ListingDetails = () => {
         <div className="mt-12">
           <ReviewList listingId={listing.id} />
         </div>
+
+        {/* Similar Listings Recommendations */}
+        <SimilarListings listingId={listing.id} />
+      </div>
+    </div>
+  );
+};
+
+// Similar Listings Component
+const SimilarListings = ({ listingId }: { listingId: string }) => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [similarListings, setSimilarListings] = useState<Listing[]>([]);
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadSimilarListings();
+    if (user) loadFavorites();
+  }, [listingId, user]);
+
+  const loadSimilarListings = async () => {
+    try {
+      const { getSimilarListings } = await import('@/lib/recommendations');
+      const similar = await getSimilarListings(listingId, 4);
+      setSimilarListings(similar);
+    } catch (error) {
+      console.error('Error loading similar listings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadFavorites = async () => {
+    if (!user) return;
+    const { doc, getDoc } = await import('firebase/firestore');
+    const { db } = await import('@/lib/firebase');
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (userDoc.exists()) {
+      setFavorites(userDoc.data().favorites || []);
+    }
+  };
+
+  const handleFavorite = async (id: string) => {
+    if (!user) {
+      toast.error("Please login to add favorites");
+      return;
+    }
+    try {
+      const { toggleFavorite } = await import('@/lib/firestore');
+      const newFavorites = await toggleFavorite(user.uid, id, favorites);
+      setFavorites(newFavorites);
+      toast.success(newFavorites.includes(id) ? "Added to favorites" : "Removed from favorites");
+    } catch (error) {
+      toast.error("Failed to update favorites");
+    }
+  };
+
+  if (loading || similarListings.length === 0) return null;
+
+  return (
+    <div className="mt-12">
+      <h2 className="text-2xl font-bold mb-6">Similar Listings</h2>
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {similarListings.map((similarListing) => (
+          <ListingCard
+            key={similarListing.id}
+            listing={similarListing}
+            onView={() => navigate(`/guest/listing/${similarListing.id}`)}
+            onFavorite={() => handleFavorite(similarListing.id)}
+            isFavorite={favorites.includes(similarListing.id)}
+          />
+        ))}
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -6,15 +6,64 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Shield, Users, Home, DollarSign, TrendingUp, FileText, Settings, AlertCircle } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 const AdminDashboard = () => {
   const { user, userRole, userProfile, signOut } = useAuth();
   const navigate = useNavigate();
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    totalHosts: 0,
+    totalGuests: 0,
+    activeListings: 0,
+    totalBookings: 0,
+    serviceFees: 0,
+  });
 
   useEffect(() => {
     if (!user || userRole !== 'admin') {
       navigate('/admin/login');
+      return;
     }
+
+    // Set up real-time listeners
+    const usersUnsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const users = snapshot.docs.map(doc => doc.data());
+      const hosts = users.filter(u => u.role === 'host').length;
+      const guests = users.filter(u => u.role === 'guest').length;
+      setStats(prev => ({
+        ...prev,
+        totalUsers: snapshot.size,
+        totalHosts: hosts,
+        totalGuests: guests,
+      }));
+    });
+
+    const listingsUnsubscribe = onSnapshot(collection(db, 'listing'), (snapshot) => {
+      const activeListings = snapshot.docs.filter(
+        doc => doc.data().status === 'approved'
+      ).length;
+      setStats(prev => ({ ...prev, activeListings }));
+    });
+
+    const bookingsUnsubscribe = onSnapshot(collection(db, 'bookings'), (snapshot) => {
+      const bookings = snapshot.docs.map(doc => doc.data());
+      const totalRevenue = bookings.reduce((sum, b) => sum + (b.totalPrice || 0), 0);
+      const serviceFees = totalRevenue * 0.1; // 10% commission
+      
+      setStats(prev => ({
+        ...prev,
+        totalBookings: snapshot.size,
+        serviceFees,
+      }));
+    });
+
+    return () => {
+      usersUnsubscribe();
+      listingsUnsubscribe();
+      bookingsUnsubscribe();
+    };
   }, [user, userRole, navigate]);
 
   const handleSignOut = async () => {
@@ -46,7 +95,7 @@ const AdminDashboard = () => {
         </div>
       </header>
 
-      <div className="container mx-auto px-6 py-8">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Welcome Section */}
         <div className="mb-8 p-6 rounded-xl bg-gradient-accent text-white">
           <h2 className="text-3xl font-bold mb-2">Platform Overview</h2>
@@ -54,14 +103,16 @@ const AdminDashboard = () => {
         </div>
 
         {/* Platform Stats */}
-        <div className="grid md:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <Card className="shadow-soft">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Users</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">0</div>
-              <p className="text-xs text-muted-foreground mt-1">0 hosts, 0 guests</p>
+              <div className="text-2xl font-bold">{stats.totalUsers}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {stats.totalHosts} hosts, {stats.totalGuests} guests
+              </p>
             </CardContent>
           </Card>
 
@@ -70,7 +121,7 @@ const AdminDashboard = () => {
               <CardTitle className="text-sm font-medium text-muted-foreground">Active Listings</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">0</div>
+              <div className="text-2xl font-bold">{stats.activeListings}</div>
             </CardContent>
           </Card>
 
@@ -79,7 +130,7 @@ const AdminDashboard = () => {
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Bookings</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">0</div>
+              <div className="text-2xl font-bold">{stats.totalBookings}</div>
             </CardContent>
           </Card>
 
@@ -88,14 +139,14 @@ const AdminDashboard = () => {
               <CardTitle className="text-sm font-medium text-muted-foreground">Service Fees</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-accent">$0</div>
+              <div className="text-2xl font-bold text-accent">${stats.serviceFees.toFixed(2)}</div>
               <p className="text-xs text-muted-foreground mt-1">10% commission</p>
             </CardContent>
           </Card>
         </div>
 
         {/* Admin Tools */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/admin/users')}>
             <CardHeader>
               <Users className="w-8 h-8 text-primary mb-2" />

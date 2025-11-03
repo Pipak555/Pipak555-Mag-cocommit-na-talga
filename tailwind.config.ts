@@ -13,6 +13,15 @@ export default {
       },
     },
     extend: {
+      spacing: {
+        'xs': '0.5rem',   // 8px
+        'sm': '0.75rem',  // 12px
+        'md': '1rem',     // 16px
+        'lg': '1.5rem',   // 24px
+        'xl': '2rem',     // 32px
+        '2xl': '3rem',    // 48px
+        '3xl': '4rem',    // 64px
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -23,10 +32,15 @@ export default {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
           glow: "hsl(var(--primary-glow))",
+          "5": "hsl(var(--primary) / 0.05)",
+          "10": "hsl(var(--primary) / 0.1)",
+          "20": "hsl(var(--primary) / 0.2)",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",
+          "10": "hsl(var(--secondary) / 0.1)",
+          "20": "hsl(var(--secondary) / 0.2)",
         },
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
@@ -87,10 +101,30 @@ export default {
             height: "0",
           },
         },
+        "fadeInUp": {
+          "0%": {
+            opacity: "0",
+            transform: "translateY(20px)",
+          },
+          "100%": {
+            opacity: "1",
+            transform: "translateY(0)",
+          },
+        },
+        "shimmer": {
+          "0%": {
+            backgroundPosition: "-1000px 0",
+          },
+          "100%": {
+            backgroundPosition: "1000px 0",
+          },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "fadeInUp": "fadeInUp 0.6s ease-out",
+        "shimmer": "shimmer 2s infinite",
       },
     },
   },

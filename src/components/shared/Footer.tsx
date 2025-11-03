@@ -118,7 +118,6 @@ const Footer = () => {
             {/* Support */}
             <div>
               <h4 className="text-lg font-semibold mb-6 text-white">Support</h4>
-              // Replace the Support section links (lines 122-151) with:
 <ul className="space-y-3">
   <li>
     <a href="mailto:hello@mojodojocasahouse.com" className="text-slate-300 hover:text-blue-400 transition-colors flex items-center group">

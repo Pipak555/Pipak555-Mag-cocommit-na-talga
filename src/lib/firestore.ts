@@ -59,11 +59,22 @@ export const getHostDraft = async (hostId: string) => {
 
 // 🏠 Normal listings functions
 export const createListing = async (data: Omit<Listing, 'id' | 'createdAt' | 'updatedAt'>) => {
-  const docRef = await addDoc(collection(db, 'listing'), {
+  // Ensure status is always set - default to 'pending' if not provided
+  const listingData = {
     ...data,
+    status: data.status || 'pending', // Default to pending if not set
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+  };
+  
+  console.log('Creating listing with data:', {
+    status: listingData.status,
+    hostId: listingData.hostId,
+    title: listingData.title
   });
+  
+  const docRef = await addDoc(collection(db, 'listing'), listingData);
+  console.log('Listing created with ID:', docRef.id, 'Status:', listingData.status);
   return docRef.id;
 };
 
@@ -88,34 +99,44 @@ export const getListing = async (id: string) => {
 
 export const getListings = async (filters?: { category?: string; status?: string; hostId?: string }) => {
   try {
-    console.log("getListings called with filters:", filters);
+    console.log("getListings called with filters:", JSON.stringify(filters));
     
     // Start with base query - don't use orderBy with where clauses (requires composite index)
     let q = query(collection(db, 'listing'));
     
     // Apply filters (skip empty strings)
-    if (filters?.category && filters.category.trim() !== '') {
+    const appliedFilters: string[] = [];
+    if (filters?.category && filters.category.trim() !== '' && filters.category !== 'all') {
       q = query(q, where('category', '==', filters.category));
+      appliedFilters.push(`category == "${filters.category}"`);
     }
     if (filters?.status && filters.status.trim() !== '') {
       q = query(q, where('status', '==', filters.status));
+      appliedFilters.push(`status == "${filters.status}"`);
     }
     if (filters?.hostId && filters.hostId.trim() !== '') {
       q = query(q, where('hostId', '==', filters.hostId));
+      appliedFilters.push(`hostId == "${filters.hostId}"`);
     }
     
+    console.log(`getListings: Applied filters: [${appliedFilters.join(', ')}]`);
+    
     // Execute query WITHOUT orderBy (avoids composite index requirement)
-    console.log("Executing Firestore query...");
+    console.log("getListings: Executing Firestore query...");
     const snapshot = await getDocs(q);
-    console.log(`Query successful, found ${snapshot.docs.length} raw documents`);
+    console.log(`getListings: Query successful, found ${snapshot.docs.length} raw documents`);
     
     // Process and filter documents
     const listings = snapshot.docs
       .map(doc => {
         const data = doc.data();
-        console.log(`Processing document ${doc.id}:`, { 
+        const docStatus = data.status;
+        const docStatusType = typeof docStatus;
+        
+        console.log(`getListings: Processing document ${doc.id}:`, { 
           hostId: data.hostId, 
-          status: data.status, 
+          status: docStatus,
+          statusType: docStatusType,
           category: data.category 
         });
         
@@ -123,11 +144,18 @@ export const getListings = async (filters?: { category?: string; status?: string
         if (!data.hostId || data.hostId.trim() === '' || 
             !data.status || data.status.trim() === '' ||
             !data.category || data.category.trim() === '') {
-          console.warn(`Skipping listing ${doc.id} - missing required fields:`, {
+          console.warn(`getListings: Skipping listing ${doc.id} - missing required fields:`, {
             hostId: data.hostId,
             status: data.status,
+            statusType: typeof data.status,
             category: data.category
           });
+          return null;
+        }
+        
+        // If status filter is set, double-check the status matches (client-side safety check)
+        if (filters?.status && filters.status.trim() !== '' && data.status !== filters.status) {
+          console.warn(`getListings: Skipping listing ${doc.id} - status mismatch: expected "${filters.status}", got "${data.status}"`);
           return null;
         }
         
@@ -146,7 +174,10 @@ export const getListings = async (filters?: { category?: string; status?: string
       return dateB - dateA; // Descending (newest first)
     });
     
-    console.log(`Successfully processed ${listings.length} valid listings`);
+    console.log(`getListings: Successfully processed ${listings.length} valid listings out of ${snapshot.docs.length} raw documents`);
+    if (filters?.status) {
+      console.log(`getListings: Filtered by status "${filters.status}" - found ${listings.length} listings`);
+    }
     return listings;
   } catch (error: any) {
     console.error("Error loading listings:", error);

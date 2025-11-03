@@ -6,10 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { VideoBackground } from '@/components/ui/video-background';
 import { toast } from 'sonner';
 import { Building2, ArrowLeft, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
+// Import video background (replace with your actual video file)
+// import hostLoginVideo from '@/assets/videos/host-login-bg.mp4';
+const hostLoginVideo = '/videos/host-login-bg.mp4'; // Fallback to public folder
 
 const HostLogin = () => {
   const [email, setEmail] = useState('');
@@ -60,8 +64,16 @@ const HostLogin = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+    <div className="min-h-screen bg-background flex flex-col relative">
+      {/* Video Background */}
+      <VideoBackground 
+        src={hostLoginVideo} 
+        overlay={true}
+        className="z-0"
+      />
+      
+      {/* Header */}
+      <header className="relative z-10 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-4">
             <Button variant="ghost" onClick={() => navigate('/')}>
@@ -74,8 +86,9 @@ const HostLogin = () => {
         </div>
       </header>
       
-      <div className="flex-1 flex items-center justify-center p-6">
-        <Card className="w-full max-w-md shadow-medium border-border/50">
+      {/* Form Card */}
+      <div className="relative z-10 flex-1 flex items-center justify-center p-6">
+        <Card className="w-full max-w-md shadow-2xl border-border/50 bg-card/95 backdrop-blur-md">
           <CardHeader className="space-y-4 text-center pb-8">
             <div className="w-16 h-16 mx-auto rounded-2xl bg-secondary/10 flex items-center justify-center">
               <Building2 className="w-8 h-8 text-secondary" />

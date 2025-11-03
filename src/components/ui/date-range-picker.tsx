@@ -11,30 +11,49 @@ interface DateRangePickerProps {
   onChange?: (value: { from: Date | undefined; to: Date | undefined }) => void;
   placeholder?: string;
   className?: string;
+  disabled?: (date: Date) => boolean;
+  error?: boolean;
 }
 
 export function DateRangePicker({
   value,
   onChange,
   placeholder = "Pick a date range",
-  className
+  className,
+  disabled,
+  error,
 }: DateRangePickerProps) {
   const [open, setOpen] = React.useState(false);
 
   const handleSelect = (range: { from: Date | undefined; to: Date | undefined } | undefined) => {
     if (range) {
       onChange?.(range);
+      // Close popover when both dates are selected
+      if (range.from && range.to) {
+        setOpen(false);
+      }
     }
   };
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const isDisabled = disabled || ((date: Date) => {
+    const dateOnly = new Date(date);
+    dateOnly.setHours(0, 0, 0, 0);
+    return dateOnly < today;
+  });
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
+          type="button"
           className={cn(
             "w-full justify-start text-left font-normal",
             !value?.from && "text-muted-foreground",
+            error && "border-destructive",
             className
           )}
         >
@@ -56,11 +75,11 @@ export function DateRangePicker({
       <PopoverContent className="w-auto p-0" align="start">
         <Calendar
           mode="range"
-          defaultMonth={value?.from}
+          defaultMonth={value?.from || today}
           selected={value}
           onSelect={handleSelect}
           numberOfMonths={2}
-          disabled={(date) => date < new Date()}
+          disabled={isDisabled}
         />
       </PopoverContent>
     </Popover>

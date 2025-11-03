@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,12 +18,24 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { PayPalButton } from "@/components/payments/PayPalButton";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { ImagePreview } from "./ImagePreview";
+import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/contexts/AuthContext";
 import { createListing, uploadListingImages } from "@/lib/firestore";
+import { listingFormSchema, type ListingFormData } from "@/lib/validation";
 import { toast } from "sonner";
-import { Upload } from "lucide-react";
+import { Upload, Save, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
 
 // Firebase imports used for draft handling
 import {
@@ -33,42 +47,53 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+const MAX_IMAGES = 10;
+
 export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [images, setImages] = useState<File[]>([]);
-  const [formData, setFormData] = useState({
-    title: "",
-    description: "",
-    category: "home" as "home" | "experience" | "service",
-    price: "",
-    discount: "",
-    promo: "",
-    location: "",
-    maxGuests: "",
-    bedrooms: "",
-    bathrooms: "",
-    amenities: "",
-  });
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [blockedDates, setBlockedDates] = useState<string[]>([]);
-  const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
-    from: undefined,
-    to: undefined,
-  });
-  const [saveAsDraft, setSaveAsDraft] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
-  const [draftFound, setDraftFound] = useState(false); // whether a draft exists on mount
+  const [draftFound, setDraftFound] = useState(false);
   const [showDraftDialog, setShowDraftDialog] = useState(false);
-  const [draftId, setDraftId] = useState<string | null>(null); // will be `${uid}_draft`
+  const [draftId, setDraftId] = useState<string | null>(null);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [paymentConfirmOpen, setPaymentConfirmOpen] = useState(false);
   const SUBSCRIPTION_FEE = 10; // USD
 
   // debounce timer ref
   const saveTimeoutRef = useRef<number | null>(null);
-  // track whether we have unsaved changes (prevents initial load causing save)
   const hasMountedRef = useRef(false);
+
+  const form = useForm<ListingFormData>({
+    resolver: zodResolver(listingFormSchema),
+    defaultValues: {
+      title: "",
+      description: "",
+      category: "home",
+      price: "",
+      discount: "",
+      promo: "",
+      location: "",
+      maxGuests: "",
+      bedrooms: "",
+      bathrooms: "",
+      amenities: "",
+      dateRange: { from: undefined, to: undefined },
+      images: [],
+    },
+    mode: "onChange",
+  });
+
+  const watchedValues = form.watch();
+  const formErrors = form.formState.errors;
 
   // Helper: deterministic draft doc id (one draft per user)
   const getDraftDocId = useCallback(() => {
@@ -76,7 +101,24 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
     return `${user.uid}_draft`;
   }, [user]);
 
-  // utility to generate list of iso date strings from range
+  // Calculate form completion percentage
+  const calculateCompletion = useCallback(() => {
+    const fields = [
+      watchedValues.title,
+      watchedValues.description,
+      watchedValues.price,
+      watchedValues.location,
+      watchedValues.maxGuests,
+      watchedValues.dateRange?.from && watchedValues.dateRange?.to,
+      images.length > 0,
+    ];
+    const completed = fields.filter(Boolean).length;
+    return Math.round((completed / fields.length) * 100);
+  }, [watchedValues, images.length]);
+
+  const completionPercentage = calculateCompletion();
+
+  // Utility to generate list of iso date strings from range
   const generateAvailableDates = (from: Date, to: Date): string[] => {
     const dates: string[] = [];
     const current = new Date(from);
@@ -88,154 +130,196 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
 
     return dates;
   };
-    // Helper: remove undefined values from object (Firestore doesn't allow undefined)
-    const removeUndefined = (obj: any): any => {
-      const cleaned: any = {};
-      Object.keys(obj).forEach((key) => {
-        if (obj[key] !== undefined) {
-          cleaned[key] = obj[key];
-        }
-      });
-      return cleaned;
-    };
+
+  // Helper: remove undefined values from object (Firestore doesn't allow undefined)
+  const removeUndefined = (obj: any): any => {
+    const cleaned: any = {};
+    Object.keys(obj).forEach((key) => {
+      if (obj[key] !== undefined) {
+        cleaned[key] = obj[key];
+      }
+    });
+    return cleaned;
+  };
+
+  // Image validation
+  const validateImage = (file: File): string | null => {
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      return `Invalid file type. Allowed types: ${ALLOWED_IMAGE_TYPES.join(", ")}`;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      return `File size exceeds ${MAX_IMAGE_SIZE / 1024 / 1024}MB limit`;
+    }
+    return null;
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const validFiles: File[] = [];
+    const errors: string[] = [];
+
+    files.forEach((file) => {
+      const error = validateImage(file);
+      if (error) {
+        errors.push(`${file.name}: ${error}`);
+      } else {
+        validFiles.push(file);
+      }
+    });
+
+    if (errors.length > 0) {
+      toast.error(errors.join(", "));
+    }
+
+    const newImages = [...images, ...validFiles].slice(0, MAX_IMAGES);
+    setImages(newImages);
+    form.setValue("images", newImages, { shouldValidate: true });
+    
+    if (newImages.length > MAX_IMAGES) {
+      toast.warning(`Maximum ${MAX_IMAGES} images allowed. Only the first ${MAX_IMAGES} were added.`);
+    }
+  };
+
+  const removeImage = (index: number) => {
+    const newImages = images.filter((_, i) => i !== index);
+    setImages(newImages);
+    form.setValue("images", newImages, { shouldValidate: true });
+  };
 
   // Save draft to Firestore (debounced by caller)
-const saveDraftToFirestore = useCallback(
-  async (opts?: { manual?: boolean }) => {
-    if (!user) return;
-    const id = getDraftDocId();
-    if (!id) return;
+  const saveDraftToFirestore = useCallback(
+    async (opts?: { manual?: boolean }) => {
+      if (!user) return;
+      const id = getDraftDocId();
+      if (!id) return;
 
-    const finalAvailableDates = dateRange.from && dateRange.to ? generateAvailableDates(dateRange.from, dateRange.to) : availableDates;
+      const formValues = form.getValues();
+      const finalAvailableDates = formValues.dateRange?.from && formValues.dateRange?.to
+        ? generateAvailableDates(formValues.dateRange.from, formValues.dateRange.to)
+        : availableDates;
 
-    // Check if draft already exists to preserve createdAt
-    let existingCreatedAt = null;
-    try {
-      const existing = await getDoc(doc(db, "listing", id));
-      if (existing.exists()) {
-        existingCreatedAt = existing.data().createdAt;
+      // Check if draft already exists to preserve createdAt
+      let existingCreatedAt = null;
+      try {
+        const existing = await getDoc(doc(db, "listing", id));
+        if (existing.exists()) {
+          existingCreatedAt = existing.data().createdAt;
+        }
+      } catch (err) {
+        console.error("Error checking existing draft:", err);
       }
-    } catch (err) {
-      console.error("Error checking existing draft:", err);
-    }
 
-    const payloadRaw = {
-      hostId: user.uid,
-      title: formData.title || "",
-      description: formData.description || "",
-      category: formData.category || "home",
-      price: formData.price ? Number(formData.price) : undefined,
-      discount: formData.discount ? Number(formData.discount) : undefined,
-      promo: formData.promo || undefined,
-      location: formData.location || "",
-      maxGuests: formData.maxGuests ? Number(formData.maxGuests) : undefined,
-      bedrooms: formData.bedrooms ? Number(formData.bedrooms) : undefined,
-      bathrooms: formData.bathrooms ? Number(formData.bathrooms) : undefined,
-      amenities: formData.amenities ? formData.amenities.split(",").map(a => a.trim()).filter(Boolean) : [],
-      availableDates: finalAvailableDates,
-      blockedDates,
-      images: [], 
-      status: "draft",
-      createdAt: existingCreatedAt || new Date().toISOString(),
-      updatedAt: serverTimestamp(),
-    };
+      const payloadRaw = {
+        hostId: user.uid,
+        title: formValues.title || "",
+        description: formValues.description || "",
+        category: formValues.category || "home",
+        price: formValues.price ? Number(formValues.price) : undefined,
+        discount: formValues.discount && formValues.discount.trim() ? Number(formValues.discount) : undefined,
+        promo: formValues.promo || undefined,
+        location: formValues.location || "",
+        maxGuests: formValues.maxGuests ? Number(formValues.maxGuests) : undefined,
+        bedrooms: formValues.bedrooms && formValues.bedrooms.trim() ? Number(formValues.bedrooms) : undefined,
+        bathrooms: formValues.bathrooms && formValues.bathrooms.trim() ? Number(formValues.bathrooms) : undefined,
+        amenities: formValues.amenities ? formValues.amenities.split(",").map(a => a.trim()).filter(Boolean) : [],
+        availableDates: finalAvailableDates,
+        blockedDates,
+        images: [],
+        status: "draft",
+        createdAt: existingCreatedAt || new Date().toISOString(),
+        updatedAt: serverTimestamp(),
+      };
 
-    // Remove undefined values before saving to Firestore
-    const payload = removeUndefined(payloadRaw);
+      const payload = removeUndefined(payloadRaw);
 
-    try {
-      await setDoc(doc(db, "listing", id), payload, { merge: true });
-      setDraftId(id);
-      console.log("Draft saved successfully with payload:", payload);
-      console.log("Document ID:", id);
-      if (opts?.manual) toast.success("Draft saved");
-    } catch (err) {
-      console.error("Failed to save draft:", err);
-      if (opts?.manual) {
-        toast.error("Failed to save draft");
-      } else {
-        toast.error("Auto-save failed. Please save manually.", { duration: 3000 });
+      try {
+        setSaveStatus("saving");
+        await setDoc(doc(db, "listing", id), payload, { merge: true });
+        setDraftId(id);
+        setSaveStatus("saved");
+        if (opts?.manual) {
+          toast.success("Draft saved successfully");
+          setTimeout(() => setSaveStatus("idle"), 2000);
+        }
+      } catch (err: any) {
+        console.error("Failed to save draft:", err);
+        setSaveStatus("error");
+        const errorMessage = err.code === "permission-denied"
+          ? "Permission denied. Please check your permissions."
+          : err.code === "unavailable"
+          ? "Network error. Please check your connection."
+          : "Failed to save draft";
+        if (opts?.manual) {
+          toast.error(errorMessage);
+        } else {
+          toast.error("Auto-save failed. Please save manually.", { duration: 3000 });
+        }
+        setTimeout(() => setSaveStatus("idle"), 3000);
       }
-    }
+    },
+    [user, getDraftDocId, form, availableDates, blockedDates]
+  );
 
-
-  },
-  [user, getDraftDocId, formData, availableDates, blockedDates, dateRange]
-);
-
-  // Debounced autosave effect: triggers on formData, dateRange, availableDates, blockedDates
+  // Debounced autosave effect
   useEffect(() => {
-    // skip autosave on initial mount/load sequence
     if (!hasMountedRef.current) {
       hasMountedRef.current = true;
       return;
     }
     if (!user) return;
 
-    // clear previous timeout
     if (saveTimeoutRef.current) {
       window.clearTimeout(saveTimeoutRef.current);
     }
-    // set new timeout
+
     saveTimeoutRef.current = window.setTimeout(() => {
-      saveDraftToFirestore();
-    }, 2000); // autosave 2s after user stops typing
+      if (form.formState.isDirty) {
+        saveDraftToFirestore();
+      }
+    }, 2000);
 
     return () => {
       if (saveTimeoutRef.current) {
         window.clearTimeout(saveTimeoutRef.current);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData, dateRange, availableDates, blockedDates, user]); // saveDraftToFirestore stable via useCallback
+  }, [watchedValues, images, user, form.formState.isDirty, saveDraftToFirestore]);
 
-  // Also save draft when user reloads/leaves (best effort)
+  // Save draft on page unload
   useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      // synchronous save attempt (best effort) — we can't await here
-      // so we do a synchronous navigator sendBeacon or simple setDoc without awaiting isn't allowed,
-      // but we'll call saveDraftToFirestore without await (fire-and-forget).
-      // Note: Firestore setDoc is async; this is best-effort for beforeunload.
-      if (user) {
-        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    const handler = () => {
+      if (user && form.formState.isDirty) {
         saveDraftToFirestore();
       }
-      // no custom message for modern browsers
-      // e.returnValue = '';
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [saveDraftToFirestore, user]);
+  }, [saveDraftToFirestore, user, form.formState.isDirty]);
 
-  // On mount: check if a draft exists for this user; if yes, prompt via custom dialog
-    // On mount: check if a draft exists for this user; if yes, prompt via custom dialog
-    useEffect(() => {
-      const checkDraft = async () => {
-        if (!user) return;
-        const id = getDraftDocId();
-        if (!id) return;
-        try {
-          const snap = await getDoc(doc(db, "listing", id));
-          // Only show draft dialog if the document exists AND is actually a draft (status === "draft")
-          if (snap.exists()) {
-            const data = snap.data();
-            if (data.status === "draft") {
-              setDraftFound(true);
-              setShowDraftDialog(true);
-              setDraftId(id);
-            }
+  // On mount: check if a draft exists
+  useEffect(() => {
+    const checkDraft = async () => {
+      if (!user) return;
+      const id = getDraftDocId();
+      if (!id) return;
+      try {
+        const snap = await getDoc(doc(db, "listing", id));
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.status === "draft") {
+            setDraftFound(true);
+            setShowDraftDialog(true);
+            setDraftId(id);
           }
-        } catch (err: any) {
-          // Silently handle permission errors - just means no draft exists or user can't read it yet
-          if (err.code !== 'permission-denied') {
-            console.error("Failed to check draft:", err);
-          }
-          // Don't show error to user - it's expected if no draft exists
         }
-      };
-      checkDraft();
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user]);
+      } catch (err: any) {
+        if (err.code !== "permission-denied") {
+          console.error("Failed to check draft:", err);
+        }
+      }
+    };
+    checkDraft();
+  }, [user, getDraftDocId]);
 
   // Load the draft into form state
   const loadDraft = async () => {
@@ -244,11 +328,11 @@ const saveDraftToFirestore = useCallback(
       const snap = await getDoc(doc(db, "listing", draftId));
       if (!snap.exists()) return;
       const data = snap.data() as any;
-      // map incoming fields to form state safely
-      setFormData({
+
+      form.reset({
         title: data.title || "",
         description: data.description || "",
-        category: (data.category as typeof formData.category) || "home",
+        category: (data.category as "home" | "experience" | "service") || "home",
         price: data.price ? String(data.price) : "",
         discount: data.discount ? String(data.discount) : "",
         promo: data.promo || "",
@@ -257,29 +341,40 @@ const saveDraftToFirestore = useCallback(
         bedrooms: data.bedrooms ? String(data.bedrooms) : "",
         bathrooms: data.bathrooms ? String(data.bathrooms) : "",
         amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : (data.amenities || ""),
+        dateRange: data.availableDates && data.availableDates.length > 0
+          ? {
+              from: new Date(data.availableDates[0]),
+              to: new Date(data.availableDates[data.availableDates.length - 1]),
+            }
+          : { from: undefined, to: undefined },
+        images: [],
       });
+
       if (data.availableDates && Array.isArray(data.availableDates)) {
         setAvailableDates(data.availableDates);
       }
       if (data.blockedDates && Array.isArray(data.blockedDates)) {
         setBlockedDates(data.blockedDates);
       }
-      // we intentionally do NOT restore "images" File objects (cannot). User must re-upload.
+
       setShowDraftDialog(false);
-      toast.success("Draft loaded");
-    } catch (err) {
+      toast.success("Draft loaded successfully");
+    } catch (err: any) {
       console.error("Failed to load draft:", err);
-      toast.error("Failed to load draft");
+      const errorMessage = err.code === "permission-denied"
+        ? "Permission denied. Unable to load draft."
+        : "Failed to load draft";
+      toast.error(errorMessage);
     }
   };
 
-  // Discard draft: delete doc and reset form
+  // Discard draft
   const discardDraft = async () => {
     if (!draftId) {
-      // nothing to delete; just reset and close dialog
       setShowDraftDialog(false);
       setDraftFound(false);
       setDiscardConfirmOpen(false);
+      form.reset();
       return;
     }
     try {
@@ -288,197 +383,205 @@ const saveDraftToFirestore = useCallback(
       setShowDraftDialog(false);
       setDraftFound(false);
       setDiscardConfirmOpen(false);
-      // reset form
-      setFormData({
-        title: "",
-        description: "",
-        category: "home",
-        price: "",
-        discount: "",
-        promo: "",
-        location: "",
-        maxGuests: "",
-        bedrooms: "",
-        bathrooms: "",
-        amenities: "",
-      });
+      form.reset();
       setAvailableDates([]);
       setBlockedDates([]);
-      setDateRange({ from: undefined, to: undefined });
+      setImages([]);
       toast.success("Draft discarded");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to discard draft:", err);
-      toast.error("Failed to discard draft");
+      const errorMessage = err.code === "permission-denied"
+        ? "Permission denied. Unable to discard draft."
+        : "Failed to discard draft";
+      toast.error(errorMessage);
     }
   };
 
-  // Helper to publish/update listing (used by both submit and payment flow)
-  // If draft exists, we update that doc (change status to pending or published)
-  // Otherwise create a new listing doc (using your createListing helper)
- // Around line 265-301, update persistListing:
- const persistListing = async (status: "pending" | "draft") => {
-  if (!user) throw new Error("No user");
-  const finalAvailableDates = dateRange.from && dateRange.to ? generateAvailableDates(dateRange.from, dateRange.to) : availableDates;
+  // Helper to publish/update listing
+  const persistListing = async (status: "pending" | "draft") => {
+    if (!user) throw new Error("No user");
+    const formValues = form.getValues();
+    const finalAvailableDates = formValues.dateRange?.from && formValues.dateRange?.to
+      ? generateAvailableDates(formValues.dateRange.from, formValues.dateRange.to)
+      : availableDates;
 
-  // Check existing listing to preserve createdAt
-  let existingCreatedAt = null;
-  if (draftId && status === "draft") {
-    // Only preserve createdAt if we're saving as draft
-    try {
-      const existing = await getDoc(doc(db, "listing", draftId));
-      if (existing.exists()) {
-        existingCreatedAt = existing.data().createdAt;
-      }
-    } catch (err) {
-      console.error("Error checking existing listing:", err);
-    }
-  }
-
-  const payloadRaw: any = {
-    hostId: user.uid,
-    title: formData.title,
-    description: formData.description,
-    category: formData.category || "home",
-    price: formData.price ? Number(formData.price) : undefined,
-    discount: formData.discount ? Number(formData.discount) : undefined,
-    promo: formData.promo || undefined,
-    location: formData.location,
-    maxGuests: formData.maxGuests ? Number(formData.maxGuests) : undefined,
-    bedrooms: formData.bedrooms ? Number(formData.bedrooms) : undefined,
-    bathrooms: formData.bathrooms ? Number(formData.bathrooms) : undefined,
-    amenities: formData.amenities ? formData.amenities.split(",").map(a => a.trim()).filter(Boolean) : [],
-    availableDates: finalAvailableDates,
-    blockedDates,
-    images: [],
-    status,
-    createdAt: existingCreatedAt || new Date().toISOString(),
-    updatedAt: serverTimestamp(),
-  };
-
-  // Remove undefined values before saving to Firestore
-  const payload = removeUndefined(payloadRaw);
-
-  // If publishing (status === "pending"), always create a NEW listing (don't reuse draftId)
-  if (status === "pending") {
-    // Create a new listing document
-    const newId = await createListing(payload);
-    console.log("New listing created with ID:", newId, "Payload:", payload);
-    
-    // If we published from a draft, delete the draft document
-    if (draftId) {
+    let existingCreatedAt = null;
+    if (draftId && status === "draft") {
       try {
-        await deleteDoc(doc(db, "listing", draftId));
-        console.log("Draft deleted after publishing");
-      } catch (err) {
-        console.error("Error deleting draft:", err);
-      }
-    }
-    
-    // Clear draft state
-    setDraftId(null);
-    setDraftFound(false);
-    
-    return newId;
-  } else {
-    // If saving as draft, update existing draft or create new one
-    if (draftId) {
-      await setDoc(doc(db, "listing", draftId), payload, { merge: true });
-      console.log("Draft updated with payload:", payload);
-      return draftId;
-    } else {
-      const newId = await createListing(payload);
-      console.log("New draft created with ID:", newId, "Payload:", payload);
-      setDraftId(newId);
-      return newId;
-    }
-  }
-};
-
-  // Main submit handler (Publish via "Save as Draft" button uses same flow but with status draft)
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-
-    setLoading(true);
-    try {
-      // If saveAsDraft was set by the Save as Draft button, persist as draft.
-      if (saveAsDraft) {
-        // manual save (give user feedback)
-        await saveDraftToFirestore({ manual: true });
-        setSaveAsDraft(false);
-        setLoading(false);
-        return;
-      }
-
-      // Otherwise treat as "publish" (status pending) and handle images
-      const listingId = await persistListing("pending");
-
-      if (images.length > 0) {
-        const imageUrls = await uploadListingImages(images, listingId);
-        // update the listing with images
-        await setDoc(doc(db, "listing", listingId), { images: imageUrls, updatedAt: serverTimestamp() }, { merge: true });
-      }
-
-      toast.success("Listing created successfully!");
-      
-      // Clear draft state after successful publish (safety measure - also cleared in persistListing)
-      setDraftId(null);
-      setDraftFound(false);
-      
-      onSuccess();
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to create listing");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Called after payment succeeds
-    // Called after payment succeeds
-    const createListingAfterPayment = async () => {
-      if (!user) return;
-      setLoading(true);
-      try {
-        const listingId = await persistListing("pending");
-  
-        if (images.length > 0) {
-          const imageUrls = await uploadListingImages(images, listingId);
-          await setDoc(doc(db, "listing", listingId), { images: imageUrls, updatedAt: serverTimestamp() }, { merge: true });
+        const existing = await getDoc(doc(db, "listing", draftId));
+        if (existing.exists()) {
+          existingCreatedAt = existing.data().createdAt;
         }
-  
-        // Clear draft state after successful publish
-        setDraftId(null);
-        setDraftFound(false);
-        
-        toast.success("Payment received. Listing submitted for review!");
-        onSuccess();
-      } catch (error) {
-        console.error(error);
-        toast.error("Failed to create listing after payment");
-      } finally {
-        setLoading(false);
-        setShowPayment(false);
+      } catch (err) {
+        console.error("Error checking existing listing:", err);
       }
+    }
+
+    const payloadRaw: any = {
+      hostId: user.uid,
+      title: formValues.title,
+      description: formValues.description,
+      category: formValues.category || "home",
+      price: Number(formValues.price),
+      discount: formValues.discount && formValues.discount.trim() ? Number(formValues.discount) : undefined,
+      promo: formValues.promo || undefined,
+      location: formValues.location,
+      maxGuests: Number(formValues.maxGuests),
+      bedrooms: formValues.bedrooms && formValues.bedrooms.trim() ? Number(formValues.bedrooms) : undefined,
+      bathrooms: formValues.bathrooms && formValues.bathrooms.trim() ? Number(formValues.bathrooms) : undefined,
+      amenities: formValues.amenities ? formValues.amenities.split(",").map((a: string) => a.trim()).filter(Boolean) : [],
+      availableDates: finalAvailableDates,
+      blockedDates,
+      images: [],
+      status: status || 'pending', // Safety check: ensure status is never undefined
+      createdAt: existingCreatedAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(), // Use regular timestamp since createListing overwrites it
     };
 
-  const handleProceedToPayment = () => {
-    if (!formData.title || !formData.description || !formData.price || !formData.location || !formData.maxGuests) {
-      toast.error("Please complete required fields before proceeding to payment.");
+    const payload = removeUndefined(payloadRaw);
+    
+    console.log('persistListing: Preparing payload with status:', payload.status);
+    console.log('persistListing: Full payload keys:', Object.keys(payload));
+
+    if (status === "pending") {
+      console.log('persistListing: Creating listing with status "pending"');
+      const newId = await createListing(payload);
+      if (draftId) {
+        try {
+          await deleteDoc(doc(db, "listing", draftId));
+        } catch (err) {
+          console.error("Error deleting draft:", err);
+        }
+      }
+      setDraftId(null);
+      setDraftFound(false);
+      return newId;
+    } else {
+      if (draftId) {
+        await setDoc(doc(db, "listing", draftId), payload, { merge: true });
+        return draftId;
+      } else {
+        const newId = await createListing(payload);
+        setDraftId(newId);
+        return newId;
+      }
+    }
+  };
+
+  // Upload images with progress
+  const uploadImagesWithProgress = async (files: File[], listingId: string): Promise<string[]> => {
+    setIsUploading(true);
+    setUploadProgress(0);
+    
+    try {
+      // Use the existing uploadListingImages function which handles multiple files
+      // For now, we'll simulate progress since the function doesn't expose progress
+      const uploadPromise = uploadListingImages(files, listingId);
+      
+      // Simulate progress updates
+      const progressInterval = setInterval(() => {
+        setUploadProgress((prev) => {
+          if (prev >= 90) return prev;
+          return prev + 10;
+        });
+      }, 200);
+      
+      const urls = await uploadPromise;
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      
+      return urls;
+    } finally {
+      setIsUploading(false);
+      setTimeout(() => setUploadProgress(0), 1000);
+    }
+  };
+
+  // Create listing after payment
+  const createListingAfterPayment = async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      console.log('createListingAfterPayment: Starting listing creation with status "pending"');
+      const listingId = await persistListing("pending");
+      console.log('createListingAfterPayment: Listing created with ID:', listingId);
+
+      if (images.length > 0) {
+        console.log('createListingAfterPayment: Uploading', images.length, 'images');
+        const imageUrls = await uploadImagesWithProgress(images, listingId);
+        console.log('createListingAfterPayment: Images uploaded, updating listing with URLs');
+        await setDoc(doc(db, "listing", listingId), {
+          images: imageUrls,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+        console.log('createListingAfterPayment: Listing updated with images');
+      }
+
+      setDraftId(null);
+      setDraftFound(false);
+      console.log('createListingAfterPayment: Success! Listing ID:', listingId, 'Status: pending');
+      toast.success("Payment received. Listing submitted for review!");
+      onSuccess();
+    } catch (error: any) {
+      console.error('createListingAfterPayment: Error occurred:', error);
+      console.error('createListingAfterPayment: Error details:', {
+        code: error.code,
+        message: error.message,
+        stack: error.stack
+      });
+      const errorMessage = error.code === "permission-denied"
+        ? "Permission denied. Please check your permissions."
+        : error.code === "unavailable"
+        ? "Network error. Please check your connection and try again."
+        : error.message || "Failed to create listing after payment";
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+      setShowPayment(false);
+    }
+  };
+
+  const handleProceedToPayment = async () => {
+    const isValid = await form.trigger();
+    const dateRange = form.getValues("dateRange");
+    
+    if (!isValid) {
+      toast.error("Please fix the errors in the form before proceeding.");
       return;
     }
+
+    if (!dateRange?.from || !dateRange?.to) {
+      toast.error("Please select an availability date range.");
+      form.setError("dateRange.to", { message: "Date range is required" });
+      return;
+    }
+
+    if (images.length === 0) {
+      toast.error("Please upload at least one image.");
+      form.setError("images", { message: "At least one image is required" });
+      return;
+    }
+
     setPaymentConfirmOpen(true);
   };
 
   const confirmPayment = () => {
     setPaymentConfirmOpen(false);
-    setSaveAsDraft(false);
     setShowPayment(true);
+  };
+
+  const handleSaveDraft = async () => {
+    const isValid = await form.trigger();
+    if (!isValid) {
+      toast.error("Please fix the errors before saving as draft.");
+      return;
+    }
+    await saveDraftToFirestore({ manual: true });
   };
 
   return (
     <>
-      {/* Draft confirmation dialog (custom, using your Dialog component) */}
+      {/* Draft confirmation dialog */}
       <Dialog open={showDraftDialog} onOpenChange={setShowDraftDialog}>
         <DialogContent>
           <DialogHeader>
@@ -487,7 +590,6 @@ const saveDraftToFirestore = useCallback(
               We found a saved draft for this account. Would you like to continue editing it or discard it and start fresh?
             </DialogDescription>
           </DialogHeader>
-
           <div className="mt-4 flex gap-2 justify-end">
             <Button
               variant="outline"
@@ -498,227 +600,451 @@ const saveDraftToFirestore = useCallback(
             >
               Discard Draft
             </Button>
-            <Button
-              onClick={async () => {
-                await loadDraft();
-              }}
-            >
+            <Button onClick={loadDraft}>
               Continue Draft
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-    <Card>
-      <CardHeader>
-        <CardTitle>Create New Listing</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label htmlFor="title">Title</Label>
-            <Input
-              id="title"
-              value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              required
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="category">Category</Label>
-              <Select value={formData.category} onValueChange={(value: any) => setFormData({ ...formData, category: value })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="home">Home</SelectItem>
-                  <SelectItem value="experience">Experience</SelectItem>
-                  <SelectItem value="service">Service</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="price">Price per Night ($)</Label>
-              <Input
-                id="price"
-                type="number"
-                value={formData.price}
-                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="discount">Discount (%)</Label>
-              <Input
-                id="discount"
-                type="number"
-                min="0"
-                max="100"
-                value={formData.discount}
-                onChange={(e) => setFormData({ ...formData, discount: e.target.value })}
-                placeholder="Optional discount percentage"
-              />
-            </div>
-            <div>
-              <Label htmlFor="promo">Promo Description</Label>
-              <Input
-                id="promo"
-                value={formData.promo}
-                onChange={(e) => setFormData({ ...formData, promo: e.target.value })}
-                placeholder="e.g., 'Summer Special'"
-              />
-            </div>
-          </div>
-
-          <div>
-            <Label htmlFor="location">Location</Label>
-            <Input
-              id="location"
-              value={formData.location}
-              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <Label htmlFor="maxGuests">Max Guests</Label>
-              <Input
-                id="maxGuests"
-                type="number"
-                value={formData.maxGuests}
-                onChange={(e) => setFormData({ ...formData, maxGuests: e.target.value })}
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="bedrooms">Bedrooms</Label>
-              <Input
-                id="bedrooms"
-                type="number"
-                value={formData.bedrooms}
-                onChange={(e) => setFormData({ ...formData, bedrooms: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label htmlFor="bathrooms">Bathrooms</Label>
-              <Input
-                id="bathrooms"
-                type="number"
-                value={formData.bathrooms}
-                onChange={(e) => setFormData({ ...formData, bathrooms: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div>
-            <Label htmlFor="amenities">Amenities (comma separated)</Label>
-            <Input
-              id="amenities"
-              value={formData.amenities}
-              onChange={(e) => setFormData({ ...formData, amenities: e.target.value })}
-              placeholder="WiFi, Pool, Kitchen"
-            />
-          </div>
-
-            <div>
-              <Label htmlFor="dateRange">Availability Date Range</Label>
-              <DateRangePicker
-                value={dateRange}
-                onChange={setDateRange}
-                placeholder="Select your listing availability period"
-                className="mt-2"
-              />
-              {dateRange.from && dateRange.to && (
-                <p className="text-sm text-muted-foreground mt-2">
-                  Available from {dateRange.from.toLocaleDateString()} to {dateRange.to.toLocaleDateString()}
-                </p>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Create New Listing</CardTitle>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              {saveStatus === "saving" && (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Saving...</span>
+                </>
               )}
-          </div>
-
-          <div>
-            <Label htmlFor="images">Images</Label>
-            <div className="mt-2 flex items-center gap-2">
-              <Input
-                id="images"
-                type="file"
-                multiple
-                accept="image/*"
-                onChange={(e) => setImages(Array.from(e.target.files || []))}
-                className="hidden"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                  onClick={() => document.getElementById("images")?.click()}
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                Upload Images ({images.length} selected)
-              </Button>
+              {saveStatus === "saved" && (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  <span>Saved</span>
+                </>
+              )}
+              {saveStatus === "error" && (
+                <>
+                  <AlertCircle className="h-4 w-4 text-destructive" />
+                  <span>Save failed</span>
+                </>
+              )}
             </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Note: images are uploaded only when you publish (to avoid large autosave uploads).
-              </p>
           </div>
-
-          <div className="flex gap-2">
-            <Button
-                type="button"
-              disabled={loading}
-              className="flex-1"
-                onClick={handleProceedToPayment}
-            >
-              {loading ? "Creating..." : `Pay & Publish`}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={loading}
-              className="flex-1"
-              onClick={async (e) => {
-                e.preventDefault();
-                await saveDraftToFirestore({ manual: true });
-              }}
-            >
-              {loading ? "Saving..." : "Save as Draft"}
-            </Button>
+          {/* Form completion progress */}
+          <div className="mt-4 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Form completion</span>
+              <span className="font-medium">{completionPercentage}%</span>
+            </div>
+            <Progress value={completionPercentage} className="h-2" />
           </div>
-        </form>
-      </CardContent>
-    </Card>
+        </CardHeader>
+        <CardContent>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleProceedToPayment)} className="space-y-6">
+              {/* Title */}
+              <FormField
+                control={form.control}
+                name="title"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Title <span className="text-destructive">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Enter a descriptive title for your listing"
+                        {...field}
+                        value={field.value || ""}
+                      />
+                    </FormControl>
+                    <div className="flex justify-between">
+                      <FormDescription>
+                        {field.value?.length || 0}/100 characters
+                      </FormDescription>
+                      <FormMessage />
+                    </div>
+                  </FormItem>
+                )}
+              />
 
+              {/* Description */}
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Description <span className="text-destructive">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Describe your listing in detail. Include amenities, nearby attractions, and what makes it special."
+                        className="min-h-[120px]"
+                        {...field}
+                        value={field.value || ""}
+                      />
+                    </FormControl>
+                    <div className="flex justify-between">
+                      <FormDescription>
+                        {field.value?.length || 0}/2000 characters (minimum 50)
+                      </FormDescription>
+                      <FormMessage />
+                    </div>
+                  </FormItem>
+                )}
+              />
+
+              {/* Category and Price */}
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="category"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Category <span className="text-destructive">*</span>
+                      </FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select category" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="home">Home</SelectItem>
+                          <SelectItem value="experience">Experience</SelectItem>
+                          <SelectItem value="service">Service</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="price"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Price per Night ($) <span className="text-destructive">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          {...field}
+                          value={field.value || ""}
+                          onChange={(e) => field.onChange(e.target.value)}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Discount and Promo */}
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="discount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Discount (%)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          placeholder="0"
+                          {...field}
+                          value={field.value || ""}
+                          onChange={(e) => field.onChange(e.target.value)}
+                        />
+                      </FormControl>
+                      <FormDescription>Optional discount percentage (0-100)</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="promo"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Promo Description</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="e.g., 'Summer Special'"
+                          maxLength={100}
+                          {...field}
+                          value={field.value || ""}
+                        />
+                      </FormControl>
+                      <FormDescription>Optional promotional message</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Location */}
+              <FormField
+                control={form.control}
+                name="location"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Location <span className="text-destructive">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="City, State, Country"
+                        {...field}
+                        value={field.value || ""}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Max Guests, Bedrooms, Bathrooms */}
+              <div className="grid grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="maxGuests"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Max Guests <span className="text-destructive">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="1"
+                          placeholder="1"
+                          {...field}
+                          value={field.value || ""}
+                          onChange={(e) => field.onChange(e.target.value)}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="bedrooms"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Bedrooms</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          {...field}
+                          value={field.value || ""}
+                          onChange={(e) => field.onChange(e.target.value)}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="bathrooms"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Bathrooms</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          placeholder="0"
+                          {...field}
+                          value={field.value || ""}
+                          onChange={(e) => field.onChange(e.target.value)}
+                        />
+                      </FormControl>
+                      <FormDescription>Can be 0.5, 1, 1.5, etc.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Amenities */}
+              <FormField
+                control={form.control}
+                name="amenities"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Amenities</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="WiFi, Pool, Kitchen, Parking (comma separated)"
+                        {...field}
+                        value={field.value || ""}
+                      />
+                    </FormControl>
+                    <FormDescription>Separate multiple amenities with commas</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Date Range */}
+              <FormField
+                control={form.control}
+                name="dateRange"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Availability Date Range <span className="text-destructive">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <DateRangePicker
+                        value={field.value as { from: Date | undefined; to: Date | undefined } | undefined}
+                        onChange={field.onChange}
+                        placeholder="Select your listing availability period"
+                        className="mt-2"
+                        error={!!formErrors.dateRange}
+                      />
+                    </FormControl>
+                    {field.value?.from && field.value?.to && (
+                      <FormDescription>
+                        Available from {field.value.from.toLocaleDateString()} to {field.value.to.toLocaleDateString()}
+                      </FormDescription>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Images */}
+              <FormField
+                control={form.control}
+                name="images"
+                render={() => (
+                  <FormItem>
+                    <FormLabel>
+                      Images <span className="text-destructive">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                          <Input
+                            id="images"
+                            type="file"
+                            multiple
+                            accept="image/jpeg,image/jpg,image/png,image/webp"
+                            onChange={handleImageChange}
+                            className="hidden"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => document.getElementById("images")?.click()}
+                            disabled={images.length >= MAX_IMAGES}
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            Upload Images ({images.length}/{MAX_IMAGES})
+                          </Button>
+                        </div>
+                        <ImagePreview
+                          images={images}
+                          onRemove={removeImage}
+                          uploadProgress={uploadProgress}
+                          isUploading={isUploading}
+                        />
+                      </div>
+                    </FormControl>
+                    <FormDescription>
+                      Upload at least 1 image (max {MAX_IMAGES}). Accepted formats: JPG, PNG, WebP. Max size: 5MB per image.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Action Buttons */}
+              <div className="flex gap-2 pt-4">
+                <Button
+                  type="submit"
+                  disabled={loading || isUploading}
+                  className="flex-1"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    `Pay & Publish ($${SUBSCRIPTION_FEE})`
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={loading || isUploading}
+                  className="flex-1"
+                  onClick={handleSaveDraft}
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  Save as Draft
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </CardContent>
+      </Card>
+
+      {/* Payment Dialog */}
       <Dialog open={showPayment} onOpenChange={setShowPayment}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Complete Subscription to Publish</DialogTitle>
             <DialogDescription>
-              Pay a one-time subscription fee to submit your listing for review.
+              Pay a one-time subscription fee of ${SUBSCRIPTION_FEE} to submit your listing for review.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="rounded-lg border p-4">
-              <div className="text-sm text-muted-foreground">Listing</div>
-              <div className="font-medium">{formData.title || "Untitled Listing"}</div>
-              <div className="text-sm text-muted-foreground">Category: {formData.category}</div>
-              <div className="text-sm text-muted-foreground">Location: {formData.location || "-"}</div>
+              <div className="text-sm text-muted-foreground">Listing Details</div>
+              <div className="font-medium mt-1">{watchedValues.title || "Untitled Listing"}</div>
+              <div className="text-sm text-muted-foreground mt-2">
+                Category: {watchedValues.category}
+              </div>
               <div className="text-sm text-muted-foreground">
-                {dateRange.from && dateRange.to ? `Availability: ${dateRange.from.toLocaleDateString()} - ${dateRange.to.toLocaleDateString()}` : "Availability: Not set"}
+                Location: {watchedValues.location || "-"}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                {watchedValues.dateRange?.from && watchedValues.dateRange?.to
+                  ? `Availability: ${watchedValues.dateRange.from.toLocaleDateString()} - ${watchedValues.dateRange.to.toLocaleDateString()}`
+                  : "Availability: Not set"}
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-muted p-4">
+              <div className="flex justify-between text-sm mb-2">
+                <span>Subscription Fee:</span>
+                <span className="font-medium">${SUBSCRIPTION_FEE}.00</span>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                This fee covers listing review and processing. Your listing will be reviewed by our team before going live.
               </div>
             </div>
 
@@ -726,7 +1052,7 @@ const saveDraftToFirestore = useCallback(
               <PayPalButton
                 amount={SUBSCRIPTION_FEE}
                 userId={user.uid}
-                description={`Host subscription for listing: ${formData.title || "Untitled"}`}
+                description={`Host subscription for listing: ${watchedValues.title || "Untitled"}`}
                 onSuccess={createListingAfterPayment}
               />
             )}
@@ -745,8 +1071,8 @@ const saveDraftToFirestore = useCallback(
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={discardDraft} 
+            <AlertDialogAction
+              onClick={discardDraft}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Discard Draft
@@ -761,7 +1087,7 @@ const saveDraftToFirestore = useCallback(
           <AlertDialogHeader>
             <AlertDialogTitle>Proceed to Payment?</AlertDialogTitle>
             <AlertDialogDescription>
-              You're about to pay a one-time subscription fee of ${SUBSCRIPTION_FEE} to publish this listing. 
+              You're about to pay a one-time subscription fee of ${SUBSCRIPTION_FEE} to publish this listing.
               After payment, your listing will be submitted for admin review.
             </AlertDialogDescription>
           </AlertDialogHeader>

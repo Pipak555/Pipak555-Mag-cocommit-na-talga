@@ -1,22 +1,28 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { getListings, toggleFavorite } from "@/lib/firestore";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { ListingCard } from "@/components/listings/ListingCard";
+import { ListingSkeleton } from "@/components/ui/listing-skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SearchAutocomplete } from "@/components/search/SearchAutocomplete";
 import { AdvancedFilter, FilterValues } from "@/components/filters/AdvancedFilter";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { ArrowLeft, Search } from "lucide-react";
 import { toast } from "sonner";
 import type { Listing } from "@/types";
 
 const BrowseListings = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const [listings, setListings] = useState<Listing[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<FilterValues>({
     location: '',
     guests: 1,
@@ -28,6 +34,15 @@ const BrowseListings = () => {
     if (user) loadFavorites();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, filters.category]);
+
+  useEffect(() => {
+    // Get search query from URL params if present
+    const params = new URLSearchParams(location.search);
+    const query = params.get('q');
+    if (query) {
+      setSearchQuery(query);
+    }
+  }, [location.search]);
 
   const loadListings = async () => {
     try {
@@ -74,6 +89,19 @@ const BrowseListings = () => {
   };
 
   const filteredListings = listings.filter(listing => {
+    // Search query filter
+    if (searchQuery.trim()) {
+      const lowerQuery = searchQuery.toLowerCase();
+      const matchesTitle = listing.title.toLowerCase().includes(lowerQuery);
+      const matchesLocation = listing.location.toLowerCase().includes(lowerQuery);
+      const matchesDescription = listing.description.toLowerCase().includes(lowerQuery);
+      const matchesCategory = listing.category.toLowerCase().includes(lowerQuery);
+      
+      if (!matchesTitle && !matchesLocation && !matchesDescription && !matchesCategory) {
+        return false;
+      }
+    }
+    
     // Location filter
     if (filters.location && !listing.location.toLowerCase().includes(filters.location.toLowerCase())) {
       return false;
@@ -100,8 +128,8 @@ const BrowseListings = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
         <Button
           variant="ghost"
           onClick={() => navigate('/guest/dashboard')}
@@ -111,17 +139,30 @@ const BrowseListings = () => {
           Back to Dashboard
         </Button>
 
-        <h1 className="text-3xl font-bold mb-6">Browse Listings</h1>
+        <h1 className="text-3xl md:text-4xl font-bold mb-6">Browse Listings</h1>
+
+        {/* Search Bar with Autocomplete */}
+        <Card className="mb-6 shadow-md">
+          <CardContent className="pt-6">
+            <SearchAutocomplete
+              onSearch={(query) => {
+                setSearchQuery(query);
+                navigate(`/guest/browse?q=${encodeURIComponent(query)}`);
+              }}
+              placeholder="Search destinations, experiences, services..."
+            />
+          </CardContent>
+        </Card>
 
         {/* Category Chips/Tabs */}
-        <div className="mb-4 flex flex-wrap gap-2">
+        <div className="mb-6 flex flex-wrap gap-2">
           {['all','home','experience','service'].map((cat) => (
             <button
               key={cat}
-              className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+              className={`px-4 py-2 rounded-full text-sm font-medium border-2 transition-all ${
                 (filters.category === cat)
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-background border-border text-foreground hover:bg-muted'
+                  ? 'bg-primary text-primary-foreground border-primary shadow-md'
+                  : 'bg-background border-border text-foreground hover:bg-muted hover:border-primary/50'
               }`}
               onClick={() => setFilters({ ...filters, category: cat as any })}
             >
@@ -130,19 +171,29 @@ const BrowseListings = () => {
           ))}
         </div>
 
-        <div className="mb-6">
+        <div className="mb-8">
           <AdvancedFilter onFilterChange={handleFilterChange} />
         </div>
 
         {loading ? (
-          <p>Loading...</p>
-        ) : filteredListings.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground mb-2">No listings found</p>
-            <p className="text-sm text-muted-foreground">Try a different category or adjust filters.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {[...Array(8)].map((_, i) => (
+              <ListingSkeleton key={i} />
+            ))}
           </div>
+        ) : filteredListings.length === 0 ? (
+          <EmptyState
+            icon={<Search className="h-10 w-10" />}
+            title="No listings found"
+            description="Try adjusting your filters or browse a different category to find what you're looking for."
+            action={
+              <Button onClick={() => setFilters({ ...filters, category: 'all', location: '', guests: 1 })}>
+                Clear Filters
+              </Button>
+            }
+          />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredListings.map((listing) => (
               <ListingCard
                 key={listing.id}
