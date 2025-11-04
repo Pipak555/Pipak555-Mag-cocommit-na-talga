@@ -9,7 +9,8 @@ import {
   query, 
   where, 
   orderBy,
-  Timestamp 
+  Timestamp,
+  serverTimestamp 
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { uploadListingImages as uploadToCloudinary } from './cloudinary';
@@ -194,10 +195,41 @@ export const getListings = async (filters?: { category?: string; status?: string
 
 // 📅 Bookings
 export const createBooking = async (data: Omit<Booking, 'id' | 'createdAt'>) => {
-  const docRef = await addDoc(collection(db, 'bookings'), {
+  // Validate required fields
+  if (!data.hostId) {
+    throw new Error('Booking must have a hostId');
+  }
+  if (!data.guestId) {
+    throw new Error('Booking must have a guestId');
+  }
+  if (!data.listingId) {
+    throw new Error('Booking must have a listingId');
+  }
+  
+  const bookingData = {
     ...data,
+    hostId: String(data.hostId), // Ensure hostId is a string
+    guestId: String(data.guestId), // Ensure guestId is a string
+    listingId: String(data.listingId), // Ensure listingId is a string
     createdAt: new Date().toISOString(),
+    status: data.status || 'pending',
+  };
+  
+  console.log('💾 Creating booking in Firestore:', {
+    hostId: bookingData.hostId,
+    guestId: bookingData.guestId,
+    listingId: bookingData.listingId,
+    status: bookingData.status,
+    createdAt: bookingData.createdAt
   });
+  
+  const docRef = await addDoc(collection(db, 'bookings'), bookingData);
+  
+  console.log('✅ Booking created in Firestore:', {
+    id: docRef.id,
+    hostId: bookingData.hostId
+  });
+  
   return docRef.id;
 };
 
@@ -206,20 +238,87 @@ export const updateBooking = async (id: string, data: Partial<Booking>) => {
 };
 
 export const getBookings = async (filters?: { guestId?: string; hostId?: string; status?: string }) => {
-  let q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'));
-  
-  if (filters?.guestId) {
-    q = query(q, where('guestId', '==', filters.guestId));
+  try {
+    let q: any;
+    
+    // Build query based on filters
+    if (filters?.hostId && filters?.status) {
+      // Use composite index: hostId + status + createdAt
+      q = query(
+        collection(db, 'bookings'),
+        where('hostId', '==', filters.hostId),
+        where('status', '==', filters.status),
+        orderBy('createdAt', 'desc')
+      );
+    } else if (filters?.hostId) {
+      // Use composite index: hostId + createdAt
+      q = query(
+        collection(db, 'bookings'),
+        where('hostId', '==', filters.hostId),
+        orderBy('createdAt', 'desc')
+      );
+    } else if (filters?.guestId && filters?.status) {
+      // Use composite index: guestId + status + createdAt
+      q = query(
+        collection(db, 'bookings'),
+        where('guestId', '==', filters.guestId),
+        where('status', '==', filters.status),
+        orderBy('createdAt', 'desc')
+      );
+    } else if (filters?.guestId) {
+      // Use composite index: guestId + createdAt
+      q = query(
+        collection(db, 'bookings'),
+        where('guestId', '==', filters.guestId),
+        orderBy('createdAt', 'desc')
+      );
+    } else if (filters?.status) {
+      // Just status filter
+      q = query(
+        collection(db, 'bookings'),
+        where('status', '==', filters.status),
+        orderBy('createdAt', 'desc')
+      );
+    } else {
+      // No filters, just order by createdAt
+      q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'));
+    }
+    
+    const snapshot = await getDocs(q);
+    const bookings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+    
+    console.log('📊 getBookings query result:', {
+      filters,
+      count: bookings.length,
+      bookings: bookings.map(b => ({ id: b.id, hostId: b.hostId, guestId: b.guestId, status: b.status }))
+    });
+    
+    return bookings;
+  } catch (error: any) {
+    console.error('❌ Error in getBookings:', error);
+    // If query fails due to missing index, try without orderBy as fallback
+    if (error.code === 'failed-precondition') {
+      console.warn('⚠️ Falling back to query without orderBy');
+      let q: any = query(collection(db, 'bookings'));
+      
+      if (filters?.guestId) {
+        q = query(q, where('guestId', '==', filters.guestId));
+      }
+      if (filters?.hostId) {
+        q = query(q, where('hostId', '==', filters.hostId));
+      }
+      if (filters?.status) {
+        q = query(q, where('status', '==', filters.status));
+      }
+      
+      const snapshot = await getDocs(q);
+      const bookings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+      // Sort manually
+      bookings.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return bookings;
+    }
+    throw error;
   }
-  if (filters?.hostId) {
-    q = query(q, where('hostId', '==', filters.hostId));
-  }
-  if (filters?.status) {
-    q = query(q, where('status', '==', filters.status));
-  }
-  
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
 };
 
 // ⭐ Reviews
@@ -265,6 +364,7 @@ export const getMessages = async (userId: string) => {
 export const createTransaction = async (data: Omit<Transaction, 'id' | 'createdAt'>) => {
   const docRef = await addDoc(collection(db, 'transactions'), {
     ...data,
+    status: data.status || 'pending', // Default to pending if not specified
     createdAt: new Date().toISOString(),
   });
   return docRef.id;
@@ -304,4 +404,112 @@ export const toggleWishlist = async (userId: string, listingId: string, wishlist
   
   await updateDoc(doc(db, 'users', userId), { wishlist: newWishlist });
   return newWishlist;
+};
+
+// 🔐 OTP Verification Functions
+/**
+ * Generate a 6-digit OTP code
+ */
+const generateOTP = (): string => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+/**
+ * Create and store OTP for email verification
+ * @param userId - Firebase user ID
+ * @param email - User email
+ * @returns The generated OTP code
+ */
+export const createOTP = async (userId: string, email: string): Promise<string> => {
+  const otp = generateOTP();
+  const expiresAt = new Date();
+  expiresAt.setMinutes(expiresAt.getMinutes() + 10); // OTP expires in 10 minutes
+
+  const otpData = {
+    userId,
+    email,
+    otp,
+    expiresAt: expiresAt.toISOString(),
+    createdAt: new Date().toISOString(),
+    verified: false,
+  };
+
+  // Store OTP in Firestore
+  await addDoc(collection(db, 'otps'), otpData);
+  
+  // Clean up old OTPs for this user
+  const oldOtpsQuery = query(
+    collection(db, 'otps'),
+    where('userId', '==', userId),
+    where('verified', '==', false)
+  );
+  const oldOtps = await getDocs(oldOtpsQuery);
+  oldOtps.forEach(async (otpDoc) => {
+    const data = otpDoc.data();
+    const expired = new Date(data.expiresAt) < new Date();
+    if (expired) {
+      await deleteDoc(doc(db, 'otps', otpDoc.id));
+    }
+  });
+
+  return otp;
+};
+
+/**
+ * Verify OTP code
+ * @param userId - Firebase user ID
+ * @param otpCode - The OTP code entered by user
+ * @returns true if OTP is valid, false otherwise
+ */
+export const verifyOTP = async (userId: string, otpCode: string): Promise<boolean> => {
+  try {
+    const otpsQuery = query(
+      collection(db, 'otps'),
+      where('userId', '==', userId),
+      where('otp', '==', otpCode),
+      where('verified', '==', false)
+    );
+    
+    const querySnapshot = await getDocs(otpsQuery);
+    
+    if (querySnapshot.empty) {
+      return false;
+    }
+
+    const otpDoc = querySnapshot.docs[0];
+    const otpData = otpDoc.data();
+
+    // Check if OTP is expired
+    const expiresAt = new Date(otpData.expiresAt);
+    if (expiresAt < new Date()) {
+      await deleteDoc(doc(db, 'otps', otpDoc.id));
+      return false;
+    }
+
+    // Mark OTP as verified
+    await updateDoc(doc(db, 'otps', otpDoc.id), {
+      verified: true,
+      verifiedAt: new Date().toISOString(),
+    });
+
+    // Clean up verified OTP
+    setTimeout(() => {
+      deleteDoc(doc(db, 'otps', otpDoc.id)).catch(console.error);
+    }, 5000);
+
+    return true;
+  } catch (error) {
+    console.error('Error verifying OTP:', error);
+    return false;
+  }
+};
+
+/**
+ * Resend OTP (creates a new OTP)
+ * @param userId - Firebase user ID
+ * @param email - User email
+ * @returns The new OTP code
+ */
+export const resendOTP = async (userId: string, email: string): Promise<string> => {
+  return await createOTP(userId, email);
 };

@@ -44,15 +44,16 @@ export const uploadImageToCloudinary = async (
   // Create form data
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('upload_preset', uploadPreset || 'ml_default'); // Use unsigned preset if available
+  formData.append('upload_preset', uploadPreset || 'ml_default');
   
   // Add folder if provided
   if (folder) {
     formData.append('folder', folder);
   }
 
-  // Add transformation parameters (optional - optimize images)
-  formData.append('transformation', 'f_auto,q_auto'); // Auto format and quality
+  // Note: Transformation parameters are not allowed in unsigned uploads
+  // If you need image optimization, configure it in your upload preset settings
+  // Go to Cloudinary Dashboard → Settings → Upload → Your Preset → Eager transformations
 
   try {
     const response = await fetch(

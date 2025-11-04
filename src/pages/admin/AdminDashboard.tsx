@@ -8,6 +8,18 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { toast } from 'sonner';
+import { formatPHP } from '@/lib/currency';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const AdminDashboard = () => {
   const { user, userRole, userProfile, signOut } = useAuth();
@@ -16,10 +28,13 @@ const AdminDashboard = () => {
     totalUsers: 0,
     totalHosts: 0,
     totalGuests: 0,
+    totalAdmins: 0,
     activeListings: 0,
     totalBookings: 0,
+    cancelledBookings: 0,
     serviceFees: 0,
   });
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!user || userRole !== 'admin') {
@@ -27,42 +42,97 @@ const AdminDashboard = () => {
       return;
     }
 
-    // Set up real-time listeners
-    const usersUnsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
-      const users = snapshot.docs.map(doc => doc.data());
-      const hosts = users.filter(u => u.role === 'host').length;
-      const guests = users.filter(u => u.role === 'guest').length;
-      setStats(prev => ({
-        ...prev,
-        totalUsers: snapshot.size,
-        totalHosts: hosts,
-        totalGuests: guests,
-      }));
-    });
+    // Initialize unsubscribe functions as null
+    let usersUnsubscribe: (() => void) | null = null;
+    let listingsUnsubscribe: (() => void) | null = null;
+    let bookingsUnsubscribe: (() => void) | null = null;
 
-    const listingsUnsubscribe = onSnapshot(collection(db, 'listing'), (snapshot) => {
-      const activeListings = snapshot.docs.filter(
-        doc => doc.data().status === 'approved'
-      ).length;
-      setStats(prev => ({ ...prev, activeListings }));
-    });
+    // Set up real-time listeners with error handling
+    usersUnsubscribe = onSnapshot(
+      collection(db, 'users'), 
+      (snapshot) => {
+        const users = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            email: data.email as string | undefined,
+            role: data.role as string | undefined,
+            fullName: data.fullName as string | undefined,
+            ...data
+          };
+        });
+        
+        // Debug: Log all users and their roles
+        console.log('📊 All users fetched:', users.length);
+        console.log('📊 User details:', users.map(u => ({
+          id: u.id,
+          email: (u as any).email || 'N/A',
+          role: (u as any).role || 'unknown',
+          fullName: (u as any).fullName || 'N/A'
+        })));
+        
+        const hosts = users.filter((u: any) => u.role === 'host').length;
+        const guests = users.filter((u: any) => u.role === 'guest').length;
+        const admins = users.filter((u: any) => u.role === 'admin').length;
+        
+        console.log('📊 Count breakdown:', { hosts, guests, admins, total: users.length });
+        
+        setStats(prev => ({
+          ...prev,
+          totalUsers: snapshot.size,
+          totalHosts: hosts,
+          totalGuests: guests,
+          totalAdmins: admins,
+        }));
+      },
+      (error) => {
+        console.error('❌ Error fetching users:', error);
+        toast.error(`Failed to load users: ${error.message}`);
+      }
+    );
 
-    const bookingsUnsubscribe = onSnapshot(collection(db, 'bookings'), (snapshot) => {
-      const bookings = snapshot.docs.map(doc => doc.data());
-      const totalRevenue = bookings.reduce((sum, b) => sum + (b.totalPrice || 0), 0);
-      const serviceFees = totalRevenue * 0.1; // 10% commission
-      
-      setStats(prev => ({
-        ...prev,
-        totalBookings: snapshot.size,
-        serviceFees,
-      }));
-    });
+    listingsUnsubscribe = onSnapshot(
+      collection(db, 'listing'),
+      (snapshot) => {
+        const activeListings = snapshot.docs.filter(
+          doc => doc.data().status === 'approved'
+        ).length;
+        setStats(prev => ({ ...prev, activeListings }));
+      },
+      (error) => {
+        console.error('Error fetching listings:', error);
+        toast.error(`Failed to load listings: ${error.message}`);
+      }
+    );
+
+    bookingsUnsubscribe = onSnapshot(
+      collection(db, 'bookings'),
+      (snapshot) => {
+        const bookings = snapshot.docs.map(doc => doc.data());
+        // Only count confirmed/completed bookings for revenue
+        const activeBookings = bookings.filter(b => b.status === 'confirmed' || b.status === 'completed');
+        const cancelledBookings = bookings.filter(b => b.status === 'cancelled');
+        const totalRevenue = activeBookings.reduce((sum, b) => sum + (b.totalPrice || 0), 0);
+        const serviceFees = totalRevenue * 0.1; // 10% commission
+        
+        setStats(prev => ({
+          ...prev,
+          totalBookings: snapshot.size,
+          cancelledBookings: cancelledBookings.length,
+          serviceFees,
+        }));
+      },
+      (error) => {
+        console.error('Error fetching bookings:', error);
+        toast.error(`Failed to load bookings: ${error.message}`);
+      }
+    );
 
     return () => {
-      usersUnsubscribe();
-      listingsUnsubscribe();
-      bookingsUnsubscribe();
+      // Only unsubscribe if the functions were created
+      if (usersUnsubscribe) usersUnsubscribe();
+      if (listingsUnsubscribe) listingsUnsubscribe();
+      if (bookingsUnsubscribe) bookingsUnsubscribe();
     };
   }, [user, userRole, navigate]);
 
@@ -90,7 +160,7 @@ const AdminDashboard = () => {
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <Button variant="outline" onClick={handleSignOut}>Sign Out</Button>
+            <Button variant="outline" onClick={() => setLogoutDialogOpen(true)}>Sign Out</Button>
           </div>
         </div>
       </header>
@@ -111,7 +181,7 @@ const AdminDashboard = () => {
             <CardContent>
               <div className="text-2xl font-bold">{stats.totalUsers}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                {stats.totalHosts} hosts, {stats.totalGuests} guests
+                {stats.totalHosts} hosts, {stats.totalGuests} guests{stats.totalAdmins > 0 ? `, ${stats.totalAdmins} admin${stats.totalAdmins > 1 ? 's' : ''}` : ''}
               </p>
             </CardContent>
           </Card>
@@ -139,7 +209,7 @@ const AdminDashboard = () => {
               <CardTitle className="text-sm font-medium text-muted-foreground">Service Fees</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-accent">${stats.serviceFees.toFixed(2)}</div>
+              <div className="text-2xl font-bold text-accent">{formatPHP(stats.serviceFees)}</div>
               <p className="text-xs text-muted-foreground mt-1">10% commission</p>
             </CardContent>
           </Card>
@@ -167,7 +237,7 @@ const AdminDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer">
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/admin/payments')}>
             <CardHeader>
               <DollarSign className="w-8 h-8 text-accent mb-2" />
               <CardTitle>Payment Management</CardTitle>
@@ -222,6 +292,24 @@ const AdminDashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Logout Confirmation Dialog */}
+      <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sign Out</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to sign out? You'll need to sign in again to access your account.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSignOut} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Sign Out
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

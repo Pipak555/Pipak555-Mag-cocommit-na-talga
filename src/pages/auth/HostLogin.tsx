@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,10 @@ const HostLogin = () => {
   const [loading, setLoading] = useState(false);
   const { signIn, signUp } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Check if we should show signup tab (from policy acceptance page)
+  const shouldShowSignup = location.state?.showSignup === true;
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,7 +124,7 @@ const HostLogin = () => {
           </CardHeader>
           
           <CardContent>
-            <Tabs defaultValue="signin" className="w-full">
+            <Tabs defaultValue={shouldShowSignup ? "signup" : "signin"} className="w-full">
               <TabsList className="grid w-full grid-cols-2 mb-8">
                 <TabsTrigger value="signin" className="text-base">Sign In</TabsTrigger>
                 <TabsTrigger value="signup" className="text-base">Sign Up</TabsTrigger>

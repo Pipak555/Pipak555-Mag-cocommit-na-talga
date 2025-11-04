@@ -89,7 +89,7 @@ const Landing = () => {
           </div>
           
           <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            <Link to="/guest/browse" className="group block">
+            <Link to="/guest/browse?category=home" className="group block">
               <Card className="p-8 text-center shadow-medium hover:shadow-hover transition-all duration-300 border-2 border-transparent hover:border-primary/50 bg-card h-full">
                 <div className="mb-6 relative">
                   <div className="w-32 h-32 mx-auto mb-4 rounded-2xl overflow-hidden bg-primary/5 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -106,7 +106,7 @@ const Landing = () => {
               </Card>
             </Link>
 
-            <Link to="/guest/browse" className="group block">
+            <Link to="/guest/browse?category=experience" className="group block">
               <Card className="p-8 text-center shadow-medium hover:shadow-hover transition-all duration-300 border-2 border-transparent hover:border-secondary/50 bg-card h-full">
                 <div className="mb-6 relative">
                   <div className="w-32 h-32 mx-auto mb-4 rounded-2xl overflow-hidden bg-secondary/5 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -123,7 +123,7 @@ const Landing = () => {
               </Card>
             </Link>
 
-            <Link to="/guest/browse" className="group block">
+            <Link to="/guest/browse?category=service" className="group block">
               <Card className="p-8 text-center shadow-medium hover:shadow-hover transition-all duration-300 border-2 border-transparent hover:border-accent/50 bg-card h-full">
                 <div className="mb-6 relative">
                   <div className="w-32 h-32 mx-auto mb-4 rounded-2xl overflow-hidden bg-accent/5 flex items-center justify-center group-hover:scale-105 transition-transform">

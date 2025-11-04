@@ -1,4 +1,5 @@
 import emailjs from '@emailjs/browser';
+import { formatPHP } from '@/lib/currency';
 
 // Initialize EmailJS (only needed once)
 const PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || '';
@@ -10,8 +11,67 @@ if (PUBLIC_KEY) {
 }
 
 /**
- * Send beautiful verification email via EmailJS
- * This supplements Firebase's default verification email with a beautiful design
+ * Send OTP verification email via EmailJS
+ * This sends a 6-digit OTP code instead of a verification link
+ */
+export const sendOTPEmail = async (
+  email: string,
+  fullName: string,
+  otpCode: string, // 6-digit OTP code
+  role: 'host' | 'guest' | 'admin'
+): Promise<boolean> => {
+  try {
+    // Check if EmailJS is properly configured
+    if (!PUBLIC_KEY) {
+      console.error('❌ EmailJS PUBLIC_KEY not configured. Add VITE_EMAILJS_PUBLIC_KEY to your .env file');
+      return false;
+    }
+    
+    if (!SERVICE_ID) {
+      console.error('❌ EmailJS SERVICE_ID not configured. Add VITE_EMAILJS_SERVICE_ID to your .env file');
+      return false;
+    }
+    
+    if (!TEMPLATE_ID_VERIFICATION) {
+      console.error('❌ EmailJS TEMPLATE_ID_VERIFICATION not configured. Add VITE_EMAILJS_TEMPLATE_VERIFICATION to your .env file');
+      return false;
+    }
+
+        const templateParams = {
+      to_email: email,
+      to_name: fullName,
+      user_role: role.charAt(0).toUpperCase() + role.slice(1),
+      otp_code: otpCode, // 6-digit OTP code
+      verification_link: `${window.location.origin}/verify-otp`, // Link to OTP verification page
+      platform_name: 'Mojo Dojo Casa House',
+      support_email: 'johnpatrickrobles143@gmail.com',
+      year: new Date().getFullYear().toString(),
+      logo_url: 'https://mojo-dojo-casa-house-f31a5.web.app/logo.png',
+      logo_alt: 'Mojo Dojo Casa House Logo',
+    };
+
+    console.log('📧 Attempting to send OTP email via EmailJS...');
+    const response = await emailjs.send(SERVICE_ID, TEMPLATE_ID_VERIFICATION, templateParams);
+    
+    console.log('✅ OTP verification email sent successfully to:', email);
+    console.log('📧 EmailJS response:', response);
+    return true;
+  } catch (error: any) {
+    console.error('❌ Failed to send OTP email:', error);
+    console.error('📧 EmailJS error details:', {
+      message: error?.text || error?.message,
+      status: error?.status,
+      publicKey: PUBLIC_KEY ? 'Set' : 'Missing',
+      serviceId: SERVICE_ID ? 'Set' : 'Missing',
+      templateId: TEMPLATE_ID_VERIFICATION ? 'Set' : 'Missing'
+    });
+    return false;
+  }
+};
+
+/**
+ * @deprecated Use sendOTPEmail instead
+ * Send beautiful verification email via EmailJS (old link-based method)
  */
 export const sendVerificationEmail = async (
   email: string,
@@ -19,31 +79,8 @@ export const sendVerificationEmail = async (
   verificationLink: string,
   role: 'host' | 'guest' | 'admin'
 ): Promise<boolean> => {
-  try {
-    if (!SERVICE_ID || !TEMPLATE_ID_VERIFICATION) {
-      console.warn('EmailJS credentials not configured. Skipping email send.');
-      return false;
-    }
-
-    const templateParams = {
-      to_email: email,
-      to_name: fullName,
-      user_role: role.charAt(0).toUpperCase() + role.slice(1),
-      verification_link: verificationLink,
-      platform_name: 'Mojo Dojo Casa House',
-      support_email: 'johnpatrickrobles143@gmail.com',
-      year: new Date().getFullYear().toString(),
-    };
-
-    await emailjs.send(SERVICE_ID, TEMPLATE_ID_VERIFICATION, templateParams);
-    
-    console.log('✅ Verification email sent successfully to:', email);
-    return true;
-  } catch (error) {
-    console.error('❌ Failed to send verification email:', error);
-    // Don't throw - email sending is non-critical
-    return false;
-  }
+  // Redirect to OTP method
+  return await sendOTPEmail(email, fullName, verificationLink, role);
 };
 
 /**
@@ -60,12 +97,12 @@ export const sendWelcomeEmail = async (
       return false;
     }
 
-    // Use the same template but without verification link
+    // Welcome email - no verification link, just a link to the dashboard
     const templateParams = {
       to_email: email,
       to_name: fullName,
       user_role: role.charAt(0).toUpperCase() + role.slice(1),
-      verification_link: `${window.location.origin}/guest/dashboard`, // Fallback link
+      verification_link: `${window.location.origin}/${role === 'guest' ? 'guest/login' : role === 'host' ? 'host/login' : 'admin/login'}`, // Link to login instead
       platform_name: 'Mojo Dojo Casa House',
       support_email: 'johnpatrickrobles143@gmail.com',
       year: new Date().getFullYear().toString(),
@@ -124,8 +161,8 @@ export const sendBookingConfirmationEmail = async (
       listing_location: listingLocation,
       check_in: checkInDate,
       check_out: checkOutDate,
-      guests: guests.toString(),
-      total_price: totalPrice.toFixed(2),
+      guests: guests === 1 ? '1 guest' : `${guests} guests`, // Handle plural here
+      total_price: formatPHP(totalPrice), // Format with PHP currency symbol
       booking_id: bookingId,
       booking_link: `${window.location.origin}/guest/dashboard`,
       platform_name: 'Mojo Dojo Casa House',

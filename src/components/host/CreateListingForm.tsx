@@ -35,6 +35,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { createListing, uploadListingImages } from "@/lib/firestore";
 import { listingFormSchema, type ListingFormData } from "@/lib/validation";
 import { toast } from "sonner";
+import { formatPHP } from "@/lib/currency";
 import { Upload, Save, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
 
 // Firebase imports used for draft handling
@@ -66,7 +67,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
   const [draftId, setDraftId] = useState<string | null>(null);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [paymentConfirmOpen, setPaymentConfirmOpen] = useState(false);
-  const SUBSCRIPTION_FEE = 10; // USD
+  const SUBSCRIPTION_FEE = 500; // PHP (₱500)
 
   // debounce timer ref
   const saveTimeoutRef = useRef<number | null>(null);
@@ -564,11 +565,8 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
   };
 
   const handleSaveDraft = async () => {
-    const isValid = await form.trigger();
-    if (!isValid) {
-      toast.error("Please fix the errors before saving as draft.");
-      return;
-    }
+    // Allow saving drafts even if required fields are missing
+    // No validation needed for drafts - they can be incomplete
     await saveDraftToFirestore({ manual: true });
   };
 
@@ -723,7 +721,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>
-                        Price per Night ($) <span className="text-destructive">*</span>
+                        Price per Night (₱) <span className="text-destructive">*</span>
                       </FormLabel>
                       <FormControl>
                         <Input
@@ -986,7 +984,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                       Processing...
                     </>
                   ) : (
-                    `Pay & Publish ($${SUBSCRIPTION_FEE})`
+                    `Pay & Publish (${formatPHP(SUBSCRIPTION_FEE)})`
                   )}
                 </Button>
                 <Button
@@ -1011,7 +1009,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
           <DialogHeader>
             <DialogTitle>Complete Subscription to Publish</DialogTitle>
             <DialogDescription>
-              Pay a one-time subscription fee of ${SUBSCRIPTION_FEE} to submit your listing for review.
+              Pay a one-time subscription fee of {formatPHP(SUBSCRIPTION_FEE)} to submit your listing for review.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1034,7 +1032,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
             <div className="rounded-lg bg-muted p-4">
               <div className="flex justify-between text-sm mb-2">
                 <span>Subscription Fee:</span>
-                <span className="font-medium">${SUBSCRIPTION_FEE}.00</span>
+                <span className="font-medium">{formatPHP(SUBSCRIPTION_FEE)}</span>
               </div>
               <div className="text-xs text-muted-foreground">
                 This fee covers listing review and processing. Your listing will be reviewed by our team before going live.
@@ -1080,7 +1078,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
           <AlertDialogHeader>
             <AlertDialogTitle>Proceed to Payment?</AlertDialogTitle>
             <AlertDialogDescription>
-              You're about to pay a one-time subscription fee of ${SUBSCRIPTION_FEE} to publish this listing.
+              You're about to pay a one-time subscription fee of {formatPHP(SUBSCRIPTION_FEE)} to publish this listing.
               After payment, your listing will be submitted for admin review.
             </AlertDialogDescription>
           </AlertDialogHeader>

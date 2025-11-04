@@ -5,39 +5,61 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Helper function to check if user is admin
+    // IMPORTANT: This function reads the user's own document, which should always be allowed
+    function isAdmin() {
+      return isSignedIn() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
     // Top-level listing collection rules
     match /listing/{listingId} {
-      // Anyone can read listings
+      // Anyone can read listings, admins can read all
       allow read: if true;
       
       // Only signed-in users can create listings (must be the host)
       allow create: if isSignedIn() && 
         request.resource.data.hostId == request.auth.uid;
       
-      // Only the host who owns the listing can update it
-      allow update: if isSignedIn() && 
-        request.resource.data.hostId == request.auth.uid &&
-        resource.data.hostId == request.auth.uid;
+      // Only the host who owns the listing can update it, or admin
+      allow update: if isSignedIn() && (
+        (request.resource.data.hostId == request.auth.uid &&
+         resource.data.hostId == request.auth.uid) ||
+        isAdmin()
+      );
       
-      // Only the host who owns the listing can delete it
-      allow delete: if isSignedIn() && 
-        resource.data.hostId == request.auth.uid;
+      // Only the host who owns the listing can delete it, or admin
+      allow delete: if isSignedIn() && (
+        resource.data.hostId == request.auth.uid ||
+        isAdmin()
+      );
     }
 
     // Top-level bookings collection
     match /bookings/{bookingId} {
+      // Allow read for involved users OR admin
       allow read: if isSignedIn() && (
-        request.auth.uid == resource.data.guestId ||
-        request.auth.uid == resource.data.hostId
+        resource.data.guestId == request.auth.uid ||
+        resource.data.hostId == request.auth.uid ||
+        isAdmin()
+      );
+      // Allow list/query for bookings where user is involved
+      allow list: if isSignedIn() && (
+        resource.data.guestId == request.auth.uid ||
+        resource.data.hostId == request.auth.uid ||
+        isAdmin()
       );
       allow create: if isSignedIn() && request.resource.data.guestId == request.auth.uid;
       allow update: if isSignedIn() && (
         request.auth.uid == resource.data.guestId ||
-        request.auth.uid == resource.data.hostId
+        request.auth.uid == resource.data.hostId ||
+        isAdmin()
       );
       allow delete: if isSignedIn() && (
         request.auth.uid == resource.data.guestId ||
-        request.auth.uid == resource.data.hostId
+        request.auth.uid == resource.data.hostId ||
+        isAdmin()
       );
     }
 
@@ -68,9 +90,12 @@ service cloud.firestore {
         get(/databases/$(database)/documents/hosts/$(hostId)/conversations/$(convId)).data.participants.hasAny([request.auth.uid]);
     }
 
-    // Users collection - users control their own document
+    // Users collection - users control their own document, admins can read all
+    // Allow authenticated users to read user documents (needed for hosts to send booking emails to guests)
     match /users/{userId} {
-      allow read, write: if isSignedIn() && request.auth.uid == userId;
+      // Allow read for: own document, admins, or any authenticated user (for booking emails, etc.)
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == userId;
 
       // Conversations under a user
       match /conversations/{convId} {
@@ -162,14 +187,57 @@ service cloud.firestore {
 
     // Reviews (authenticated users)
     match /reviews/{reviewId} {
+      // Anyone signed in can read reviews, admins can read all
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      // Guests can create reviews for their bookings
+      allow create: if isSignedIn() && request.resource.data.guestId == request.auth.uid;
+      // Guests can update/delete their own reviews, or admin
+      allow update: if isSignedIn() && (
+        resource.data.guestId == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.guestId == request.auth.uid ||
+        isAdmin()
+      );
     }
 
     // Admin-only analytics
     match /analytics/{document=**} {
       allow read, write: if isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // OTP collection - for email verification
+    match /otps/{otpId} {
+      // Users can create OTPs for themselves
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      
+      // Users can read their own unverified OTPs
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid && resource.data.verified == false;
+      
+      // Users can update their own OTPs (mark as verified)
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      // Users can delete their own OTPs
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Transactions collection
+    match /transactions/{transactionId} {
+      // Users can read their own transactions, admins can read all
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid || 
+        isAdmin()
+      );
+      
+      // Users can create their own transactions
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      
+      // Only admins can update transactions (e.g., confirm, refund)
+      allow update: if isAdmin();
+      
+      // Only admins can delete transactions
+      allow delete: if isAdmin();
     }
   }
 }

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { getBookings, updateBooking } from "@/lib/firestore";
+import { getBookings, updateBooking, createTransaction } from "@/lib/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Calendar } from "lucide-react";
+import { ArrowLeft, Calendar, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import {
@@ -19,6 +19,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { Booking } from "@/types";
+import { sendBookingConfirmationEmail } from "@/lib/emailjs";
+import { formatPHP } from "@/lib/currency";
+import { getDoc, doc, updateDoc, collection, query, where, orderBy, onSnapshot, getDocs } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import LoadingScreen from "@/components/ui/loading-screen";
 
 const HostBookings = () => {
   const navigate = useNavigate();
@@ -27,23 +32,201 @@ const HostBookings = () => {
   const [loading, setLoading] = useState(true);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [declineDialogOpen, setDeclineDialogOpen] = useState(false);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [bookingToUpdate, setBookingToUpdate] = useState<{ id: string; action: 'confirmed' | 'cancelled' } | null>(null);
 
   useEffect(() => {
-    if (user) {
-      loadBookings();
-    }
-  }, [user]);
+    if (!user) return;
 
-  const loadBookings = async () => {
+    setLoading(true);
+    
+    console.log('🔍 HostBookings: Setting up listener for host:', user.uid);
+    
+    // Start with simple query (no orderBy) to avoid index requirement
+    // This will work immediately without needing indexes
+    const bookingsQuery = query(
+      collection(db, 'bookings'),
+      where('hostId', '==', user.uid)
+    );
+
+    const unsubscribe = onSnapshot(
+      bookingsQuery,
+      (snapshot) => {
+        const bookingsData = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data
+          } as Booking;
+        });
+        
+        // Sort manually by createdAt (descending)
+        bookingsData.sort((a, b) => {
+          const dateA = new Date(a.createdAt || 0).getTime();
+          const dateB = new Date(b.createdAt || 0).getTime();
+          return dateB - dateA; // Descending
+        });
+        
+        console.log('📊 Real-time bookings update:', {
+          hostUid: user.uid,
+          count: bookingsData.length,
+          allBookings: snapshot.docs.map(doc => ({
+            id: doc.id,
+            hostId: doc.data().hostId,
+            hostIdType: typeof doc.data().hostId,
+            guestId: doc.data().guestId,
+            status: doc.data().status,
+            listingId: doc.data().listingId,
+            createdAt: doc.data().createdAt
+          })),
+          matchingBookings: bookingsData.filter(b => String(b.hostId) === String(user.uid)).length
+        });
+        
+        // Filter to ensure only bookings with matching hostId (double-check with string conversion)
+        const filteredBookings = bookingsData.filter(b => {
+          const matches = String(b.hostId) === String(user.uid);
+          if (!matches && b.hostId) {
+            console.warn('⚠️ Booking hostId mismatch:', {
+              bookingId: b.id,
+              bookingHostId: b.hostId,
+              bookingHostIdType: typeof b.hostId,
+              currentHostUid: user.uid,
+              currentHostUidType: typeof user.uid,
+              match: matches
+            });
+          }
+          return matches;
+        });
+        
+        setBookings(filteredBookings);
+        setLoading(false);
+        
+        if (filteredBookings.length === 0 && bookingsData.length > 0) {
+          console.warn('⚠️ Found bookings but none match hostId:', {
+            hostUid: user.uid,
+            bookingHostIds: bookingsData.map(b => ({
+              id: b.id,
+              hostId: b.hostId,
+              hostIdType: typeof b.hostId
+            }))
+          });
+        }
+        
+        // Also fetch all bookings for debugging if no matches found
+        if (filteredBookings.length === 0) {
+          console.log('🔍 Debug: No bookings found for host. Checking all bookings...');
+          getAllBookingsForDebug(user.uid);
+          
+          // Also try a direct query to verify the issue
+          checkDirectQuery(user.uid);
+        }
+      },
+      (error: any) => {
+        console.error('❌ Error in bookings listener:', error);
+        setLoading(false);
+        toast.error(`Failed to load bookings: ${error.message || 'Unknown error'}`);
+        // Fallback to getBookings
+        loadBookingsFallback();
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user]);
+  
+  // Debug function to fetch all bookings
+  const getAllBookingsForDebug = async (hostUid: string) => {
+    try {
+      const allBookingsQuery = query(collection(db, 'bookings'));
+      const snapshot = await getDocs(allBookingsQuery);
+      const allBookings = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      const matchingBookings = allBookings.filter((b: any) => String(b.hostId) === String(hostUid));
+      
+      console.log('🔍 DEBUG: All bookings in Firestore:', {
+        total: allBookings.length,
+        bookings: allBookings.map((b: any) => ({
+          id: b.id,
+          hostId: b.hostId,
+          hostIdType: typeof b.hostId,
+          guestId: b.guestId,
+          status: b.status,
+          listingId: b.listingId,
+          createdAt: b.createdAt
+        })),
+        hostUidLookingFor: hostUid,
+        matchingBookings: matchingBookings.length,
+        matchingBookingDetails: matchingBookings.map((b: any) => ({
+          id: b.id,
+          hostId: b.hostId,
+          guestId: b.guestId,
+          status: b.status
+        }))
+      });
+      
+      if (matchingBookings.length > 0) {
+        console.warn('⚠️ Found bookings with matching hostId in all bookings:', {
+          hostUid,
+          matchingBookingsCount: matchingBookings.length,
+          possibleCauses: [
+            'Firestore security rules may be blocking the where query',
+            'Index not deployed yet for where clause',
+            'Data type mismatch in query',
+            'Query timing issue - booking may not be indexed yet'
+          ]
+        });
+      }
+    } catch (error: any) {
+      console.error('❌ Error fetching all bookings for debug:', error);
+      if (error.code === 'permission-denied') {
+        console.error('🔒 Permission denied - check Firestore security rules for bookings collection');
+      }
+    }
+  };
+  
+  // Direct query check
+  const checkDirectQuery = async (hostUid: string) => {
+    try {
+      console.log('🔍 Testing direct query with hostId:', hostUid);
+      const directQuery = query(
+        collection(db, 'bookings'),
+        where('hostId', '==', hostUid)
+      );
+      const snapshot = await getDocs(directQuery);
+      const directBookings = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      console.log('📊 Direct query result:', {
+        hostUid,
+        count: directBookings.length,
+        bookings: directBookings.map((b: any) => ({
+          id: b.id,
+          hostId: b.hostId,
+          guestId: b.guestId,
+          status: b.status
+        }))
+      });
+    } catch (error: any) {
+      console.error('❌ Direct query failed:', error);
+      if (error.code === 'permission-denied') {
+        console.error('🔒 Permission denied - Firestore rules may be blocking the query');
+      }
+    }
+  };
+
+  const loadBookingsFallback = async () => {
     if (!user) return;
     try {
       const data = await getBookings({ hostId: user.uid });
       setBookings(data);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
+      console.log('📊 Bookings loaded (fallback):', data.length, 'bookings');
+    } catch (error: any) {
+      console.error('❌ Error in fallback load:', error);
+      toast.error(`Failed to load bookings: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -52,22 +235,151 @@ const HostBookings = () => {
     if (status === 'confirmed') {
       setConfirmDialogOpen(true);
     } else {
-      setDeclineDialogOpen(true);
+      // Check if this is a confirmed booking being cancelled (needs refund) or a pending booking being declined
+      const booking = bookings.find(b => b.id === id);
+      if (booking?.status === 'confirmed') {
+        setCancelDialogOpen(true);
+      } else {
+        setDeclineDialogOpen(true);
+      }
     }
   };
 
   const confirmStatusUpdate = async () => {
     if (!bookingToUpdate) return;
     try {
+      // Get booking details before updating
+      const bookingDoc = await getDoc(doc(db, 'bookings', bookingToUpdate.id));
+      const booking = bookingDoc.exists() ? bookingDoc.data() : null;
+      
       await updateBooking(bookingToUpdate.id, { status: bookingToUpdate.action });
-      toast.success(`Booking ${bookingToUpdate.action}`);
-      loadBookings();
+      
+      // If booking is cancelled and was confirmed, process refund
+      if (bookingToUpdate.action === 'cancelled' && booking?.status === 'confirmed') {
+        const refundAmount = booking.totalPrice || 0;
+        
+        if (refundAmount > 0 && booking.guestId) {
+          try {
+            // Get guest's current wallet balance
+            const guestDoc = await getDoc(doc(db, 'users', booking.guestId));
+            const currentBalance = guestDoc.exists() ? (guestDoc.data().walletBalance || 0) : 0;
+            const newBalance = currentBalance + refundAmount;
+            
+            // Update guest's wallet balance
+            await updateDoc(doc(db, 'users', booking.guestId), {
+              walletBalance: newBalance
+            });
+            
+            // Create refund transaction for guest
+            await createTransaction({
+              userId: booking.guestId,
+              type: 'refund',
+              amount: refundAmount,
+              description: `Refund for cancelled booking #${bookingToUpdate.id.slice(0, 8)} (cancelled by host)`,
+              status: 'completed'
+            });
+            
+            console.log('✅ Refund processed for host cancellation:', {
+              bookingId: bookingToUpdate.id,
+              guestId: booking.guestId,
+              refundAmount,
+              newBalance
+            });
+            
+            toast.success(`Booking cancelled. ${refundAmount > 0 ? `₱${refundAmount.toFixed(2)} has been refunded to guest's wallet.` : ''}`);
+          } catch (refundError: any) {
+            console.error('Error processing refund:', refundError);
+            toast.warning('Booking cancelled, but refund could not be processed. Please contact support.');
+          }
+        } else {
+          toast.success('Booking cancelled');
+        }
+      }
+      
+      // If booking is confirmed, send confirmation email to guest
+      if (bookingToUpdate.action === 'confirmed') {
+        try {
+          // Get booking details
+          const bookingDoc = await getDoc(doc(db, 'bookings', bookingToUpdate.id));
+          if (bookingDoc.exists()) {
+            const booking = bookingDoc.data();
+            
+            // Get listing details
+            const listingDoc = await getDoc(doc(db, 'listing', booking.listingId));
+            if (listingDoc.exists()) {
+              const listing = listingDoc.data();
+              
+              // Get guest details
+              try {
+                const guestDoc = await getDoc(doc(db, 'users', booking.guestId));
+                if (guestDoc.exists()) {
+                  const guestData = guestDoc.data();
+                  
+                  console.log('📧 Preparing to send confirmation email to guest:', {
+                    guestId: booking.guestId,
+                    guestEmail: guestData.email,
+                    guestName: guestData.fullName
+                  });
+                  
+                  // Send confirmation email to guest
+                  const emailSent = await sendBookingConfirmationEmail(
+                    guestData.email || booking.guestId,
+                    guestData.fullName || 'Guest',
+                    listing.title || 'Your Booking',
+                    listing.location || '',
+                    booking.checkIn,
+                    booking.checkOut,
+                    booking.guests || 1,
+                    booking.totalPrice || 0,
+                    bookingToUpdate.id
+                  );
+                  
+                  if (emailSent) {
+                    toast.success('Booking confirmed and confirmation email sent to guest!');
+                  } else {
+                    toast.warning('Booking confirmed, but email could not be sent. Please check EmailJS configuration.');
+                  }
+                } else {
+                  console.warn('Guest document not found for booking:', booking.guestId);
+                  toast.warning('Booking confirmed, but guest email not found.');
+                }
+              } catch (guestError: any) {
+                console.error('❌ Error fetching guest document:', guestError);
+                if (guestError.code === 'permission-denied') {
+                  toast.error('Permission denied: Cannot access guest information. Please check Firestore rules.');
+                } else {
+                  toast.warning('Booking confirmed, but could not fetch guest information for email.');
+                }
+              }
+            } else {
+              console.warn('Listing document not found for booking:', booking.listingId);
+              toast.success('Booking confirmed, but listing details not found.');
+            }
+          } else {
+            console.warn('Booking document not found:', bookingToUpdate.id);
+            toast.success('Booking confirmed, but details not found for email.');
+          }
+        } catch (emailError) {
+          console.error('Failed to send confirmation email:', emailError);
+          toast.success('Booking confirmed, but email could not be sent.');
+          // Don't fail the booking update if email fails
+        }
+      } else if (bookingToUpdate.action === 'cancelled') {
+        // Already handled refund above, just show success message
+        if (booking?.status !== 'confirmed') {
+          toast.success('Booking declined');
+        }
+      }
+      
+      // Bookings will update automatically via real-time listener
       setBookingToUpdate(null);
     } catch (error) {
+      console.error('Error updating booking:', error);
       toast.error("Failed to update booking");
     } finally {
       setConfirmDialogOpen(false);
       setDeclineDialogOpen(false);
+      setCancelDialogOpen(false);
     }
   };
 
@@ -87,18 +399,37 @@ const HostBookings = () => {
               <p className="text-xs text-muted-foreground">Manage reservations</p>
             </div>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => {
+                console.log('🔄 Manual refresh triggered for host:', user?.uid);
+                loadBookingsFallback();
+              }}
+              title="Refresh bookings"
+            >
+              <RefreshCw className="h-5 w-5" />
+            </Button>
+            <ThemeToggle />
+          </div>
         </div>
       </header>
       
       <div className="max-w-6xl mx-auto p-6">
 
         {loading ? (
-          <p>Loading...</p>
+          <LoadingScreen />
         ) : bookings.length === 0 ? (
           <Card>
-            <CardContent className="py-12 text-center text-muted-foreground">
-              <p>No booking requests</p>
+            <CardContent className="py-12 text-center">
+              <p className="text-muted-foreground mb-4">No booking requests</p>
+              <p className="text-xs text-muted-foreground">
+                Bookings will appear here when guests make reservation requests for your listings.
+              </p>
+              <p className="text-xs text-muted-foreground mt-2">
+                Current host ID: {user?.uid}
+              </p>
             </CardContent>
           </Card>
         ) : (
@@ -124,10 +455,11 @@ const HostBookings = () => {
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">Total</p>
-                        <p className="font-medium">${booking.totalPrice}</p>
+                        <p className="font-medium">{formatPHP(booking.totalPrice || 0)}</p>
                       </div>
                     </div>
                     
+                    {/* Action buttons for pending bookings */}
                     {booking.status === 'pending' && (
                       <div className="flex gap-2">
                         <Button 
@@ -142,6 +474,21 @@ const HostBookings = () => {
                           onClick={() => handleUpdateStatus(booking.id, 'cancelled')}
                         >
                           Decline
+                        </Button>
+                      </div>
+                    )}
+                    
+                    {/* Cancel button for confirmed upcoming bookings */}
+                    {booking.status === 'confirmed' && new Date(booking.checkIn) >= new Date() && (
+                      <div className="pt-4 border-t">
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleUpdateStatus(booking.id, 'cancelled')}
+                          className="w-full"
+                        >
+                          <X className="h-4 w-4 mr-2" />
+                          Cancel Booking
                         </Button>
                       </div>
                     )}
@@ -185,6 +532,38 @@ const HostBookings = () => {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Decline Booking
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Cancel Confirmed Booking Dialog */}
+      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Booking?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to cancel this confirmed booking?
+              {bookingToUpdate && (() => {
+                const booking = bookings.find(b => b.id === bookingToUpdate.id);
+                return booking && booking.totalPrice > 0 ? (
+                  <div className="mt-2 p-3 bg-muted rounded-md">
+                    <p className="text-sm font-medium">Refund Information:</p>
+                    <p className="text-sm text-muted-foreground">
+                      A refund of {formatPHP(booking.totalPrice)} will be credited to the guest's wallet balance.
+                    </p>
+                  </div>
+                ) : null;
+              })()}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setBookingToUpdate(null)}>Keep Booking</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmStatusUpdate} 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Cancel Booking
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

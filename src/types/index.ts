@@ -59,7 +59,27 @@ export interface Transaction {
   type: 'deposit' | 'withdrawal' | 'payment' | 'refund' | 'reward';
   amount: number;
   description: string;
+  status?: 'pending' | 'completed' | 'failed' | 'refunded';
+  paymentMethod?: string;
+  paymentId?: string;
   createdAt: string;
+}
+
+export interface NotificationPreferences {
+  email: {
+    bookingConfirmations: boolean;
+    bookingCancellations: boolean;
+    bookingReminders: boolean;
+    newMessages: boolean;
+    paymentUpdates: boolean;
+    promotionalOffers: boolean;
+  };
+  inApp: {
+    bookingUpdates: boolean;
+    newMessages: boolean;
+    paymentNotifications: boolean;
+    systemAlerts: boolean;
+  };
 }
 
 export interface UserProfile {
@@ -72,6 +92,7 @@ export interface UserProfile {
   favorites: string[]; // Liked listings
   wishlist: string[]; // Future planned listings (separate from favorites)
   coupons?: Coupon[];
+  notifications?: NotificationPreferences;
 }
 
 export interface Coupon {

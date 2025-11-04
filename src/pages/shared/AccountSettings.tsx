@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -16,10 +16,13 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { getListings, getBookings, toggleFavorite, toggleWishlist } from "@/lib/firestore";
 import { CouponManager } from "@/components/coupons/CouponManager";
 import type { UserProfile, Listing, Booking, Coupon } from "@/types";
+import { formatPHP } from "@/lib/currency";
+import LoadingScreen from "@/components/ui/loading-screen";
 
 const AccountSettings = () => {
   const navigate = useNavigate();
-  const { user, userRole } = useAuth();
+  const [searchParams] = useSearchParams();
+  const { user, userRole, refreshUserProfile } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [favoriteListings, setFavoriteListings] = useState<Listing[]>([]);
@@ -28,12 +31,20 @@ const AccountSettings = () => {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'profile');
 
   useEffect(() => {
     if (user) {
       loadProfile();
     }
   }, [user, userRole]);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (user && profile && userRole === 'guest') {
@@ -154,9 +165,15 @@ const AccountSettings = () => {
     setLoading(true);
     try {
       await updateDoc(doc(db, 'users', user.uid), {
-        email: profile.email,
         fullName: profile.fullName,
       });
+      
+      // Reload profile from Firestore to update current page
+      await loadProfile();
+      
+      // Refresh AuthContext so other pages (like dashboard) update
+      await refreshUserProfile();
+      
       toast.success("Profile updated successfully!");
     } catch (error) {
       toast.error("Failed to update profile");
@@ -171,7 +188,7 @@ const AccountSettings = () => {
     else navigate('/admin/dashboard');
   };
 
-  if (!profile) return <div className="p-6">Loading...</div>;
+  if (!profile) return <LoadingScreen />;
 
   return (
     <div className="min-h-screen bg-background">
@@ -183,7 +200,7 @@ const AccountSettings = () => {
 
         <h1 className="text-3xl font-bold mb-6">Account Settings</h1>
 
-        <Tabs defaultValue="profile" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className={`grid w-full ${userRole === 'guest' ? 'grid-cols-6' : userRole === 'host' ? 'grid-cols-5' : 'grid-cols-4'}`}>
             <TabsTrigger value="profile">
               <User className="h-4 w-4 mr-2" />
@@ -244,7 +261,7 @@ const AccountSettings = () => {
                     id="email"
                     type="email"
                     value={profile.email}
-                    onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+                    disabled
                   />
                 </div>
                 <div>
@@ -257,7 +274,7 @@ const AccountSettings = () => {
                 </div>
                 <div>
                   <Label htmlFor="balance">Wallet Balance</Label>
-                  <Input id="balance" value={`$${profile.walletBalance}`} disabled />
+                  <Input id="balance" value={formatPHP(profile.walletBalance)} disabled />
                 </div>
                 <Button onClick={handleSaveProfile} disabled={loading}>
                   {loading ? "Saving..." : "Save Changes"}
@@ -388,7 +405,7 @@ const AccountSettings = () => {
                           <p className="text-sm text-muted-foreground">
                             {booking.guests} guest{booking.guests > 1 ? 's' : ''}
                           </p>
-                          <p className="font-semibold">${booking.totalPrice}</p>
+                          <p className="font-semibold">{formatPHP(booking.totalPrice || 0)}</p>
                         </div>
                       </div>
                     ))}

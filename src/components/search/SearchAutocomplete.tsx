@@ -6,6 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Search, Clock, X, TrendingUp } from "lucide-react";
 import { getListings } from "@/lib/firestore";
 import type { Listing } from "@/types";
+import { formatPHP } from "@/lib/currency";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -220,7 +221,7 @@ export const SearchAutocomplete = ({
                         <div className="flex-1 min-w-0">
                           <p className="font-medium truncate">{listing.title}</p>
                           <p className="text-xs text-muted-foreground truncate">{listing.location}</p>
-                          <p className="text-xs font-semibold text-primary mt-1">${listing.price}/night</p>
+                          <p className="text-xs font-semibold text-primary mt-1">{formatPHP(listing.price)}/night</p>
                         </div>
                       </div>
                     </CommandItem>

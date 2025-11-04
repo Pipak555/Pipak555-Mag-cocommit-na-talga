@@ -11,6 +11,17 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { getBookings } from '@/lib/firestore';
 import type { Booking } from '@/types';
+import { formatPHP } from '@/lib/currency';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // Today's Schedule Component
 const TodaySchedule = () => {
@@ -94,7 +105,7 @@ const TodaySchedule = () => {
                         {checkIn.toLocaleDateString()} - {checkOut.toLocaleDateString()}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {booking.guests} guest{booking.guests > 1 ? 's' : ''} • ${booking.totalPrice}
+                        {booking.guests} guest{booking.guests > 1 ? 's' : ''} • {formatPHP(booking.totalPrice || 0)}
                       </p>
                     </div>
                     <Badge>{booking.status}</Badge>
@@ -118,6 +129,7 @@ const HostDashboard = () => {
     totalEarnings: 0,
     rewardPoints: userProfile?.points || 0,
   });
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!user || userRole !== 'host') {
@@ -215,7 +227,7 @@ const HostDashboard = () => {
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <Button variant="outline" onClick={handleSignOut}>Sign Out</Button>
+            <Button variant="outline" onClick={() => setLogoutDialogOpen(true)}>Sign Out</Button>
           </div>
         </div>
       </header>
@@ -271,7 +283,7 @@ const HostDashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="flex items-baseline justify-between">
-                <div className="text-4xl font-bold">${stats.totalEarnings.toFixed(2)}</div>
+                <div className="text-4xl font-bold">{formatPHP(stats.totalEarnings)}</div>
               </div>
             </CardContent>
           </Card>
@@ -343,7 +355,7 @@ const HostDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-all duration-300 cursor-pointer border-border/50 hover:border-accent/50 group" onClick={() => navigate('/settings')}>
+          <Card className="shadow-medium hover:shadow-hover transition-all duration-300 cursor-pointer border-border/50 hover:border-accent/50 group" onClick={() => navigate('/host/payments')}>
             <CardHeader className="space-y-3">
               <div className="w-14 h-14 rounded-xl bg-accent/10 flex items-center justify-center group-hover:scale-110 transition-transform">
                 <DollarSign className="w-7 h-7 text-accent" />
@@ -355,7 +367,7 @@ const HostDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-all duration-300 cursor-pointer border-border/50 hover:border-accent/50 group">
+          <Card className="shadow-medium hover:shadow-hover transition-all duration-300 cursor-pointer border-border/50 hover:border-accent/50 group" onClick={() => navigate('/host/settings?tab=profile')}>
             <CardHeader className="space-y-3">
               <div className="w-14 h-14 rounded-xl bg-accent/10 flex items-center justify-center group-hover:scale-110 transition-transform">
                 <Award className="w-7 h-7 text-accent" />
@@ -366,11 +378,41 @@ const HostDashboard = () => {
               </CardDescription>
             </CardHeader>
           </Card>
+
+          <Card className="shadow-medium hover:shadow-hover transition-all duration-300 cursor-pointer border-border/50 hover:border-muted-foreground/50 group" onClick={() => navigate('/host/settings')}>
+            <CardHeader className="space-y-3">
+              <div className="w-14 h-14 rounded-xl bg-muted/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <Settings className="w-7 h-7 text-muted-foreground" />
+              </div>
+              <CardTitle className="group-hover:text-muted-foreground transition-colors">Settings</CardTitle>
+              <CardDescription>
+                Manage your account preferences
+              </CardDescription>
+            </CardHeader>
+          </Card>
         </div>
 
         {/* Today's Schedule */}
         <TodaySchedule />
       </div>
+
+      {/* Logout Confirmation Dialog */}
+      <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sign Out</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to sign out? You'll need to sign in again to access your account.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSignOut} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Sign Out
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

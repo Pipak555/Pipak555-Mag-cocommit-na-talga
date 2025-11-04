@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Heart, MapPin, Star, Users, Bookmark } from "lucide-react";
 import type { Listing } from "@/types";
+import { formatPHP } from "@/lib/currency";
 
 interface ListingCardProps {
   listing: Listing;
@@ -67,9 +68,9 @@ export const ListingCard = ({ listing, onView, onFavorite, onWishlist, isFavorit
         </Badge>
         
         {/* Price Badge */}
-        <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-lg z-10">
-          <span className="text-lg font-bold text-foreground">${listing.price}</span>
-          <span className="text-xs text-muted-foreground">/night</span>
+        <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-lg z-10 border border-white/20">
+          <span className="text-lg font-bold text-gray-900">{formatPHP(listing.price)}</span>
+          <span className="text-xs text-gray-700 font-medium">/night</span>
         </div>
       </div>
       
@@ -78,24 +79,24 @@ export const ListingCard = ({ listing, onView, onFavorite, onWishlist, isFavorit
         <h3 className="font-semibold text-lg mb-2 line-clamp-1 group-hover:text-primary transition-colors">
           {listing.title}
         </h3>
-        <div className="flex items-center text-sm text-muted-foreground mb-3">
-          <MapPin className="h-4 w-4 mr-1.5 flex-shrink-0" />
+        <div className="flex items-center text-sm text-foreground/80 mb-3">
+          <MapPin className="h-4 w-4 mr-1.5 flex-shrink-0 text-foreground/70" />
           <span className="line-clamp-1">{listing.location}</span>
         </div>
-        <p className="text-sm text-muted-foreground line-clamp-2 mb-4 leading-relaxed">
+        <p className="text-sm text-foreground/75 line-clamp-2 mb-4 leading-relaxed">
           {listing.description}
         </p>
         
         {/* Rating & Guests */}
-        <div className="flex items-center justify-between pt-3 border-t">
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+        <div className="flex items-center justify-between pt-3 border-t border-border/50">
+          <div className="flex items-center gap-4 text-xs text-foreground/80">
             <div className="flex items-center gap-1">
               <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
-              <span>4.8</span>
+              <span className="font-medium">4.8</span>
             </div>
             <div className="flex items-center gap-1">
-              <Users className="h-3.5 w-3.5" />
-              <span>{listing.maxGuests} guests</span>
+              <Users className="h-3.5 w-3.5 text-foreground/70" />
+              <span className="font-medium">{listing.maxGuests} guests</span>
             </div>
           </div>
         </div>

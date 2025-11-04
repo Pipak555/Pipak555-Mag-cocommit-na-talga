@@ -24,10 +24,20 @@ const BrowseListings = () => {
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  // Initialize filters - check URL params first for category
+  const getInitialCategory = () => {
+    const params = new URLSearchParams(location.search);
+    const category = params.get('category');
+    if (category && ['home', 'experience', 'service'].includes(category)) {
+      return category as 'home' | 'experience' | 'service';
+    }
+    return 'all';
+  };
+
   const [filters, setFilters] = useState<FilterValues>({
     location: '',
     guests: 1,
-    category: 'all'
+    category: getInitialCategory()
   });
 
   useEffect(() => {
@@ -40,11 +50,33 @@ const BrowseListings = () => {
   }, [user, filters.category]);
 
   useEffect(() => {
-    // Get search query from URL params if present
+    // Get search query and category from URL params if present
     const params = new URLSearchParams(location.search);
     const query = params.get('q');
+    const category = params.get('category');
+    
     if (query) {
       setSearchQuery(query);
+    }
+    
+    // Auto-filter by category if provided in URL
+    if (category && ['home', 'experience', 'service'].includes(category)) {
+      const categoryValue = category as 'home' | 'experience' | 'service';
+      // Only update if different to avoid unnecessary re-renders
+      setFilters(prev => {
+        if (prev.category !== categoryValue) {
+          return { ...prev, category: categoryValue };
+        }
+        return prev;
+      });
+    } else if (!category) {
+      // If no category in URL, reset to 'all' if it was set
+      setFilters(prev => {
+        if (prev.category !== 'all') {
+          return { ...prev, category: 'all' };
+        }
+        return prev;
+      });
     }
   }, [location.search]);
 
@@ -206,7 +238,10 @@ const BrowseListings = () => {
         </div>
 
         <div className="mb-8">
-          <AdvancedFilter onFilterChange={handleFilterChange} />
+          <AdvancedFilter 
+            onFilterChange={handleFilterChange} 
+            initialFilters={filters} // Pass current filters
+          />
         </div>
 
         {loading ? (

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,15 +21,25 @@ export interface FilterValues {
 
 interface AdvancedFilterProps {
   onFilterChange: (filters: FilterValues) => void;
+  initialFilters?: FilterValues; // Add this prop
 }
 
-export const AdvancedFilter = ({ onFilterChange }: AdvancedFilterProps) => {
-  const [filters, setFilters] = useState<FilterValues>({
-    location: '',
-    guests: 1,
-    category: 'all'
-  });
+export const AdvancedFilter = ({ onFilterChange, initialFilters }: AdvancedFilterProps) => {
+  const [filters, setFilters] = useState<FilterValues>(
+    initialFilters || {
+      location: '',
+      guests: 1,
+      category: 'all'
+    }
+  );
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Sync with parent filters when they change (e.g., from URL params)
+  useEffect(() => {
+    if (initialFilters) {
+      setFilters(initialFilters);
+    }
+  }, [initialFilters]);
 
   const handleApply = () => {
     onFilterChange(filters);
@@ -144,7 +154,7 @@ export const AdvancedFilter = ({ onFilterChange }: AdvancedFilterProps) => {
         {showAdvanced && (
           <div className="grid md:grid-cols-2 gap-4 pt-4 border-t">
             <div>
-              <Label htmlFor="minPrice">Min Price ($)</Label>
+              <Label htmlFor="minPrice">Min Price (₱)</Label>
               <Input
                 id="minPrice"
                 type="number"
@@ -155,7 +165,7 @@ export const AdvancedFilter = ({ onFilterChange }: AdvancedFilterProps) => {
               />
             </div>
             <div>
-              <Label htmlFor="maxPrice">Max Price ($)</Label>
+              <Label htmlFor="maxPrice">Max Price (₱)</Label>
               <Input
                 id="maxPrice"
                 type="number"

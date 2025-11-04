@@ -6,6 +6,7 @@ import { ArrowLeft, Download, FileText } from "lucide-react";
 import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { toast } from "sonner";
+import { formatPHP } from "@/lib/currency";
 
 const Reports = () => {
   const navigate = useNavigate();
@@ -61,8 +62,8 @@ Generated: ${new Date().toLocaleString()}
 
 Metric,Value
 Total Bookings,${reportData.totalBookings}
-Total Revenue,$${reportData.totalRevenue.toFixed(2)}
-Service Fees Collected,$${reportData.totalServiceFees.toFixed(2)}
+Total Revenue,₱${reportData.totalRevenue.toFixed(2)}
+Service Fees Collected,₱${reportData.totalServiceFees.toFixed(2)}
 Total Users,${reportData.totalUsers}
 Active Hosts,${reportData.activeHosts}
 Active Guests,${reportData.activeGuests}
@@ -124,13 +125,13 @@ Total Listings,${reportData.totalListings}
                   </div>
                   <div className="p-4 border rounded-lg">
                     <div className="text-2xl font-bold text-green-600">
-                      ${reportData.totalRevenue.toFixed(2)}
+                      {formatPHP(reportData.totalRevenue)}
                     </div>
                     <div className="text-sm text-muted-foreground">Total Revenue</div>
                   </div>
                   <div className="p-4 border rounded-lg">
                     <div className="text-2xl font-bold text-blue-600">
-                      ${reportData.totalServiceFees.toFixed(2)}
+                      {formatPHP(reportData.totalServiceFees)}
                     </div>
                     <div className="text-sm text-muted-foreground">Service Fees (15%)</div>
                   </div>
@@ -162,18 +163,18 @@ Total Listings,${reportData.totalListings}
                 <div className="space-y-3">
                   <div className="flex justify-between items-center p-3 bg-muted rounded">
                     <span>Gross Revenue</span>
-                    <span className="font-bold">${reportData.totalRevenue.toFixed(2)}</span>
+                    <span className="font-bold">{formatPHP(reportData.totalRevenue)}</span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-muted rounded">
                     <span>Platform Fee (15%)</span>
                     <span className="font-bold text-blue-600">
-                      ${reportData.totalServiceFees.toFixed(2)}
+                      {formatPHP(reportData.totalServiceFees)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-primary/10 rounded">
                     <span className="font-semibold">Net to Hosts</span>
                     <span className="font-bold">
-                      ${(reportData.totalRevenue - reportData.totalServiceFees).toFixed(2)}
+                      {formatPHP(reportData.totalRevenue - reportData.totalServiceFees)}
                     </span>
                   </div>
                 </div>

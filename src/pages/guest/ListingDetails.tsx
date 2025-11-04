@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
-import { ArrowLeft, MapPin, Users, Heart, Bookmark } from "lucide-react";
+import { ArrowLeft, MapPin, Users, Heart, Bookmark, User } from "lucide-react";
 import { toast } from "sonner";
 import { ReviewList } from "@/components/reviews/ReviewList";
 import { SocialShare } from "@/components/shared/SocialShare";
@@ -15,6 +15,8 @@ import type { Listing } from "@/types";
 import { sendBookingConfirmationEmail } from '@/lib/emailjs';
 import { getDoc, doc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { formatPHP } from '@/lib/currency';
+import LoadingScreen from "@/components/ui/loading-screen";
 
 const ListingDetails = () => {
   const { id } = useParams();
@@ -27,6 +29,7 @@ const ListingDetails = () => {
   const [loading, setLoading] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
+  const [hostInfo, setHostInfo] = useState<{ fullName?: string; email?: string } | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -42,6 +45,41 @@ const ListingDetails = () => {
     if (!id) return;
     const data = await getListing(id);
     setListing(data);
+    
+    if (data) {
+      console.log('📋 Listing loaded:', {
+        id: data.id,
+        title: data.title,
+        hostId: data.hostId,
+        hasHostId: !!data.hostId
+      });
+      
+      if (!data.hostId) {
+        console.error('❌ Listing missing hostId!', data);
+      } else {
+        // Load host information
+        await loadHostInfo(data.hostId);
+      }
+    }
+  };
+  
+  const loadHostInfo = async (hostId: string) => {
+    try {
+      const hostDoc = await getDoc(doc(db, 'users', hostId));
+      if (hostDoc.exists()) {
+        const hostData = hostDoc.data();
+        setHostInfo({
+          fullName: hostData.fullName || 'Host',
+          email: hostData.email || ''
+        });
+      } else {
+        console.warn('Host user document not found:', hostId);
+        setHostInfo({ fullName: 'Host', email: '' });
+      }
+    } catch (error) {
+      console.error('Error loading host info:', error);
+      setHostInfo({ fullName: 'Host', email: '' });
+    }
   };
 
   const loadFavorites = async () => {
@@ -102,10 +140,15 @@ const ListingDetails = () => {
       return;
     }
 
+    if (!listing.hostId) {
+      toast.error("Listing error: Missing host information. Please contact support.");
+      console.error('Listing missing hostId:', listing);
+      return;
+    }
+
     setLoading(true);
     try {
-      // Create booking and get the booking ID
-      const bookingId = await createBooking({
+      const bookingData = {
         listingId: listing.id,
         guestId: user.uid,
         hostId: listing.hostId,
@@ -113,37 +156,76 @@ const ListingDetails = () => {
         checkOut: checkOut.toISOString(),
         guests,
         totalPrice: calculateTotal(),
-        status: 'pending',
+        status: 'pending' as const, // Booking is pending host approval
+      };
+
+      console.log('📝 Creating booking with data:', {
+        ...bookingData,
+        hostIdValue: listing.hostId,
+        hostIdType: typeof listing.hostId,
+        hostIdLength: listing.hostId?.length
       });
 
-      // Send booking confirmation email
+      // Create booking and get the booking ID
+      const bookingId = await createBooking(bookingData);
+
+      console.log('✅ Booking created successfully:', bookingId);
+      console.log('📊 Booking details:', {
+        bookingId,
+        hostId: listing.hostId,
+        guestId: user.uid,
+        listingId: listing.id,
+        status: 'pending',
+        checkIn: bookingData.checkIn,
+        checkOut: bookingData.checkOut,
+        guests: bookingData.guests,
+        totalPrice: bookingData.totalPrice
+      });
+      
+      // Verify booking was created correctly
       try {
-        // Fetch guest user data for email
-        const guestDoc = await getDoc(doc(db, 'users', user.uid));
-        if (guestDoc.exists()) {
-          const guestData = guestDoc.data();
+        const { getDoc, doc } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase');
+        const createdBooking = await getDoc(doc(db, 'bookings', bookingId));
+        if (createdBooking.exists()) {
+          const bookingData = createdBooking.data();
+          console.log('✅ Verified booking in Firestore:', {
+            id: bookingId,
+            hostId: bookingData.hostId,
+            hostIdType: typeof bookingData.hostId,
+            guestId: bookingData.guestId,
+            guestIdType: typeof bookingData.guestId,
+            status: bookingData.status,
+            createdAt: bookingData.createdAt,
+            listingId: bookingData.listingId
+          });
           
-          // Send booking confirmation email
-          await sendBookingConfirmationEmail(
-            user.email || guestData.email || '',
-            guestData.fullName || 'Guest',
-            listing.title,
-            listing.location,
-            checkIn.toISOString(),
-            checkOut.toISOString(),
-            guests,
-            calculateTotal(),
-            bookingId
-          );
+          // Also check the listing's hostId for comparison
+          if (listing.id) {
+            const listingDoc = await getDoc(doc(db, 'listing', listing.id));
+            if (listingDoc.exists()) {
+              const listingData = listingDoc.data();
+              console.log('📋 Listing hostId comparison:', {
+                listingHostId: listingData.hostId,
+                listingHostIdType: typeof listingData.hostId,
+                bookingHostId: bookingData.hostId,
+                bookingHostIdType: typeof bookingData.hostId,
+                match: String(listingData.hostId) === String(bookingData.hostId)
+              });
+            }
+          }
         }
-      } catch (emailError) {
-        // Don't fail the booking if email fails
-        console.error('Failed to send booking email:', emailError);
+      } catch (verifyError) {
+        console.error('❌ Error verifying booking:', verifyError);
       }
 
-      toast.success("Booking request sent! Check your email for confirmation.");
+      // DON'T send confirmation email here - wait for host to confirm
+      // The confirmation email will be sent when host approves the booking
+      
+      toast.success("Booking request sent! The host will review your request.");
       navigate('/guest/dashboard');
     } catch (error) {
+      console.error('❌ Error creating booking:', error);
       toast.error("Failed to create booking");
     } finally {
       setLoading(false);
@@ -151,7 +233,7 @@ const ListingDetails = () => {
   };
 
 
-  if (!listing) return <div className="p-6">Loading...</div>;
+  if (!listing) return <LoadingScreen />;
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -229,6 +311,23 @@ const ListingDetails = () => {
               {listing.bathrooms && <span>{listing.bathrooms} bathrooms</span>}
             </div>
 
+            {/* Host Information */}
+            {hostInfo && (
+              <Card className="mb-6 border-primary/20 bg-primary/5">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                      <User className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Hosted by</p>
+                      <p className="font-semibold text-lg">{hostInfo.fullName}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <p className="text-muted-foreground mb-6">{listing.description}</p>
 
             {listing.amenities.length > 0 && (
@@ -245,7 +344,7 @@ const ListingDetails = () => {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  <span>${listing.price}</span>
+                  <span>{formatPHP(listing.price)}</span>
                   <span className="text-sm font-normal text-muted-foreground">per night</span>
                 </CardTitle>
               </CardHeader>
@@ -276,7 +375,7 @@ const ListingDetails = () => {
                   <div className="pt-4 border-t">
                     <div className="flex justify-between mb-2">
                       <span>Total</span>
-                      <span className="font-bold">${calculateTotal()}</span>
+                      <span className="font-bold">{formatPHP(calculateTotal())}</span>
                     </div>
                   </div>
                 )}

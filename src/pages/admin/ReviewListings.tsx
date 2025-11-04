@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { Listing } from "@/types";
+import LoadingScreen from "@/components/ui/loading-screen";
 
 const ReviewListings = () => {
   const navigate = useNavigate();
@@ -111,7 +112,7 @@ const ReviewListings = () => {
         <h1 className="text-3xl font-bold mb-6">Review Pending Listings</h1>
 
         {loading ? (
-          <p>Loading...</p>
+          <LoadingScreen />
         ) : listings.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground">No pending listings</p>

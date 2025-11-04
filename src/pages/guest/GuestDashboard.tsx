@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { SearchAutocomplete } from '@/components/search/SearchAutocomplete';
 import { Heart, MapPin, Calendar, Wallet, Settings, User, Sparkles, Bookmark } from 'lucide-react';
+import { formatPHP } from '@/lib/currency';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
 import { ListingCard } from '@/components/listings/ListingCard';
@@ -13,6 +14,16 @@ import { getBookings, toggleFavorite } from '@/lib/firestore';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import homeIcon from '@/assets/category-home.png';
 import experienceIcon from '@/assets/category-experience.png';
 import serviceIcon from '@/assets/category-service.png';
@@ -31,6 +42,7 @@ const GuestDashboard = () => {
   const [recommendations, setRecommendations] = useState<Listing[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!user || userRole !== 'guest') {
@@ -70,7 +82,7 @@ const GuestDashboard = () => {
       
       const upcomingTrips = bookings.filter(b => {
         const checkIn = new Date(b.checkIn);
-        return checkIn >= now && (b.status === 'confirmed' || b.status === 'pending');
+        return checkIn >= now && b.status === 'confirmed';
       }).length;
 
       const pastBookings = bookings.filter(b => {
@@ -150,7 +162,7 @@ const GuestDashboard = () => {
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <Button variant="outline" onClick={handleSignOut}>Sign Out</Button>
+            <Button variant="outline" onClick={() => setLogoutDialogOpen(true)}>Sign Out</Button>
           </div>
         </div>
       </header>
@@ -202,7 +214,10 @@ const GuestDashboard = () => {
             </CardContent>
           </Card>
 
-          <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group">
+          <Card 
+            className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer"
+            onClick={() => navigate('/guest/bookings?filter=upcoming')}
+          >
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-secondary via-primary to-accent" />
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
@@ -236,7 +251,7 @@ const GuestDashboard = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-accent">${stats.walletBalance.toFixed(2)}</div>
+              <div className="text-3xl font-bold text-accent">{formatPHP(stats.walletBalance)}</div>
             </CardContent>
           </Card>
         </div>
@@ -245,7 +260,10 @@ const GuestDashboard = () => {
         <div className="mb-8">
           <h3 className="text-2xl font-bold mb-6">Browse Categories</h3>
           <div className="grid md:grid-cols-3 gap-6">
-            <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/guest/browse')}>
+            <Card 
+              className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" 
+              onClick={() => navigate('/guest/browse?category=home')}
+            >
               <CardHeader className="text-center">
                 <img src={homeIcon} alt="Homes" className="w-20 h-20 mx-auto mb-4" />
                 <CardTitle>Homes</CardTitle>
@@ -253,7 +271,10 @@ const GuestDashboard = () => {
               </CardHeader>
             </Card>
 
-            <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer">
+            <Card 
+              className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer"
+              onClick={() => navigate('/guest/browse?category=experience')}
+            >
               <CardHeader className="text-center">
                 <img src={experienceIcon} alt="Experiences" className="w-20 h-20 mx-auto mb-4" />
                 <CardTitle>Experiences</CardTitle>
@@ -261,7 +282,10 @@ const GuestDashboard = () => {
               </CardHeader>
             </Card>
 
-            <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer">
+            <Card 
+              className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer"
+              onClick={() => navigate('/guest/browse?category=service')}
+            >
               <CardHeader className="text-center">
                 <img src={serviceIcon} alt="Services" className="w-20 h-20 mx-auto mb-4" />
                 <CardTitle>Services</CardTitle>
@@ -300,7 +324,7 @@ const GuestDashboard = () => {
 
         {/* Quick Actions */}
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/settings')}>
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/guest/settings?tab=favorites')}>
             <CardHeader>
               <Heart className="w-8 h-8 text-primary mb-2" />
               <CardTitle>Favorites</CardTitle>
@@ -324,7 +348,7 @@ const GuestDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/settings')}>
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/guest/settings')}>
             <CardHeader>
               <Settings className="w-8 h-8 text-muted-foreground mb-2" />
               <CardTitle>Settings</CardTitle>
@@ -333,6 +357,24 @@ const GuestDashboard = () => {
           </Card>
         </div>
       </div>
+
+      {/* Logout Confirmation Dialog */}
+      <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sign Out</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to sign out? You'll need to sign in again to access your account.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSignOut} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Sign Out
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

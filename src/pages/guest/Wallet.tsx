@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { PointsDisplay } from "@/components/rewards/PointsDisplay";
 import { CouponManager } from "@/components/coupons/CouponManager";
 import type { Transaction, Coupon } from "@/types";
+import { formatPHP } from "@/lib/currency";
 
 const Wallet = () => {
   const navigate = useNavigate();
@@ -101,7 +102,7 @@ const Wallet = () => {
       
       setPoints(newPoints);
       setCoupons([...coupons, newCoupon]);
-      toast.success(`Redeemed ${pointsToRedeem} points for $${discountAmount} coupon!`);
+      toast.success(`Redeemed ${pointsToRedeem} points for ${formatPHP(discountAmount)} coupon!`);
     } catch (error) {
       toast.error("Failed to redeem points");
     }
@@ -135,7 +136,7 @@ const Wallet = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-4xl font-bold text-primary mb-6">${balance.toFixed(2)}</p>
+              <p className="text-4xl font-bold text-primary mb-6">{formatPHP(balance)}</p>
               
               <div className="flex gap-2">
                 <Input
@@ -183,7 +184,7 @@ const Wallet = () => {
                       <p className={`font-semibold ${
                         tx.type === 'deposit' || tx.type === 'reward' ? 'text-green-500' : 'text-red-500'
                       }`}>
-                        {tx.type === 'deposit' || tx.type === 'reward' ? '+' : '-'}${tx.amount}
+                        {tx.type === 'deposit' || tx.type === 'reward' ? '+' : '-'}{formatPHP(tx.amount)}
                       </p>
                     </div>
                   ))}
