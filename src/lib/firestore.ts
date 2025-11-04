@@ -11,9 +11,10 @@ import {
   orderBy,
   Timestamp 
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from './firebase';
+import { db } from './firebase';
+import { uploadListingImages as uploadToCloudinary } from './cloudinary';
 import type { Listing, Booking, Review, Message, Transaction } from '@/types';
+import { sendBookingConfirmationEmail } from '@/lib/emailjs';
 
 // ✅ Create or update listing (handles draft + normal publish)
 export const createOrUpdateListing = async (data: Omit<Listing, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -279,20 +280,10 @@ export const getUserTransactions = async (userId: string) => {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
 };
 
-// 🖼️ Storage
-export const uploadImage = async (file: File, path: string) => {
-  const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, file);
-  return getDownloadURL(storageRef);
-};
-
+// 🖼️ Storage - Using Cloudinary instead of Firebase Storage
 export const uploadListingImages = async (files: File[], listingId: string) => {
-  const urls: string[] = [];
-  for (let i = 0; i < files.length; i++) {
-    const url = await uploadImage(files[i], `listings/${listingId}/${i}`);
-    urls.push(url);
-  }
-  return urls;
+  // Use Cloudinary for image uploads
+  return await uploadToCloudinary(files, listingId);
 };
 
 // ❤️ Favorites
@@ -303,4 +294,14 @@ export const toggleFavorite = async (userId: string, listingId: string, favorite
   
   await updateDoc(doc(db, 'users', userId), { favorites: newFavorites });
   return newFavorites;
+};
+
+// 🌟 Wishlist (separate from favorites - for future plans)
+export const toggleWishlist = async (userId: string, listingId: string, wishlist: string[]) => {
+  const newWishlist = wishlist.includes(listingId)
+    ? wishlist.filter(id => id !== listingId)
+    : [...wishlist, listingId];
+  
+  await updateDoc(doc(db, 'users', userId), { wishlist: newWishlist });
+  return newWishlist;
 };

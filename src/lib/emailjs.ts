@@ -80,3 +80,65 @@ export const sendWelcomeEmail = async (
     return false;
   }
 };
+
+// Add this new template ID constant at the top with the others
+const TEMPLATE_ID_BOOKING = import.meta.env.VITE_EMAILJS_TEMPLATE_BOOKING || '';
+
+/**
+ * Send booking confirmation email to guest
+ */
+export const sendBookingConfirmationEmail = async (
+  guestEmail: string,
+  guestName: string,
+  listingTitle: string,
+  listingLocation: string,
+  checkIn: string,
+  checkOut: string,
+  guests: number,
+  totalPrice: number,
+  bookingId: string
+): Promise<boolean> => {
+  try {
+    if (!SERVICE_ID || !TEMPLATE_ID_BOOKING) {
+      console.warn('EmailJS booking template not configured. Skipping email send.');
+      return false;
+    }
+
+    const checkInDate = new Date(checkIn).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    const checkOutDate = new Date(checkOut).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    const templateParams = {
+      to_email: guestEmail,
+      to_name: guestName,
+      listing_title: listingTitle,
+      listing_location: listingLocation,
+      check_in: checkInDate,
+      check_out: checkOutDate,
+      guests: guests.toString(),
+      total_price: totalPrice.toFixed(2),
+      booking_id: bookingId,
+      booking_link: `${window.location.origin}/guest/dashboard`,
+      platform_name: 'Mojo Dojo Casa House',
+      support_email: 'johnpatrickrobles143@gmail.com',
+      year: new Date().getFullYear().toString(),
+    };
+
+    await emailjs.send(SERVICE_ID, TEMPLATE_ID_BOOKING, templateParams);
+    
+    console.log('✅ Booking confirmation email sent successfully to:', guestEmail);
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to send booking confirmation email:', error);
+    return false;
+  }
+};

@@ -9,11 +9,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, User, Bell, CreditCard, Shield, Heart, Calendar, Ticket } from "lucide-react";
+import { ArrowLeft, User, Bell, CreditCard, Shield, Heart, Calendar, Ticket, Bookmark } from "lucide-react";
 import { toast } from "sonner";
 import { ListingCard } from "@/components/listings/ListingCard";
 import { EmptyState } from "@/components/ui/empty-state";
-import { getListings, getBookings, toggleFavorite } from "@/lib/firestore";
+import { getListings, getBookings, toggleFavorite, toggleWishlist } from "@/lib/firestore";
 import { CouponManager } from "@/components/coupons/CouponManager";
 import type { UserProfile, Listing, Booking, Coupon } from "@/types";
 
@@ -23,8 +23,10 @@ const AccountSettings = () => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [favoriteListings, setFavoriteListings] = useState<Listing[]>([]);
+  const [wishlistListings, setWishlistListings] = useState<Listing[]>([]);
   const [userBookings, setUserBookings] = useState<Booking[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [wishlist, setWishlist] = useState<string[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
 
   useEffect(() => {
@@ -36,6 +38,7 @@ const AccountSettings = () => {
   useEffect(() => {
     if (user && profile && userRole === 'guest') {
       loadFavoriteListings();
+      loadWishlistListings();
       loadBookings();
     } else if (user && userRole === 'host') {
       loadBookings();
@@ -50,6 +53,7 @@ const AccountSettings = () => {
         const data = docSnap.data() as UserProfile;
         setProfile(data);
         setFavorites(data.favorites || []);
+        setWishlist(data.wishlist || []);
         setCoupons(data.coupons || []);
       }
     } catch (error) {
@@ -72,6 +76,24 @@ const AccountSettings = () => {
     } catch (error) {
       console.error('Error loading favorite listings:', error);
       setFavoriteListings([]);
+    }
+  };
+
+  const loadWishlistListings = async () => {
+    if (!user || !profile?.wishlist?.length) {
+      setWishlistListings([]);
+      return;
+    }
+    try {
+      // Fetch each wishlist listing individually
+      const { getListing } = await import('@/lib/firestore');
+      const wishlistDetails = await Promise.all(
+        profile.wishlist.map(id => getListing(id))
+      );
+      setWishlistListings(wishlistDetails.filter((l): l is Listing => l !== null));
+    } catch (error) {
+      console.error('Error loading wishlist listings:', error);
+      setWishlistListings([]);
     }
   };
 
@@ -104,6 +126,26 @@ const AccountSettings = () => {
       toast.success(newFavorites.includes(listingId) ? "Added to favorites" : "Removed from favorites");
     } catch (error) {
       toast.error("Failed to update favorites");
+    }
+  };
+
+  const handleWishlist = async (listingId: string) => {
+    if (!user) {
+      toast.error("Please login to manage wishlist");
+      return;
+    }
+    try {
+      const newWishlist = await toggleWishlist(user.uid, listingId, wishlist);
+      setWishlist(newWishlist);
+      // Update profile
+      setProfile(prev => prev ? { ...prev, wishlist: newWishlist } : null);
+      // Reload wishlist listings
+      if (userRole === 'guest') {
+        loadWishlistListings();
+      }
+      toast.success(newWishlist.includes(listingId) ? "Added to wishlist" : "Removed from wishlist");
+    } catch (error) {
+      toast.error("Failed to update wishlist");
     }
   };
 
@@ -142,16 +184,22 @@ const AccountSettings = () => {
         <h1 className="text-3xl font-bold mb-6">Account Settings</h1>
 
         <Tabs defaultValue="profile" className="space-y-6">
-          <TabsList className={`grid w-full ${userRole === 'guest' ? 'grid-cols-5' : userRole === 'host' ? 'grid-cols-5' : 'grid-cols-4'}`}>
+          <TabsList className={`grid w-full ${userRole === 'guest' ? 'grid-cols-6' : userRole === 'host' ? 'grid-cols-5' : 'grid-cols-4'}`}>
             <TabsTrigger value="profile">
               <User className="h-4 w-4 mr-2" />
               Profile
             </TabsTrigger>
             {userRole === 'guest' && (
-              <TabsTrigger value="wishlist">
-                <Heart className="h-4 w-4 mr-2" />
-                Wishlist
-              </TabsTrigger>
+              <>
+                <TabsTrigger value="favorites">
+                  <Heart className="h-4 w-4 mr-2" />
+                  Favorites
+                </TabsTrigger>
+                <TabsTrigger value="wishlist">
+                  <Bookmark className="h-4 w-4 mr-2" />
+                  Wishlist
+                </TabsTrigger>
+              </>
             )}
             <TabsTrigger value="bookings">
               <Calendar className="h-4 w-4 mr-2" />
@@ -218,20 +266,20 @@ const AccountSettings = () => {
             </Card>
           </TabsContent>
 
-          {/* Wishlist Tab (Guest only) */}
+          {/* Favorites Tab (Guest only) */}
           {userRole === 'guest' && (
-            <TabsContent value="wishlist">
+            <TabsContent value="favorites">
               <Card>
                 <CardHeader>
-                  <CardTitle>Your Wishlist</CardTitle>
-                  <CardDescription>Your saved favorite listings</CardDescription>
+                  <CardTitle>Your Favorites</CardTitle>
+                  <CardDescription>Listings you've liked and saved</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {favoriteListings.length === 0 ? (
                     <EmptyState
                       icon={<Heart className="h-10 w-10" />}
                       title="No favorites yet"
-                      description="Start exploring and add listings to your wishlist!"
+                      description="Start exploring and add listings to your favorites!"
                       action={
                         <Button onClick={() => navigate('/guest/browse')}>
                           Browse Listings
@@ -246,7 +294,49 @@ const AccountSettings = () => {
                           listing={listing}
                           onView={() => navigate(`/guest/listing/${listing.id}`)}
                           onFavorite={() => handleFavorite(listing.id)}
+                          onWishlist={() => handleWishlist(listing.id)}
                           isFavorite={favorites.includes(listing.id)}
+                          isInWishlist={wishlist.includes(listing.id)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+
+          {/* Wishlist Tab (Guest only) */}
+          {userRole === 'guest' && (
+            <TabsContent value="wishlist">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Your Wishlist</CardTitle>
+                  <CardDescription>Listings you're planning to book in the future</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {wishlistListings.length === 0 ? (
+                    <EmptyState
+                      icon={<Bookmark className="h-10 w-10" />}
+                      title="No wishlist items yet"
+                      description="Add listings to your wishlist for future trips!"
+                      action={
+                        <Button onClick={() => navigate('/guest/browse')}>
+                          Browse Listings
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {wishlistListings.map((listing) => (
+                        <ListingCard
+                          key={listing.id}
+                          listing={listing}
+                          onView={() => navigate(`/guest/listing/${listing.id}`)}
+                          onFavorite={() => handleFavorite(listing.id)}
+                          onWishlist={() => handleWishlist(listing.id)}
+                          isFavorite={favorites.includes(listing.id)}
+                          isInWishlist={wishlist.includes(listing.id)}
                         />
                       ))}
                     </div>

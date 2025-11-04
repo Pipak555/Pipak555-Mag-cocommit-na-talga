@@ -474,20 +474,13 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
     setUploadProgress(0);
     
     try {
-      // Use the existing uploadListingImages function which handles multiple files
-      // For now, we'll simulate progress since the function doesn't expose progress
-      const uploadPromise = uploadListingImages(files, listingId);
-      
-      // Simulate progress updates
-      const progressInterval = setInterval(() => {
-        setUploadProgress((prev) => {
-          if (prev >= 90) return prev;
-          return prev + 10;
-        });
-      }, 200);
+      // Use Cloudinary upload with progress callback
+      const { uploadListingImages: uploadToCloudinary } = await import('@/lib/cloudinary');
+      const uploadPromise = uploadToCloudinary(files, listingId, (progress) => {
+        setUploadProgress(progress);
+      });
       
       const urls = await uploadPromise;
-      clearInterval(progressInterval);
       setUploadProgress(100);
       
       return urls;

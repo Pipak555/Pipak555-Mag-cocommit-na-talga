@@ -7,6 +7,7 @@ import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/contexts/AuthContext";
 import Landing from "./pages/Landing";
 import HostLogin from "./pages/auth/HostLogin";
+import HostPolicyAcceptance from "./pages/auth/HostPolicyAcceptance";
 import GuestLogin from "./pages/auth/GuestLogin";
 import AdminLogin from "./pages/auth/AdminLogin";
 import EmailVerification from "./pages/auth/EmailVerification";
@@ -43,6 +44,7 @@ const App = () => (
           <AuthProvider>
             <Routes>
             <Route path="/" element={<Landing />} />
+            <Route path="/host/policies" element={<HostPolicyAcceptance />} />
             <Route path="/host/login" element={<HostLogin />} />
             <Route path="/guest/login" element={<GuestLogin />} />
             <Route path="/admin/login" element={<AdminLogin />} />

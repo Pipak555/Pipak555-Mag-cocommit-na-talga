@@ -4,15 +4,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { SearchAutocomplete } from '@/components/search/SearchAutocomplete';
-import { Heart, MapPin, Calendar, Wallet, Settings, User, Sparkles } from 'lucide-react';
+import { Heart, MapPin, Calendar, Wallet, Settings, User, Sparkles, Bookmark } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
 import { ListingCard } from '@/components/listings/ListingCard';
 import { getRecommendations } from '@/lib/recommendations';
-import { getBookings } from '@/lib/firestore';
+import { getBookings, toggleFavorite } from '@/lib/firestore';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { toggleFavorite } from '@/lib/firestore';
 import { toast } from 'sonner';
 import homeIcon from '@/assets/category-home.png';
 import experienceIcon from '@/assets/category-experience.png';
@@ -24,6 +23,7 @@ const GuestDashboard = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState({
     favorites: 0,
+    wishlist: 0,
     upcomingTrips: 0,
     pastBookings: 0,
     walletBalance: 0,
@@ -47,6 +47,7 @@ const GuestDashboard = () => {
         setStats(prev => ({
           ...prev,
           favorites: userData.favorites?.length || 0,
+          wishlist: userData.wishlist?.length || 0,
           walletBalance: userData.walletBalance || 0,
         }));
         setFavorites(userData.favorites || []);
@@ -108,6 +109,23 @@ const GuestDashboard = () => {
     }
   };
 
+  const handleWishlist = async (listingId: string) => {
+    if (!user) {
+      toast.error("Please login to add to wishlist");
+      return;
+    }
+    
+    try {
+      const { toggleWishlist } = await import('@/lib/firestore');
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      const currentWishlist = userDoc.exists() ? (userDoc.data().wishlist || []) : [];
+      const newWishlist = await toggleWishlist(user.uid, listingId, currentWishlist);
+      toast.success(newWishlist.includes(listingId) ? "Added to wishlist" : "Removed from wishlist");
+    } catch (error) {
+      toast.error("Failed to update wishlist");
+    }
+  };
+
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
@@ -155,7 +173,7 @@ const GuestDashboard = () => {
         </Card>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
           <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group">
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-secondary to-accent" />
             <CardHeader className="pb-3">
@@ -166,6 +184,20 @@ const GuestDashboard = () => {
             <CardContent>
               <div className="text-3xl font-bold bg-gradient-to-br from-primary to-primary-glow bg-clip-text text-transparent">
                 {stats.favorites}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-blue-400 to-blue-300" />
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                Wishlist
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold bg-gradient-to-br from-blue-500 to-blue-600 bg-clip-text text-transparent">
+                {stats.wishlist}
               </div>
             </CardContent>
           </Card>
@@ -253,13 +285,14 @@ const GuestDashboard = () => {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {recommendations.slice(0, 3).map((listing) => (
-                <ListingCard
-                  key={listing.id}
-                  listing={listing}
-                  onView={() => navigate(`/guest/listing/${listing.id}`)}
-                  onFavorite={() => handleFavorite(listing.id)}
-                  isFavorite={favorites.includes(listing.id)}
-                />
+              <ListingCard
+                key={listing.id}
+                listing={listing}
+                onView={() => navigate(`/guest/listing/${listing.id}`)}
+                onFavorite={() => handleFavorite(listing.id)}
+                onWishlist={() => handleWishlist(listing.id)}
+                isFavorite={favorites.includes(listing.id)}
+              />
               ))}
             </div>
           </div>

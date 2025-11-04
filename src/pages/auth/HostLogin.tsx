@@ -45,6 +45,15 @@ const HostLogin = () => {
     e.preventDefault();
     setLoading(true);
     
+    // Check if policies were accepted
+    const policyAccepted = sessionStorage.getItem('hostPolicyAccepted');
+    if (!policyAccepted) {
+      toast.error('Please accept the policies and compliance terms first.');
+      navigate('/host/policies');
+      setLoading(false);
+      return;
+    }
+    
     // Validate password confirmation
     if (password !== confirmPassword) {
       toast.error('Passwords do not match');
@@ -53,7 +62,16 @@ const HostLogin = () => {
     }
     
     try {
-      await signUp(email, password, fullName, 'host');
+      const policyAcceptedDate = sessionStorage.getItem('hostPolicyAcceptedDate');
+      await signUp(email, password, fullName, 'host', {
+        policyAccepted: true,
+        policyAcceptedDate: policyAcceptedDate || new Date().toISOString()
+      });
+      
+      // Clear session storage after successful signup
+      sessionStorage.removeItem('hostPolicyAccepted');
+      sessionStorage.removeItem('hostPolicyAcceptedDate');
+      
       toast.success('Account created! Please check your email to verify your account.');
       navigate('/verification-pending');
     } catch (error: any) {
@@ -156,6 +174,19 @@ const HostLogin = () => {
               </TabsContent>
               
               <TabsContent value="signup">
+                <div className="mb-6 p-4 bg-primary/10 border border-primary/20 rounded-lg">
+                  <p className="text-sm text-foreground">
+                    <strong>Important:</strong> Before creating your host account, you must read and accept our policies and compliance terms.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-3 w-full"
+                    onClick={() => navigate('/host/policies')}
+                  >
+                    Review Policies & Terms
+                  </Button>
+                </div>
                 <form onSubmit={handleSignUp} className="space-y-6">
                   <div className="space-y-2">
                     <Label htmlFor="signup-fullname" className="text-base">Full Name</Label>

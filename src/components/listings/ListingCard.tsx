@@ -1,17 +1,19 @@
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Heart, MapPin, Star, Users } from "lucide-react";
+import { Heart, MapPin, Star, Users, Bookmark } from "lucide-react";
 import type { Listing } from "@/types";
 
 interface ListingCardProps {
   listing: Listing;
   onView?: () => void;
   onFavorite?: () => void;
+  onWishlist?: () => void;
   isFavorite?: boolean;
+  isInWishlist?: boolean;
 }
 
-export const ListingCard = ({ listing, onView, onFavorite, isFavorite }: ListingCardProps) => {
+export const ListingCard = ({ listing, onView, onFavorite, onWishlist, isFavorite, isInWishlist }: ListingCardProps) => {
   return (
     <Card className="group relative overflow-hidden border-0 shadow-sm hover:shadow-xl transition-all duration-500 hover:-translate-y-1">
       {/* Image Container with Gradient Overlay */}
@@ -25,20 +27,39 @@ export const ListingCard = ({ listing, onView, onFavorite, isFavorite }: Listing
         {/* Gradient Overlay on Hover */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
         
-        {/* Favorite Button */}
-        {onFavorite && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm hover:bg-white hover:scale-110 transition-all duration-300 shadow-lg z-10"
-            onClick={(e) => {
-              e.stopPropagation();
-              onFavorite();
-            }}
-          >
-            <Heart className={`h-5 w-5 transition-all ${isFavorite ? "fill-red-500 text-red-500 scale-110" : "text-gray-700"}`} />
-          </Button>
-        )}
+        {/* Action Buttons */}
+        <div className="absolute top-3 right-3 flex gap-2 z-10">
+          {/* Wishlist Button */}
+          {onWishlist && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="bg-white/90 backdrop-blur-sm hover:bg-white hover:scale-110 transition-all duration-300 shadow-lg"
+              onClick={(e) => {
+                e.stopPropagation();
+                onWishlist();
+              }}
+              title={isInWishlist ? "Remove from wishlist" : "Add to wishlist"}
+            >
+              <Bookmark className={`h-5 w-5 transition-all ${isInWishlist ? "fill-blue-500 text-blue-500 scale-110" : "text-gray-700"}`} />
+            </Button>
+          )}
+          {/* Favorite Button */}
+          {onFavorite && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="bg-white/90 backdrop-blur-sm hover:bg-white hover:scale-110 transition-all duration-300 shadow-lg"
+              onClick={(e) => {
+                e.stopPropagation();
+                onFavorite();
+              }}
+              title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+            >
+              <Heart className={`h-5 w-5 transition-all ${isFavorite ? "fill-red-500 text-red-500 scale-110" : "text-gray-700"}`} />
+            </Button>
+          )}
+        </div>
         
         {/* Category Badge */}
         <Badge className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm text-foreground font-medium shadow-md capitalize z-10">

@@ -21,7 +21,7 @@ interface AuthContextType {
   userProfile: any | null;
   loading: boolean;
   signIn: (email: string, password: string, role: 'host' | 'guest' | 'admin') => Promise<void>;
-  signUp: (email: string, password: string, fullName: string, role: 'host' | 'guest' | 'admin') => Promise<void>;
+  signUp: (email: string, password: string, fullName: string, role: 'host' | 'guest' | 'admin', policyData?: { policyAccepted: boolean; policyAcceptedDate: string }) => Promise<void>;
   signOut: () => Promise<void>;
   sendVerificationEmail: () => Promise<void>;
   verifyEmail: (actionCode: string) => Promise<void>;
@@ -82,18 +82,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const signUp = async (email: string, password: string, fullName: string, role: 'host' | 'guest' | 'admin') => {
+  const signUp = async (email: string, password: string, fullName: string, role: 'host' | 'guest' | 'admin', policyData?: { policyAccepted: boolean; policyAcceptedDate: string }) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     
-    const userData = {
+    const userData: any = {
       email,
       fullName,
       role,
       createdAt: new Date().toISOString(),
       points: 0,
       walletBalance: 0,
-      favorites: []
+      favorites: [],
+      wishlist: []
     };
+    
+    // Add policy acceptance data for hosts
+    if (role === 'host' && policyData) {
+      userData.policyAccepted = policyData.policyAccepted;
+      userData.policyAcceptedDate = policyData.policyAcceptedDate;
+    }
     
     await setDoc(doc(db, 'users', userCredential.user.uid), userData);
     

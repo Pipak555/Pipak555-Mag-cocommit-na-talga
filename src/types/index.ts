@@ -69,7 +69,8 @@ export interface UserProfile {
   createdAt: string;
   points: number;
   walletBalance: number;
-  favorites: string[];
+  favorites: string[]; // Liked listings
+  wishlist: string[]; // Future planned listings (separate from favorites)
   coupons?: Coupon[];
 }
 

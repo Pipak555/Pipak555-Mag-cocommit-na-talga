@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { getListings, toggleFavorite } from "@/lib/firestore";
+import { getListings, toggleFavorite, toggleWishlist } from "@/lib/firestore";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { ListingCard } from "@/components/listings/ListingCard";
@@ -21,6 +21,7 @@ const BrowseListings = () => {
   const { user } = useAuth();
   const [listings, setListings] = useState<Listing[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [wishlist, setWishlist] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<FilterValues>({
@@ -31,7 +32,10 @@ const BrowseListings = () => {
 
   useEffect(() => {
     loadListings();
-    if (user) loadFavorites();
+    if (user) {
+      loadFavorites();
+      loadWishlist();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, filters.category]);
 
@@ -66,6 +70,14 @@ const BrowseListings = () => {
     }
   };
 
+  const loadWishlist = async () => {
+    if (!user) return;
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (userDoc.exists()) {
+      setWishlist(userDoc.data().wishlist || []);
+    }
+  };
+
   const handleFavorite = async (listingId: string) => {
     if (!user) {
       toast.error("Please login to add favorites");
@@ -85,6 +97,28 @@ const BrowseListings = () => {
       // Revert on error
       setFavorites(favorites);
       toast.error("Failed to update favorites");
+    }
+  };
+
+  const handleWishlist = async (listingId: string) => {
+    if (!user) {
+      toast.error("Please login to add to wishlist");
+      return;
+    }
+    // Optimistic update
+    const wasInWishlist = wishlist.includes(listingId);
+    const optimistic = wasInWishlist
+      ? wishlist.filter(id => id !== listingId)
+      : [...wishlist, listingId];
+    setWishlist(optimistic);
+    try {
+      const newWishlist = await toggleWishlist(user.uid, listingId, wishlist);
+      setWishlist(newWishlist);
+      toast.success(newWishlist.includes(listingId) ? "Added to wishlist" : "Removed from wishlist");
+    } catch (error) {
+      // Revert on error
+      setWishlist(wishlist);
+      toast.error("Failed to update wishlist");
     }
   };
 
@@ -200,7 +234,9 @@ const BrowseListings = () => {
                 listing={listing}
                 onView={() => navigate(`/guest/listing/${listing.id}`)}
                 onFavorite={() => handleFavorite(listing.id)}
+                onWishlist={() => handleWishlist(listing.id)}
                 isFavorite={favorites.includes(listing.id)}
+                isInWishlist={wishlist.includes(listing.id)}
               />
             ))}
           </div>

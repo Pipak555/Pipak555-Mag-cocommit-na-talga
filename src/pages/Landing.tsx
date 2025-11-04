@@ -66,7 +66,7 @@ const Landing = () => {
                 <Link to="/guest/login">Browse Listings</Link>
               </Button>
               <Button size="lg" variant="outline" asChild className="h-14 px-8 text-lg border-2 border-white/30 bg-white/10 backdrop-blur-md hover:bg-white/20 text-white hover:text-white">
-                <Link to="/host/login">Become a Host</Link>
+                <Link to="/host/policies">Become a Host</Link>
               </Button>
             </div>
           </div>

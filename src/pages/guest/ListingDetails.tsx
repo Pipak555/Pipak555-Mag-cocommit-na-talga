@@ -6,12 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
-import { ArrowLeft, MapPin, Users } from "lucide-react";
+import { ArrowLeft, MapPin, Users, Heart, Bookmark } from "lucide-react";
 import { toast } from "sonner";
 import { ReviewList } from "@/components/reviews/ReviewList";
 import { SocialShare } from "@/components/shared/SocialShare";
 import { ListingCard } from "@/components/listings/ListingCard";
 import type { Listing } from "@/types";
+import { sendBookingConfirmationEmail } from '@/lib/emailjs';
+import { getDoc, doc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 const ListingDetails = () => {
   const { id } = useParams();
@@ -22,17 +25,69 @@ const ListingDetails = () => {
   const [checkOut, setCheckOut] = useState<Date>();
   const [guests, setGuests] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [wishlist, setWishlist] = useState<string[]>([]);
 
   useEffect(() => {
     if (id) {
       loadListing();
     }
-  }, [id]);
+    if (user) {
+      loadFavorites();
+      loadWishlist();
+    }
+  }, [id, user]);
 
   const loadListing = async () => {
     if (!id) return;
     const data = await getListing(id);
     setListing(data);
+  };
+
+  const loadFavorites = async () => {
+    if (!user) return;
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (userDoc.exists()) {
+      setFavorites(userDoc.data().favorites || []);
+    }
+  };
+
+  const loadWishlist = async () => {
+    if (!user) return;
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (userDoc.exists()) {
+      setWishlist(userDoc.data().wishlist || []);
+    }
+  };
+
+  const handleFavorite = async () => {
+    if (!user || !listing) {
+      toast.error("Please login to add favorites");
+      return;
+    }
+    try {
+      const { toggleFavorite } = await import('@/lib/firestore');
+      const newFavorites = await toggleFavorite(user.uid, listing.id, favorites);
+      setFavorites(newFavorites);
+      toast.success(newFavorites.includes(listing.id) ? "Added to favorites" : "Removed from favorites");
+    } catch (error) {
+      toast.error("Failed to update favorites");
+    }
+  };
+
+  const handleWishlist = async () => {
+    if (!user || !listing) {
+      toast.error("Please login to add to wishlist");
+      return;
+    }
+    try {
+      const { toggleWishlist } = await import('@/lib/firestore');
+      const newWishlist = await toggleWishlist(user.uid, listing.id, wishlist);
+      setWishlist(newWishlist);
+      toast.success(newWishlist.includes(listing.id) ? "Added to wishlist" : "Removed from wishlist");
+    } catch (error) {
+      toast.error("Failed to update wishlist");
+    }
   };
 
   const calculateTotal = () => {
@@ -49,7 +104,8 @@ const ListingDetails = () => {
 
     setLoading(true);
     try {
-      await createBooking({
+      // Create booking and get the booking ID
+      const bookingId = await createBooking({
         listingId: listing.id,
         guestId: user.uid,
         hostId: listing.hostId,
@@ -59,7 +115,33 @@ const ListingDetails = () => {
         totalPrice: calculateTotal(),
         status: 'pending',
       });
-      toast.success("Booking request sent!");
+
+      // Send booking confirmation email
+      try {
+        // Fetch guest user data for email
+        const guestDoc = await getDoc(doc(db, 'users', user.uid));
+        if (guestDoc.exists()) {
+          const guestData = guestDoc.data();
+          
+          // Send booking confirmation email
+          await sendBookingConfirmationEmail(
+            user.email || guestData.email || '',
+            guestData.fullName || 'Guest',
+            listing.title,
+            listing.location,
+            checkIn.toISOString(),
+            checkOut.toISOString(),
+            guests,
+            calculateTotal(),
+            bookingId
+          );
+        }
+      } catch (emailError) {
+        // Don't fail the booking if email fails
+        console.error('Failed to send booking email:', emailError);
+      }
+
+      toast.success("Booking request sent! Check your email for confirmation.");
       navigate('/guest/dashboard');
     } catch (error) {
       toast.error("Failed to create booking");
@@ -96,15 +178,41 @@ const ListingDetails = () => {
           <div>
             <div className="flex items-center justify-between mb-2">
               <Badge>{listing.category}</Badge>
-              {listing && (
-                <SocialShare
-                  url={window.location.href}
-                  title={listing.title}
-                  description={listing.description}
-                  variant="outline"
-                  size="sm"
-                />
-              )}
+              <div className="flex items-center gap-2">
+                {user && listing && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleWishlist}
+                      className="flex items-center gap-2"
+                      title={wishlist.includes(listing.id) ? "Remove from wishlist" : "Add to wishlist"}
+                    >
+                      <Bookmark className={`h-4 w-4 ${wishlist.includes(listing.id) ? "fill-blue-500 text-blue-500" : ""}`} />
+                      {wishlist.includes(listing.id) ? "In Wishlist" : "Wishlist"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleFavorite}
+                      className="flex items-center gap-2"
+                      title={favorites.includes(listing.id) ? "Remove from favorites" : "Add to favorites"}
+                    >
+                      <Heart className={`h-4 w-4 ${favorites.includes(listing.id) ? "fill-red-500 text-red-500" : ""}`} />
+                      {favorites.includes(listing.id) ? "Favorited" : "Favorite"}
+                    </Button>
+                  </>
+                )}
+                {listing && (
+                  <SocialShare
+                    url={window.location.href}
+                    title={listing.title}
+                    description={listing.description}
+                    variant="outline"
+                    size="sm"
+                  />
+                )}
+              </div>
             </div>
             <h1 className="text-3xl font-bold mb-2">{listing.title}</h1>
             <div className="flex items-center text-muted-foreground mb-4">
@@ -203,11 +311,15 @@ const SimilarListings = ({ listingId }: { listingId: string }) => {
   const { user } = useAuth();
   const [similarListings, setSimilarListings] = useState<Listing[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [wishlist, setWishlist] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadSimilarListings();
-    if (user) loadFavorites();
+    if (user) {
+      loadFavorites();
+      loadWishlist();
+    }
   }, [listingId, user]);
 
   const loadSimilarListings = async () => {
@@ -232,6 +344,16 @@ const SimilarListings = ({ listingId }: { listingId: string }) => {
     }
   };
 
+  const loadWishlist = async () => {
+    if (!user) return;
+    const { doc, getDoc } = await import('firebase/firestore');
+    const { db } = await import('@/lib/firebase');
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (userDoc.exists()) {
+      setWishlist(userDoc.data().wishlist || []);
+    }
+  };
+
   const handleFavorite = async (id: string) => {
     if (!user) {
       toast.error("Please login to add favorites");
@@ -247,6 +369,21 @@ const SimilarListings = ({ listingId }: { listingId: string }) => {
     }
   };
 
+  const handleWishlist = async (id: string) => {
+    if (!user) {
+      toast.error("Please login to add to wishlist");
+      return;
+    }
+    try {
+      const { toggleWishlist } = await import('@/lib/firestore');
+      const newWishlist = await toggleWishlist(user.uid, id, wishlist);
+      setWishlist(newWishlist);
+      toast.success(newWishlist.includes(id) ? "Added to wishlist" : "Removed from wishlist");
+    } catch (error) {
+      toast.error("Failed to update wishlist");
+    }
+  };
+
   if (loading || similarListings.length === 0) return null;
 
   return (
@@ -259,7 +396,9 @@ const SimilarListings = ({ listingId }: { listingId: string }) => {
             listing={similarListing}
             onView={() => navigate(`/guest/listing/${similarListing.id}`)}
             onFavorite={() => handleFavorite(similarListing.id)}
+            onWishlist={() => handleWishlist(similarListing.id)}
             isFavorite={favorites.includes(similarListing.id)}
+            isInWishlist={wishlist.includes(similarListing.id)}
           />
         ))}
       </div>
