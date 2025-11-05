@@ -10,7 +10,9 @@ import {
   where, 
   orderBy,
   Timestamp,
-  serverTimestamp 
+  serverTimestamp,
+  onSnapshot,
+  or
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { uploadListingImages as uploadToCloudinary } from './cloudinary';
@@ -415,13 +417,114 @@ export const sendMessage = async (data: Omit<Message, 'id' | 'createdAt'>) => {
 };
 
 export const getMessages = async (userId: string) => {
-  const q = query(
+  // Fetch messages where user is receiver
+  const receivedQuery = query(
     collection(db, 'messages'),
     where('receiverId', '==', userId),
     orderBy('createdAt', 'desc')
   );
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
+  
+  // Fetch messages where user is sender
+  const sentQuery = query(
+    collection(db, 'messages'),
+    where('senderId', '==', userId),
+    orderBy('createdAt', 'desc')
+  );
+
+  const [receivedSnapshot, sentSnapshot] = await Promise.all([
+    getDocs(receivedQuery),
+    getDocs(sentQuery)
+  ]);
+
+  // Combine and deduplicate messages
+  const allMessages = [
+    ...receivedSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message)),
+    ...sentSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message))
+  ];
+
+  // Remove duplicates by message ID
+  const uniqueMessages = Array.from(
+    new Map(allMessages.map(msg => [msg.id, msg])).values()
+  );
+
+  // Sort by createdAt descending
+  return uniqueMessages.sort((a, b) => 
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+};
+
+// Get user profile by ID
+export const getUserProfile = async (userId: string) => {
+  try {
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    if (userDoc.exists()) {
+      return userDoc.data();
+    }
+    return null;
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+    return null;
+  }
+};
+
+// Subscribe to messages for real-time updates
+export const subscribeToMessages = (
+  userId: string,
+  callback: (messages: Message[]) => void
+) => {
+  // Subscribe to received messages
+  const receivedQuery = query(
+    collection(db, 'messages'),
+    where('receiverId', '==', userId),
+    orderBy('createdAt', 'desc')
+  );
+
+  // Subscribe to sent messages
+  const sentQuery = query(
+    collection(db, 'messages'),
+    where('senderId', '==', userId),
+    orderBy('createdAt', 'desc')
+  );
+
+  let receivedMessages: Message[] = [];
+  let sentMessages: Message[] = [];
+
+  const unsubscribeReceived = onSnapshot(receivedQuery, (snapshot) => {
+    receivedMessages = snapshot.docs.map(doc => ({ 
+      id: doc.id, 
+      ...doc.data() 
+    } as Message));
+    combineAndNotify();
+  });
+
+  const unsubscribeSent = onSnapshot(sentQuery, (snapshot) => {
+    sentMessages = snapshot.docs.map(doc => ({ 
+      id: doc.id, 
+      ...doc.data() 
+    } as Message));
+    combineAndNotify();
+  });
+
+  const combineAndNotify = () => {
+    // Combine and deduplicate
+    const allMessages = [...receivedMessages, ...sentMessages];
+    const uniqueMessages = Array.from(
+      new Map(allMessages.map(msg => [msg.id, msg])).values()
+    );
+    
+    // Sort by createdAt descending
+    const sortedMessages = uniqueMessages.sort((a, b) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    
+    callback(sortedMessages);
+  };
+
+  // Return unsubscribe function
+  return () => {
+    unsubscribeReceived();
+    unsubscribeSent();
+  };
 };
 
 // 💳 Transactions

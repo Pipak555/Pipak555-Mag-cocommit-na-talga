@@ -30,6 +30,7 @@ import {
 import { PayPalButton } from "@/components/payments/PayPalButton";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { ImagePreview } from "./ImagePreview";
+import { LocationMapPicker } from "./LocationMapPicker";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/contexts/AuthContext";
 import { createListing, uploadListingImages } from "@/lib/firestore";
@@ -796,10 +797,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                       Location <span className="text-destructive">*</span>
                     </FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="City, State, Country"
-                        {...field}
+                      <LocationMapPicker
                         value={field.value || ""}
+                        onChange={(location) => {
+                          field.onChange(location);
+                        }}
                       />
                     </FormControl>
                     <FormMessage />

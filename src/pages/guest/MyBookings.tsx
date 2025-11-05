@@ -128,16 +128,34 @@ const MyBookings = () => {
   };
 
   const handleCancelBooking = (booking: Booking) => {
-    // Only allow cancellation of confirmed upcoming bookings
-    if (booking.status !== 'confirmed') {
-      toast.error('Only confirmed bookings can be cancelled');
+    // Validate booking can be cancelled
+    if (!booking || !booking.id) {
+      toast.error('Invalid booking');
+      return;
+    }
+
+    // Don't allow cancellation of already cancelled or completed bookings
+    if (booking.status === 'cancelled') {
+      toast.error('This booking is already cancelled');
+      return;
+    }
+
+    if (booking.status === 'completed') {
+      toast.error('Cannot cancel completed bookings');
+      return;
+    }
+
+    // Only allow cancellation of pending or confirmed bookings
+    if (booking.status !== 'pending' && booking.status !== 'confirmed') {
+      toast.error('This booking cannot be cancelled');
       return;
     }
     
+    // Check if check-in date has passed
     const checkIn = new Date(booking.checkIn);
     const now = new Date();
     if (checkIn < now) {
-      toast.error('Cannot cancel past bookings');
+      toast.error('Cannot cancel bookings with check-in dates in the past');
       return;
     }
     
@@ -146,49 +164,86 @@ const MyBookings = () => {
   };
 
   const confirmCancel = async () => {
-    if (!bookingToCancel || !user) return;
+    if (!bookingToCancel || !user) {
+      toast.error('Invalid booking or user');
+      return;
+    }
+
+    // Double-check validation before proceeding
+    if (bookingToCancel.status === 'cancelled' || bookingToCancel.status === 'completed') {
+      toast.error('This booking cannot be cancelled');
+      setCancelDialogOpen(false);
+      setBookingToCancel(null);
+      return;
+    }
+
+    const checkIn = new Date(bookingToCancel.checkIn);
+    const now = new Date();
+    if (checkIn < now) {
+      toast.error('Cannot cancel bookings with check-in dates in the past');
+      setCancelDialogOpen(false);
+      setBookingToCancel(null);
+      return;
+    }
     
     setCancelling(true);
     try {
       // Update booking status to cancelled
       await updateBooking(bookingToCancel.id, { status: 'cancelled' });
       
-      // Process refund
+      // Process refund if there's a total price
       const refundAmount = bookingToCancel.totalPrice || 0;
       
       if (refundAmount > 0) {
-        // Get current wallet balance
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        const currentBalance = userDoc.exists() ? (userDoc.data().walletBalance || 0) : 0;
-        const newBalance = currentBalance + refundAmount;
-        
-        // Update wallet balance
-        await updateDoc(doc(db, 'users', user.uid), {
-          walletBalance: newBalance
-        });
-        
-        // Create refund transaction
-        await createTransaction({
-          userId: user.uid,
-          type: 'refund',
-          amount: refundAmount,
-          description: `Refund for cancelled booking #${bookingToCancel.id.slice(0, 8)}`,
-          status: 'completed'
-        });
-        
-        console.log('✅ Refund processed:', {
-          bookingId: bookingToCancel.id,
-          refundAmount,
-          newBalance
-        });
+        try {
+          // Get current wallet balance
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (!userDoc.exists()) {
+            throw new Error('User document not found');
+          }
+
+          const currentBalance = userDoc.data().walletBalance || 0;
+          const newBalance = currentBalance + refundAmount;
+          
+          // Update wallet balance
+          await updateDoc(doc(db, 'users', user.uid), {
+            walletBalance: newBalance
+          });
+          
+          // Create refund transaction
+          await createTransaction({
+            userId: user.uid,
+            type: 'refund',
+            amount: refundAmount,
+            description: `Refund for cancelled ${bookingToCancel.status} booking #${bookingToCancel.id.slice(0, 8)}`,
+            status: 'completed'
+          });
+          
+          console.log('✅ Refund processed:', {
+            bookingId: bookingToCancel.id,
+            bookingStatus: bookingToCancel.status,
+            refundAmount,
+            previousBalance: currentBalance,
+            newBalance
+          });
+        } catch (refundError: any) {
+          console.error('Error processing refund:', refundError);
+          // Don't fail the cancellation if refund fails, but log it
+          toast.error(`Booking cancelled, but refund failed. Please contact support. Error: ${refundError.message}`);
+        }
       }
       
-      toast.success(`Booking cancelled. ${refundAmount > 0 ? `${formatPHP(refundAmount)} has been refunded to your wallet.` : ''}`);
+      const refundMessage = refundAmount > 0 
+        ? `${formatPHP(refundAmount)} has been refunded to your wallet.`
+        : 'No refund was processed for this booking.';
+      
+      toast.success(`Booking cancelled successfully. ${refundMessage}`);
       setCancelDialogOpen(false);
       setBookingToCancel(null);
     } catch (error: any) {
       console.error('Error cancelling booking:', error);
-      toast.error(`Failed to cancel booking: ${error.message || 'Unknown error'}`);
+      const errorMessage = error.message || 'Unknown error occurred';
+      toast.error(`Failed to cancel booking: ${errorMessage}`);
     } finally {
       setCancelling(false);
     }
@@ -232,7 +287,9 @@ const MyBookings = () => {
         ) : (
           <div className="space-y-4">
             {bookings.map((booking) => {
-              const isConfirmedUpcoming = booking.status === 'confirmed' && new Date(booking.checkIn) >= new Date();
+              // Check if booking can be cancelled (pending or confirmed, and check-in hasn't passed)
+              const canCancel = (booking.status === 'pending' || booking.status === 'confirmed') && 
+                                new Date(booking.checkIn) >= new Date();
               
               return (
                 <Card key={booking.id}>
@@ -264,8 +321,8 @@ const MyBookings = () => {
                       </div>
                     </div>
                     
-                    {/* Cancel Button for Confirmed Upcoming Bookings */}
-                    {isConfirmedUpcoming && (
+                    {/* Cancel Button for Pending or Confirmed Upcoming Bookings */}
+                    {canCancel && (
                       <div className="pt-4 border-t">
                         <Button
                           variant="destructive"
@@ -293,12 +350,25 @@ const MyBookings = () => {
             <AlertDialogTitle>Cancel Booking</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to cancel this booking?
-              {bookingToCancel && bookingToCancel.totalPrice > 0 && (
-                <div className="mt-2 p-3 bg-muted rounded-md">
-                  <p className="text-sm font-medium">Refund Information:</p>
-                  <p className="text-sm text-muted-foreground">
-                    A refund of {formatPHP(bookingToCancel.totalPrice)} will be credited to your wallet balance.
-                  </p>
+              {bookingToCancel && (
+                <div className="mt-3 space-y-2">
+                  <div className="p-3 bg-muted rounded-md">
+                    <p className="text-sm font-medium">Booking Details:</p>
+                    <p className="text-sm text-muted-foreground">
+                      Status: <span className="font-medium capitalize">{bookingToCancel.status}</span>
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Check-in: {new Date(bookingToCancel.checkIn).toLocaleDateString()}
+                    </p>
+                  </div>
+                  {bookingToCancel.totalPrice > 0 && (
+                    <div className="p-3 bg-primary/10 rounded-md border border-primary/20">
+                      <p className="text-sm font-medium text-primary">Refund Information:</p>
+                      <p className="text-sm text-muted-foreground">
+                        A refund of {formatPHP(bookingToCancel.totalPrice)} will be credited to your wallet balance.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </AlertDialogDescription>
