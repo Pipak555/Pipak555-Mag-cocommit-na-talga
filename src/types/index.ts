@@ -18,6 +18,9 @@ export interface Listing {
   blockedDates?: string[]; // dates when property is not available
   createdAt: string;
   updatedAt: string;
+  // Rating data (calculated from reviews)
+  averageRating?: number;
+  reviewCount?: number;
 }
 
 export interface Booking {

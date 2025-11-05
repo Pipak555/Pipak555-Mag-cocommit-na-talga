@@ -340,6 +340,70 @@ export const getListingReviews = async (listingId: string) => {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Review));
 };
 
+// Get average rating and review count for a listing
+export const getListingRating = async (listingId: string): Promise<{ averageRating: number; reviewCount: number }> => {
+  try {
+    const reviews = await getListingReviews(listingId);
+    if (reviews.length === 0) {
+      return { averageRating: 0, reviewCount: 0 };
+    }
+    const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
+    const averageRating = totalRating / reviews.length;
+    return { 
+      averageRating: Math.round(averageRating * 10) / 10, // Round to 1 decimal
+      reviewCount: reviews.length 
+    };
+  } catch (error) {
+    console.error('Error getting listing rating:', error);
+    return { averageRating: 0, reviewCount: 0 };
+  }
+};
+
+// Get ratings for multiple listings at once (for performance)
+export const getListingsRatings = async (listingIds: string[]): Promise<Map<string, { averageRating: number; reviewCount: number }>> => {
+  const ratingsMap = new Map<string, { averageRating: number; reviewCount: number }>();
+  
+  if (listingIds.length === 0) return ratingsMap;
+  
+  try {
+    // Get all reviews for these listings
+    const reviewsRef = collection(db, 'reviews');
+    const snapshot = await getDocs(reviewsRef);
+    const allReviews = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Review));
+    
+    // Filter reviews for these listings and calculate ratings
+    const relevantReviews = allReviews.filter(review => listingIds.includes(review.listingId));
+    
+    // Group by listingId
+    const reviewsByListing = new Map<string, Review[]>();
+    relevantReviews.forEach(review => {
+      const existing = reviewsByListing.get(review.listingId) || [];
+      existing.push(review);
+      reviewsByListing.set(review.listingId, existing);
+    });
+    
+    // Calculate ratings for each listing
+    listingIds.forEach(listingId => {
+      const reviews = reviewsByListing.get(listingId) || [];
+      if (reviews.length === 0) {
+        ratingsMap.set(listingId, { averageRating: 0, reviewCount: 0 });
+      } else {
+        const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
+        const averageRating = Math.round((totalRating / reviews.length) * 10) / 10;
+        ratingsMap.set(listingId, { averageRating, reviewCount: reviews.length });
+      }
+    });
+  } catch (error) {
+    console.error('Error getting listings ratings:', error);
+    // Return default ratings for all listings
+    listingIds.forEach(listingId => {
+      ratingsMap.set(listingId, { averageRating: 0, reviewCount: 0 });
+    });
+  }
+  
+  return ratingsMap;
+};
+
 // 💬 Messages
 export const sendMessage = async (data: Omit<Message, 'id' | 'createdAt'>) => {
   const docRef = await addDoc(collection(db, 'messages'), {

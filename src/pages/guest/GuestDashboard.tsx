@@ -3,14 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { SearchAutocomplete } from '@/components/search/SearchAutocomplete';
-import { Heart, MapPin, Calendar, Wallet, Settings, User, Sparkles, Bookmark } from 'lucide-react';
+import { CategoryCardVideo } from '@/components/ui/category-card-video';
+import { VideoBackground } from '@/components/ui/video-background';
+import { Heart, MapPin, Calendar, Wallet, Settings, User, Sparkles, Bookmark, Home, Compass, Wrench } from 'lucide-react';
 import { formatPHP } from '@/lib/currency';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
 import { ListingCard } from '@/components/listings/ListingCard';
 import { getRecommendations } from '@/lib/recommendations';
-import { getBookings, toggleFavorite } from '@/lib/firestore';
+import { getBookings, toggleFavorite, getListingsRatings } from '@/lib/firestore';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { toast } from 'sonner';
@@ -27,7 +28,10 @@ import {
 import homeIcon from '@/assets/category-home.png';
 import experienceIcon from '@/assets/category-experience.png';
 import serviceIcon from '@/assets/category-service.png';
+import heroImage from '@/assets/hero-home.jpg';
 import type { Listing, Booking } from '@/types';
+
+const landingVideo = '/videos/landing-hero.mp4';
 
 const GuestDashboard = () => {
   const { user, userRole, userProfile, signOut } = useAuth();
@@ -98,7 +102,26 @@ const GuestDashboard = () => {
 
       // Load recommendations
       const recs = await getRecommendations(user.uid, 6);
-      setRecommendations(recs);
+      
+      // Fetch ratings for recommendations
+      if (recs.length > 0) {
+        const listingIds = recs.map(listing => listing.id);
+        const ratingsMap = await getListingsRatings(listingIds);
+        
+        // Attach ratings to recommendations
+        const recsWithRatings = recs.map(listing => {
+          const rating = ratingsMap.get(listing.id);
+          return {
+            ...listing,
+            averageRating: rating?.averageRating || 0,
+            reviewCount: rating?.reviewCount || 0
+          };
+        });
+        
+        setRecommendations(recsWithRatings);
+      } else {
+        setRecommendations(recs);
+      }
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     } finally {
@@ -168,21 +191,35 @@ const GuestDashboard = () => {
       </header>
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Welcome Section */}
-        <div className="mb-8 p-6 rounded-xl bg-gradient-to-r from-secondary to-secondary/80 text-white">
-          <h2 className="text-3xl font-bold mb-2">Discover Your Next Adventure</h2>
-          <p className="text-white/90">{userProfile?.fullName || 'Guest'}</p>
+        {/* Hero Video Section */}
+        <div className="relative mb-8 rounded-xl overflow-hidden h-64 md:h-80 lg:h-96 shadow-lg">
+          <VideoBackground 
+            src={landingVideo} 
+            overlay={true}
+            fallbackImage={heroImage}
+          />
+          
+          {/* Enhanced Overlay */}
+          <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-black/40 to-black/60 z-10" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent z-10" />
+          
+          {/* Content */}
+          <div className="relative z-20 h-full flex flex-col items-center justify-center text-center px-6">
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4 text-white drop-shadow-2xl">
+              Discover Your Next Adventure
+            </h2>
+            <p className="text-lg md:text-xl text-white/90 mb-6 max-w-2xl drop-shadow-lg">
+              Welcome back, {userProfile?.fullName || 'Guest'}! Ready to explore amazing places?
+            </p>
+            <Button 
+              size="lg" 
+              className="h-12 px-8 text-lg bg-primary hover:bg-primary/90 shadow-2xl hover:shadow-2xl hover:scale-105 transition-all"
+              onClick={() => navigate('/guest/browse')}
+            >
+              Browse All Listings
+            </Button>
+          </div>
         </div>
-
-        {/* Search Bar with Autocomplete */}
-        <Card className="shadow-medium mb-8 border-border/50">
-          <CardContent className="pt-6">
-            <SearchAutocomplete
-              onSearch={(query) => navigate('/guest/browse')}
-              placeholder="Search destinations, experiences, services..."
-            />
-          </CardContent>
-        </Card>
 
         {/* Quick Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
@@ -260,38 +297,35 @@ const GuestDashboard = () => {
         <div className="mb-8">
           <h3 className="text-2xl font-bold mb-6">Browse Categories</h3>
           <div className="grid md:grid-cols-3 gap-6">
-            <Card 
-              className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" 
-              onClick={() => navigate('/guest/browse?category=home')}
-            >
-              <CardHeader className="text-center">
-                <img src={homeIcon} alt="Homes" className="w-20 h-20 mx-auto mb-4" />
-                <CardTitle>Homes</CardTitle>
-                <CardDescription>Find your perfect stay</CardDescription>
-              </CardHeader>
-            </Card>
+            <CategoryCardVideo
+              videoSrc="/videos/category-home.mp4"
+              fallbackImage={homeIcon}
+              icon={Home}
+              title="Homes"
+              description="Find your perfect stay"
+              href="/guest/browse?category=home"
+              colorClass="primary"
+            />
 
-            <Card 
-              className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer"
-              onClick={() => navigate('/guest/browse?category=experience')}
-            >
-              <CardHeader className="text-center">
-                <img src={experienceIcon} alt="Experiences" className="w-20 h-20 mx-auto mb-4" />
-                <CardTitle>Experiences</CardTitle>
-                <CardDescription>Discover unique activities</CardDescription>
-              </CardHeader>
-            </Card>
+            <CategoryCardVideo
+              videoSrc="/videos/category-experience.mp4"
+              fallbackImage={experienceIcon}
+              icon={Compass}
+              title="Experiences"
+              description="Discover unique activities"
+              href="/guest/browse?category=experience"
+              colorClass="secondary"
+            />
 
-            <Card 
-              className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer"
-              onClick={() => navigate('/guest/browse?category=service')}
-            >
-              <CardHeader className="text-center">
-                <img src={serviceIcon} alt="Services" className="w-20 h-20 mx-auto mb-4" />
-                <CardTitle>Services</CardTitle>
-                <CardDescription>Professional assistance</CardDescription>
-              </CardHeader>
-            </Card>
+            <CategoryCardVideo
+              videoSrc="/videos/category-service.mp4"
+              fallbackImage={serviceIcon}
+              icon={Wrench}
+              title="Services"
+              description="Professional assistance"
+              href="/guest/browse?category=service"
+              colorClass="accent"
+            />
           </div>
         </div>
 
@@ -307,7 +341,7 @@ const GuestDashboard = () => {
                 View All
               </Button>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
               {recommendations.slice(0, 3).map((listing) => (
               <ListingCard
                 key={listing.id}

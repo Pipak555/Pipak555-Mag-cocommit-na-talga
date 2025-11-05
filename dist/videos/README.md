@@ -10,15 +10,30 @@ Place the following video files in this directory (`public/videos/`):
    - Recommended: Travel, vacation, luxury accommodation scenes
    - Search terms: "travel", "vacation", "luxury home", "beautiful destination"
 
-2. **guest-login-bg.mp4** - Guest login/signup page
+2. **category-home.mp4** - Category card for Homes (appears on hover)
+   - Recommended: Beautiful home interiors, cozy living spaces, luxury accommodations
+   - Search terms: "home interior", "luxury home", "modern house", "cozy living room"
+   - **Note:** Video will auto-fit using `object-cover` CSS, so any aspect ratio will work
+
+3. **category-experience.mp4** - Category card for Experiences (appears on hover)
+   - Recommended: Outdoor activities, adventures, travel experiences
+   - Search terms: "outdoor adventure", "travel experience", "hiking", "beach activities"
+   - **Note:** Video will auto-fit using `object-cover` CSS, so any aspect ratio will work
+
+4. **category-service.mp4** - Category card for Services (appears on hover)
+   - Recommended: Cleaning services, professional services, maintenance
+   - Search terms: "cleaning service", "professional service", "maintenance", "home service"
+   - **Note:** Video will auto-fit using `object-cover` CSS, so any aspect ratio will work
+
+5. **guest-login-bg.mp4** - Guest login/signup page
    - Recommended: Traveler, adventure, beach vacation scenes
    - Search terms: "traveler", "adventure", "beach vacation", "exploring"
 
-3. **host-login-bg.mp4** - Host login/signup page
+6. **host-login-bg.mp4** - Host login/signup page
    - Recommended: Home, property, hospitality scenes
    - Search terms: "home", "property", "hospitality", "real estate"
 
-4. **admin-login-bg.mp4** - Admin login page
+7. **admin-login-bg.mp4** - Admin login page
    - Recommended: Business, professional, office scenes
    - Search terms: "business", "professional", "office", "technology"
 
@@ -42,11 +57,18 @@ Place the following video files in this directory (`public/videos/`):
 
 To ensure best performance:
 
-1. **Resolution**: 1920x1080 (Full HD) is optimal
-2. **File Size**: Keep under 10MB per video (ideally 5-8MB)
+1. **Resolution**: 
+   - Landing page: 1920x1080 (Full HD) is optimal
+   - Category cards: 1280x720 (HD) or 1920x1080 (Full HD) - **videos will auto-fit using `object-cover`**
+2. **File Size**: 
+   - Landing page: Keep under 10MB per video (ideally 5-8MB)
+   - Category cards: Keep under 5MB per video (ideally 2-3MB) - smaller is better for hover loading
 3. **Format**: MP4 with H.264 codec
-4. **Duration**: 10-30 seconds (will loop)
+4. **Duration**: 
+   - Landing page: 10-30 seconds (will loop)
+   - Category cards: 3-8 seconds (will loop) - shorter is better for hover effects
 5. **Bitrate**: 2-5 Mbps for good quality/size balance
+6. **Aspect Ratio**: **Any aspect ratio will work** - videos use `object-cover` CSS which automatically fits the container while maintaining aspect ratio (cropping if necessary)
 
 ### How to Compress Videos:
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { getListings, toggleFavorite, toggleWishlist } from "@/lib/firestore";
+import { getListings, toggleFavorite, toggleWishlist, getListingsRatings } from "@/lib/firestore";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { ListingCard } from "@/components/listings/ListingCard";
@@ -86,7 +86,26 @@ const BrowseListings = () => {
         ? { category: filters.category, status: 'approved' } 
         : { status: 'approved' };
       const data = await getListings(listingFilters);
-      setListings(data);
+      
+      // Fetch ratings for all listings
+      if (data.length > 0) {
+        const listingIds = data.map(listing => listing.id);
+        const ratingsMap = await getListingsRatings(listingIds);
+        
+        // Attach ratings to listings
+        const listingsWithRatings = data.map(listing => {
+          const rating = ratingsMap.get(listing.id);
+          return {
+            ...listing,
+            averageRating: rating?.averageRating || 0,
+            reviewCount: rating?.reviewCount || 0
+          };
+        });
+        
+        setListings(listingsWithRatings);
+      } else {
+        setListings(data);
+      }
     } catch (error) {
       toast.error("Failed to load listings");
     } finally {
@@ -262,7 +281,7 @@ const BrowseListings = () => {
             }
           />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 items-stretch">
             {filteredListings.map((listing) => (
               <ListingCard
                 key={listing.id}

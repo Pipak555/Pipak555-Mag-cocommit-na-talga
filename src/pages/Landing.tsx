@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { VideoBackground } from '@/components/ui/video-background';
+import { CategoryCardVideo } from '@/components/ui/category-card-video';
 import { Home, Compass, Wrench, Users, Building2, Shield, ChevronDown } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Footer from '@/components/shared/Footer';
@@ -89,56 +90,35 @@ const Landing = () => {
           </div>
           
           <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            <Link to="/guest/browse?category=home" className="group block">
-              <Card className="p-8 text-center shadow-medium hover:shadow-hover transition-all duration-300 border-2 border-transparent hover:border-primary/50 bg-card h-full">
-                <div className="mb-6 relative">
-                  <div className="w-32 h-32 mx-auto mb-4 rounded-2xl overflow-hidden bg-primary/5 flex items-center justify-center group-hover:scale-105 transition-transform">
-                    <img src={homeIcon} alt="Home" className="w-24 h-24 object-contain" />
-                  </div>
-                  <div className="w-14 h-14 mx-auto rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                    <Home className="w-7 h-7 text-primary" />
-                  </div>
-                </div>
-                <h3 className="text-2xl font-bold mb-3 group-hover:text-primary transition-colors">Homes</h3>
-                <p className="text-muted-foreground text-base leading-relaxed">
-                  Discover comfortable stays for your next adventure
-                </p>
-              </Card>
-            </Link>
+            <CategoryCardVideo
+              videoSrc="/videos/category-home.mp4"
+              fallbackImage={homeIcon}
+              icon={Home}
+              title="Homes"
+              description="Discover comfortable stays for your next adventure"
+              href="/guest/browse?category=home"
+              colorClass="primary"
+            />
 
-            <Link to="/guest/browse?category=experience" className="group block">
-              <Card className="p-8 text-center shadow-medium hover:shadow-hover transition-all duration-300 border-2 border-transparent hover:border-secondary/50 bg-card h-full">
-                <div className="mb-6 relative">
-                  <div className="w-32 h-32 mx-auto mb-4 rounded-2xl overflow-hidden bg-secondary/5 flex items-center justify-center group-hover:scale-105 transition-transform">
-                    <img src={experienceIcon} alt="Experience" className="w-24 h-24 object-contain" />
-                  </div>
-                  <div className="w-14 h-14 mx-auto rounded-full bg-secondary/10 flex items-center justify-center group-hover:bg-secondary/20 transition-colors">
-                    <Compass className="w-7 h-7 text-secondary" />
-                  </div>
-                </div>
-                <h3 className="text-2xl font-bold mb-3 group-hover:text-secondary transition-colors">Experiences</h3>
-                <p className="text-muted-foreground text-base leading-relaxed">
-                  Unique activities hosted by local experts
-                </p>
-              </Card>
-            </Link>
+            <CategoryCardVideo
+              videoSrc="/videos/category-experience.mp4"
+              fallbackImage={experienceIcon}
+              icon={Compass}
+              title="Experiences"
+              description="Unique activities hosted by local experts"
+              href="/guest/browse?category=experience"
+              colorClass="secondary"
+            />
 
-            <Link to="/guest/browse?category=service" className="group block">
-              <Card className="p-8 text-center shadow-medium hover:shadow-hover transition-all duration-300 border-2 border-transparent hover:border-accent/50 bg-card h-full">
-                <div className="mb-6 relative">
-                  <div className="w-32 h-32 mx-auto mb-4 rounded-2xl overflow-hidden bg-accent/5 flex items-center justify-center group-hover:scale-105 transition-transform">
-                    <img src={serviceIcon} alt="Service" className="w-24 h-24 object-contain" />
-                  </div>
-                  <div className="w-14 h-14 mx-auto rounded-full bg-accent/10 flex items-center justify-center group-hover:bg-accent/20 transition-colors">
-                    <Wrench className="w-7 h-7 text-accent" />
-                  </div>
-                </div>
-                <h3 className="text-2xl font-bold mb-3 group-hover:text-accent transition-colors">Services</h3>
-                <p className="text-muted-foreground text-base leading-relaxed">
-                  Professional services for your property
-                </p>
-              </Card>
-            </Link>
+            <CategoryCardVideo
+              videoSrc="/videos/category-service.mp4"
+              fallbackImage={serviceIcon}
+              icon={Wrench}
+              title="Services"
+              description="Professional services for your property"
+              href="/guest/browse?category=service"
+              colorClass="accent"
+            />
           </div>
         </div>
       </section>

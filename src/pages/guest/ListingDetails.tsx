@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { getListing, createBooking } from "@/lib/firestore";
+import { getListing, createBooking, getListingRating } from "@/lib/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -44,14 +44,25 @@ const ListingDetails = () => {
   const loadListing = async () => {
     if (!id) return;
     const data = await getListing(id);
-    setListing(data);
     
     if (data) {
+      // Load rating for the listing
+      const rating = await getListingRating(id);
+      const listingWithRating = {
+        ...data,
+        averageRating: rating.averageRating,
+        reviewCount: rating.reviewCount
+      };
+      
+      setListing(listingWithRating);
+      
       console.log('📋 Listing loaded:', {
         id: data.id,
         title: data.title,
         hostId: data.hostId,
-        hasHostId: !!data.hostId
+        hasHostId: !!data.hostId,
+        averageRating: rating.averageRating,
+        reviewCount: rating.reviewCount
       });
       
       if (!data.hostId) {
@@ -424,8 +435,28 @@ const SimilarListings = ({ listingId }: { listingId: string }) => {
   const loadSimilarListings = async () => {
     try {
       const { getSimilarListings } = await import('@/lib/recommendations');
+      const { getListingsRatings } = await import('@/lib/firestore');
       const similar = await getSimilarListings(listingId, 4);
-      setSimilarListings(similar);
+      
+      // Fetch ratings for similar listings
+      if (similar.length > 0) {
+        const listingIds = similar.map(listing => listing.id);
+        const ratingsMap = await getListingsRatings(listingIds);
+        
+        // Attach ratings to similar listings
+        const similarWithRatings = similar.map(listing => {
+          const rating = ratingsMap.get(listing.id);
+          return {
+            ...listing,
+            averageRating: rating?.averageRating || 0,
+            reviewCount: rating?.reviewCount || 0
+          };
+        });
+        
+        setSimilarListings(similarWithRatings);
+      } else {
+        setSimilarListings(similar);
+      }
     } catch (error) {
       console.error('Error loading similar listings:', error);
     } finally {
