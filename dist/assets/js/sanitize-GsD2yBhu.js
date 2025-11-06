@@ -1,0 +1,1 @@
+const e=e=>"string"!=typeof e?"":e.trim().replace(/<[^>]*>/g,"").replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,"").replace(/on\w+\s*=\s*["'][^"']*["']/gi,"").replace(/javascript:/gi,"").replace(/data:text\/html/gi,"").replace(/\0/g,""),r=e=>"string"!=typeof e?"":e.trim().toLowerCase().replace(/[^a-z0-9@._-]/g,"");export{e as a,r as s};

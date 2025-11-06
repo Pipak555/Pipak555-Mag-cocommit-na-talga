@@ -152,31 +152,77 @@ src/
 
 ### Authentication
 - Email/password authentication via Firebase Auth
+- Google OAuth sign-in support
 - Role-based access control (host, guest, admin)
+- Multi-role support (users can be both guest and host)
 - Protected routes per user type
+- Form validation with Zod schemas
+- Input sanitization for security
 
 ### Firestore Collections
-- `users` - User profiles with role information
-- `listings` - Host listings with details, images, pricing
-- `bookings` - Booking requests and confirmations
-- `reviews` - Guest reviews and ratings
-- `messages` - Direct messaging between users
-- `transactions` - Wallet and payment transactions
+- `users` - User profiles with role information and wallet balance
+- `listings` - Host listings with details, images, pricing, and availability
+- `bookings` - Booking requests and confirmations with status tracking
+- `reviews` - Guest reviews and ratings with average calculation
+- `messages` - Direct messaging between users with real-time updates
+- `transactions` - Wallet and payment transactions with audit trail
+- `notifications` - Real-time notifications for users
 
 ### Key Features
-- Role-based access control (Host, Guest, Admin)
-- Image upload to Firebase Storage
-- Real-time booking management
-- Review and rating system
-- E-wallet and transactions
-- Secure Firebase Security Rules
+- **Error Handling**: Error boundaries catch and display errors gracefully
+- **Performance**: React.memo, useMemo, and useCallback optimizations
+- **Loading States**: Skeleton loaders for better UX
+- **Real-time Updates**: Firestore listeners for live data
+- **Payment System**: Centralized payment service with refund support
+- **Notifications**: Real-time notification system
+- **Search & Filtering**: Advanced search with Firestore queries
+- **Security**: Input sanitization, validation, and secure Firebase rules
 
 ## Testing
 
-Run tests with:
+This project includes comprehensive tests using Vitest:
+
+### Run Tests
 ```bash
+# Run all tests
 npm test
+
+# Run tests in watch mode
+npm test -- --watch
+
+# Run tests with UI
+npm run test:ui
+
+# Run tests with coverage
+npm run test:coverage
 ```
+
+### Test Coverage
+- **Validation Tests**: Tests for Zod schemas (login, signup, listing forms)
+- **Sanitization Tests**: Tests for input sanitization functions
+- **Security Tests**: XSS prevention, input validation
+
+### Writing Tests
+Tests are located in `src/lib/__tests__/` and follow the pattern:
+- `*.test.ts` - Unit tests for utility functions
+- `*.test.tsx` - Component tests (when added)
+
+## Code Quality
+
+### Validation
+- All forms use Zod schemas for validation
+- Input sanitization prevents XSS attacks
+- Type-safe with TypeScript
+
+### Error Handling
+- Error boundaries catch React errors
+- User-friendly error messages
+- Comprehensive error logging
+
+### Performance
+- React.memo for expensive components
+- useMemo and useCallback for optimization
+- Skeleton loaders for better UX
 
 ## Deployment
 

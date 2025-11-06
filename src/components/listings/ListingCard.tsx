@@ -1,3 +1,4 @@
+import React, { memo, useCallback } from 'react';
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,28 @@ interface ListingCardProps {
   isInWishlist?: boolean;
 }
 
-export const ListingCard = ({ listing, onView, onFavorite, onWishlist, isFavorite, isInWishlist }: ListingCardProps) => {
+export const ListingCard = memo(({ listing, onView, onFavorite, onWishlist, isFavorite, isInWishlist }: ListingCardProps) => {
+  const handleFavoriteClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onFavorite?.();
+  }, [onFavorite]);
+
+  const handleWishlistClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onWishlist?.();
+  }, [onWishlist]);
+
+  const handleViewClick = useCallback(() => {
+    onView?.();
+  }, [onView]);
+
+  const formattedPrice = formatPHP(listing.price);
+  const rating = listing.averageRating && listing.averageRating > 0 
+    ? listing.averageRating.toFixed(1) 
+    : 'New';
+  const reviewCount = listing.reviewCount && listing.reviewCount > 0 
+    ? `(${listing.reviewCount})` 
+    : '';
   return (
     <Card className="group relative overflow-hidden border-0 shadow-sm hover:shadow-xl transition-all duration-500 hover:-translate-y-1 h-full flex flex-col">
       {/* Image Container with Gradient Overlay */}
@@ -36,10 +58,7 @@ export const ListingCard = ({ listing, onView, onFavorite, onWishlist, isFavorit
               variant="ghost"
               size="icon"
               className="bg-white/90 backdrop-blur-sm hover:bg-white hover:scale-110 transition-all duration-300 shadow-lg"
-              onClick={(e) => {
-                e.stopPropagation();
-                onWishlist();
-              }}
+              onClick={handleWishlistClick}
               title={isInWishlist ? "Remove from wishlist" : "Add to wishlist"}
             >
               <Bookmark className={`h-5 w-5 transition-all ${isInWishlist ? "fill-blue-500 text-blue-500 scale-110" : "text-gray-700"}`} />
@@ -51,10 +70,7 @@ export const ListingCard = ({ listing, onView, onFavorite, onWishlist, isFavorit
               variant="ghost"
               size="icon"
               className="bg-white/90 backdrop-blur-sm hover:bg-white hover:scale-110 transition-all duration-300 shadow-lg"
-              onClick={(e) => {
-                e.stopPropagation();
-                onFavorite();
-              }}
+              onClick={handleFavoriteClick}
               title={isFavorite ? "Remove from favorites" : "Add to favorites"}
             >
               <Heart className={`h-5 w-5 transition-all ${isFavorite ? "fill-red-500 text-red-500 scale-110" : "text-gray-700"}`} />
@@ -69,7 +85,7 @@ export const ListingCard = ({ listing, onView, onFavorite, onWishlist, isFavorit
         
         {/* Price Badge */}
         <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-lg z-10 border border-white/20">
-          <span className="text-lg font-bold text-gray-900">{formatPHP(listing.price)}</span>
+          <span className="text-lg font-bold text-gray-900">{formattedPrice}</span>
           <span className="text-xs text-gray-700 font-medium">/night</span>
         </div>
       </div>
@@ -93,11 +109,9 @@ export const ListingCard = ({ listing, onView, onFavorite, onWishlist, isFavorit
             <div className="flex items-center gap-1">
               <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
               <span>
-                {listing.averageRating && listing.averageRating > 0 
-                  ? listing.averageRating.toFixed(1) 
-                  : 'New'}
-                {listing.reviewCount && listing.reviewCount > 0 && (
-                  <span className="text-foreground/60 ml-1">({listing.reviewCount})</span>
+                {rating}
+                {reviewCount && (
+                  <span className="text-foreground/60 ml-1">{reviewCount}</span>
                 )}
               </span>
             </div>
@@ -111,9 +125,24 @@ export const ListingCard = ({ listing, onView, onFavorite, onWishlist, isFavorit
       
       {onView && (
         <CardFooter className="px-5 pb-5 pt-0 mt-auto">
-          <Button className="w-full h-11" onClick={onView}>View Details</Button>
+          <Button className="w-full h-11" onClick={handleViewClick}>View Details</Button>
         </CardFooter>
       )}
     </Card>
   );
-};
+}, (prevProps, nextProps) => {
+  // Custom comparison function for better performance
+  return (
+    prevProps.listing.id === nextProps.listing.id &&
+    prevProps.listing.price === nextProps.listing.price &&
+    prevProps.listing.averageRating === nextProps.listing.averageRating &&
+    prevProps.listing.reviewCount === nextProps.listing.reviewCount &&
+    prevProps.isFavorite === nextProps.isFavorite &&
+    prevProps.isInWishlist === nextProps.isInWishlist &&
+    prevProps.onView === nextProps.onView &&
+    prevProps.onFavorite === nextProps.onFavorite &&
+    prevProps.onWishlist === nextProps.onWishlist
+  );
+});
+
+ListingCard.displayName = 'ListingCard';

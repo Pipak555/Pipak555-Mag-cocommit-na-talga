@@ -5,6 +5,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Search, Clock, X, TrendingUp } from "lucide-react";
 import { getListings } from "@/lib/firestore";
+import { searchListings } from "@/lib/search";
 import type { Listing } from "@/types";
 import { formatPHP } from "@/lib/currency";
 import { useNavigate } from "react-router-dom";
@@ -106,34 +107,14 @@ export const SearchAutocomplete = ({
 
     setLoading(true);
     try {
-      const allListings = await getListings({ status: 'approved' });
-      const lowerQuery = searchQuery.toLowerCase();
-      
-      const matched = allListings.filter(listing => {
-        const matchesTitle = listing.title.toLowerCase().includes(lowerQuery);
-        const matchesLocation = listing.location.toLowerCase().includes(lowerQuery);
-        const matchesDescription = listing.description.toLowerCase().includes(lowerQuery);
-        const matchesCategory = listing.category.toLowerCase().includes(lowerQuery);
-        
-        return matchesTitle || matchesLocation || matchesDescription || matchesCategory;
+      // Use enhanced search function
+      const result = await searchListings({
+        query: searchQuery,
+        status: 'approved',
+        limit: 5 // Show top 5 suggestions
       });
 
-      // Sort by relevance (title matches first, then location, then description)
-      const sorted = matched.sort((a, b) => {
-        const aTitle = a.title.toLowerCase().includes(lowerQuery) ? 3 : 0;
-        const aLocation = a.location.toLowerCase().includes(lowerQuery) ? 2 : 0;
-        const aDesc = a.description.toLowerCase().includes(lowerQuery) ? 1 : 0;
-        const aScore = aTitle + aLocation + aDesc;
-
-        const bTitle = b.title.toLowerCase().includes(lowerQuery) ? 3 : 0;
-        const bLocation = b.location.toLowerCase().includes(lowerQuery) ? 2 : 0;
-        const bDesc = b.description.toLowerCase().includes(lowerQuery) ? 1 : 0;
-        const bScore = bTitle + bLocation + bDesc;
-
-        return bScore - aScore;
-      });
-
-      setSuggestions(sorted.slice(0, 5)); // Show top 5 suggestions
+      setSuggestions(result.listings);
     } catch (error) {
       console.error('Error searching:', error);
       toast.error("Failed to load suggestions");

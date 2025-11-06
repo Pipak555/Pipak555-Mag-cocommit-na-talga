@@ -2,27 +2,65 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
-    <link rel="icon" type="image/x-icon" href="/logo.svg" />
-    <title>Mojo Dojo Casa House</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#000000" />
     <meta name="description" content="Connect hosts and guests for unique stays, experiences, and services. Find your perfect accommodation or become a host today." />
     <meta name="author" content="StayHub" />
     <meta name="keywords" content="accommodation, booking, hosting, vacation rental, experiences, services" />
-
-    <meta property="og:title" content="Mojo Dojo Casa House" />
-    <meta property="og:description" content="Connect hosts and guests for unique stays, experiences, and services" />
+    
+    <!-- Favicons -->
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="icon" type="image/x-icon" href="/logo.svg" />
+    <link rel="apple-touch-icon" href="/logo.svg" />
+    
+    <!-- Preconnect for performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="dns-prefetch" href="https://api.cloudinary.com" />
+    <link rel="dns-prefetch" href="https://firestore.googleapis.com" />
+    <link rel="dns-prefetch" href="https://firebase.googleapis.com" />
+    
+    <!-- SEO Meta Tags -->
+    <title>Mojo Dojo Casa House - Book Unique Stays, Experiences & Services</title>
+    
+    <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
+    <meta property="og:title" content="Mojo Dojo Casa House - Book Unique Stays, Experiences & Services" />
+    <meta property="og:description" content="Connect hosts and guests for unique stays, experiences, and services. Find your perfect accommodation or become a host today." />
     <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
-
+    <meta property="og:url" content="https://your-project.firebaseapp.com" />
+    
+    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Mojo Dojo Casa House" />
+    <meta name="twitter:title" content="Mojo Dojo Casa House - Book Unique Stays, Experiences & Services" />
     <meta name="twitter:description" content="Connect hosts and guests for unique stays, experiences, and services" />
     <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+    
+    <!-- Performance hints -->
+    <link rel="preload" as="script" href="/src/main.tsx" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/inter-var.woff2" />
+    
+    <!-- Resource hints for Firebase -->
+    <link rel="dns-prefetch" href="https://firebase.googleapis.com" />
+    <link rel="dns-prefetch" href="https://firestore.googleapis.com" />
+    <link rel="dns-prefetch" href="https://identitytoolkit.googleapis.com" />
+    <link rel="dns-prefetch" href="https://securetoken.googleapis.com" />
   </head>
 
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    
+    <!-- Production environment check -->
+    <script>
+      if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        // Production optimizations
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', () => {
+            // Service worker registration can be added here if needed
+          });
+        }
+      }
+    </script>
   </body>
 </html>

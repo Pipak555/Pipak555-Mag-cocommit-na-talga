@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CategoryCardVideo } from '@/components/ui/category-card-video';
 import { VideoBackground } from '@/components/ui/video-background';
-import { Heart, MapPin, Calendar, Wallet, Settings, User, Sparkles, Bookmark, Home, Compass, Wrench } from 'lucide-react';
+import { Heart, MapPin, Calendar, Wallet, Settings, User, Sparkles, Bookmark, Home, Compass, Wrench, Building2 } from 'lucide-react';
 import { formatPHP } from '@/lib/currency';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
@@ -34,7 +35,7 @@ import type { Listing, Booking } from '@/types';
 const landingVideo = '/videos/landing-hero.mp4';
 
 const GuestDashboard = () => {
-  const { user, userRole, userProfile, signOut } = useAuth();
+  const { user, userRole, userProfile, signOut, hasRole, addRole } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState({
     favorites: 0,
@@ -49,7 +50,7 @@ const GuestDashboard = () => {
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
   useEffect(() => {
-    if (!user || userRole !== 'guest') {
+    if (!user || !hasRole('guest')) {
       navigate('/guest/login');
       return;
     }
@@ -166,6 +167,17 @@ const GuestDashboard = () => {
     navigate('/');
   };
 
+  const handleBecomeHost = async () => {
+    if (hasRole('host')) {
+      // Already a host, navigate to host dashboard
+      navigate('/host/dashboard');
+      return;
+    }
+    
+    // Navigate to policies page first
+    navigate('/host/policies');
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -184,6 +196,7 @@ const GuestDashboard = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <NotificationBell />
             <ThemeToggle />
             <Button variant="outline" onClick={() => setLogoutDialogOpen(true)}>Sign Out</Button>
           </div>
@@ -222,7 +235,7 @@ const GuestDashboard = () => {
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8 ${hasRole('host') ? 'lg:grid-cols-5' : 'lg:grid-cols-6'}`}>
           <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group">
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-secondary to-accent" />
             <CardHeader className="pb-3">
@@ -268,7 +281,10 @@ const GuestDashboard = () => {
             </CardContent>
           </Card>
 
-          <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group">
+          <Card 
+            className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer"
+            onClick={() => navigate('/guest/bookings?filter=past')}
+          >
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-accent via-primary to-secondary" />
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
@@ -291,6 +307,39 @@ const GuestDashboard = () => {
               <div className="text-3xl font-bold text-accent">{formatPHP(stats.walletBalance)}</div>
             </CardContent>
           </Card>
+
+          {/* Become a Host Card */}
+          {!hasRole('host') && (
+            <Card 
+              className="relative overflow-hidden border-2 border-secondary/30 shadow-lg hover:shadow-xl transition-all duration-300 group cursor-pointer bg-gradient-to-br from-secondary/5 to-secondary/10"
+              onClick={handleBecomeHost}
+            >
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-secondary via-secondary/80 to-secondary/60" />
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-secondary" />
+                  <CardTitle className="text-sm font-medium text-secondary uppercase tracking-wide">
+                    Become a Host
+                  </CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Start earning by hosting your property
+                </p>
+                <Button 
+                  variant="secondary" 
+                  className="w-full"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleBecomeHost();
+                  }}
+                >
+                  Get Started
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Browse Categories */}

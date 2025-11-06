@@ -32,7 +32,7 @@ import {
 const HostAccountSettings = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, userRole, refreshUserProfile, signOut } = useAuth();
+  const { user, userRole, refreshUserProfile, signOut, hasRole } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [userBookings, setUserBookings] = useState<Booking[]>([]);
@@ -57,7 +57,7 @@ const HostAccountSettings = () => {
   });
 
   useEffect(() => {
-    if (user && userRole !== 'host') {
+    if (user && !hasRole('host')) {
       navigate('/host/login');
       return;
     }
@@ -74,7 +74,7 @@ const HostAccountSettings = () => {
   }, [searchParams]);
 
   useEffect(() => {
-    if (user && userRole === 'host') {
+    if (user && hasRole('host')) {
       loadBookings();
       // Load notification preferences
       if (profile?.notifications) {

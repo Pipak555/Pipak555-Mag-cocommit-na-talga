@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { getListings, toggleFavorite, toggleWishlist, getListingsRatings } from "@/lib/firestore";
@@ -129,7 +129,7 @@ const BrowseListings = () => {
     }
   };
 
-  const handleFavorite = async (listingId: string) => {
+  const handleFavorite = useCallback(async (listingId: string) => {
     if (!user) {
       toast.error("Please login to add favorites");
       return;
@@ -149,9 +149,9 @@ const BrowseListings = () => {
       setFavorites(favorites);
       toast.error("Failed to update favorites");
     }
-  };
+  }, [user, favorites]);
 
-  const handleWishlist = async (listingId: string) => {
+  const handleWishlist = useCallback(async (listingId: string) => {
     if (!user) {
       toast.error("Please login to add to wishlist");
       return;
@@ -171,42 +171,45 @@ const BrowseListings = () => {
       setWishlist(wishlist);
       toast.error("Failed to update wishlist");
     }
-  };
+  }, [user, wishlist]);
 
-  const filteredListings = listings.filter(listing => {
-    // Search query filter
-    if (searchQuery.trim()) {
-      const lowerQuery = searchQuery.toLowerCase();
-      const matchesTitle = listing.title.toLowerCase().includes(lowerQuery);
-      const matchesLocation = listing.location.toLowerCase().includes(lowerQuery);
-      const matchesDescription = listing.description.toLowerCase().includes(lowerQuery);
-      const matchesCategory = listing.category.toLowerCase().includes(lowerQuery);
+  // Memoize filtered listings to avoid recalculating on every render
+  const filteredListings = useMemo(() => {
+    return listings.filter(listing => {
+      // Search query filter
+      if (searchQuery.trim()) {
+        const lowerQuery = searchQuery.toLowerCase();
+        const matchesTitle = listing.title.toLowerCase().includes(lowerQuery);
+        const matchesLocation = listing.location.toLowerCase().includes(lowerQuery);
+        const matchesDescription = listing.description.toLowerCase().includes(lowerQuery);
+        const matchesCategory = listing.category.toLowerCase().includes(lowerQuery);
+        
+        if (!matchesTitle && !matchesLocation && !matchesDescription && !matchesCategory) {
+          return false;
+        }
+      }
       
-      if (!matchesTitle && !matchesLocation && !matchesDescription && !matchesCategory) {
+      // Location filter
+      if (filters.location && !listing.location.toLowerCase().includes(filters.location.toLowerCase())) {
         return false;
       }
-    }
-    
-    // Location filter
-    if (filters.location && !listing.location.toLowerCase().includes(filters.location.toLowerCase())) {
-      return false;
-    }
-    
-    // Guest capacity filter
-    if (filters.guests > listing.maxGuests) {
-      return false;
-    }
-    
-    // Price range filter
-    if (filters.minPrice && listing.price < filters.minPrice) {
-      return false;
-    }
-    if (filters.maxPrice && listing.price > filters.maxPrice) {
-      return false;
-    }
-    
-    return true;
-  });
+      
+      // Guest capacity filter
+      if (filters.guests > listing.maxGuests) {
+        return false;
+      }
+      
+      // Price range filter
+      if (filters.minPrice && listing.price < filters.minPrice) {
+        return false;
+      }
+      if (filters.maxPrice && listing.price > filters.maxPrice) {
+        return false;
+      }
+      
+      return true;
+    });
+  }, [listings, searchQuery, filters]);
 
   const handleFilterChange = (newFilters: FilterValues) => {
     setFilters(newFilters);

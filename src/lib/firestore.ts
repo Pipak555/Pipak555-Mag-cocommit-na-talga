@@ -103,7 +103,10 @@ export const getListing = async (id: string) => {
 
 export const getListings = async (filters?: { category?: string; status?: string; hostId?: string }) => {
   try {
-    console.log("getListings called with filters:", JSON.stringify(filters));
+    // Only log in development
+    if (import.meta.env.DEV) {
+      console.log("getListings called with filters:", JSON.stringify(filters));
+    }
     
     // Start with base query - don't use orderBy with where clauses (requires composite index)
     let q = query(collection(db, 'listing'));
@@ -123,12 +126,18 @@ export const getListings = async (filters?: { category?: string; status?: string
       appliedFilters.push(`hostId == "${filters.hostId}"`);
     }
     
-    console.log(`getListings: Applied filters: [${appliedFilters.join(', ')}]`);
+    // Only log in development
+    if (import.meta.env.DEV) {
+      console.log(`getListings: Applied filters: [${appliedFilters.join(', ')}]`);
+      console.log("getListings: Executing Firestore query...");
+    }
     
     // Execute query WITHOUT orderBy (avoids composite index requirement)
-    console.log("getListings: Executing Firestore query...");
     const snapshot = await getDocs(q);
-    console.log(`getListings: Query successful, found ${snapshot.docs.length} raw documents`);
+    
+    if (import.meta.env.DEV) {
+      console.log(`getListings: Query successful, found ${snapshot.docs.length} raw documents`);
+    }
     
     // Process and filter documents
     const listings = snapshot.docs
@@ -137,29 +146,36 @@ export const getListings = async (filters?: { category?: string; status?: string
         const docStatus = data.status;
         const docStatusType = typeof docStatus;
         
-        console.log(`getListings: Processing document ${doc.id}:`, { 
-          hostId: data.hostId, 
-          status: docStatus,
-          statusType: docStatusType,
-          category: data.category 
-        });
+        // Only log in development
+        if (import.meta.env.DEV) {
+          console.log(`getListings: Processing document ${doc.id}:`, { 
+            hostId: data.hostId, 
+            status: docStatus,
+            statusType: docStatusType,
+            category: data.category 
+          });
+        }
         
         // Filter out documents with invalid data (empty strings)
         if (!data.hostId || data.hostId.trim() === '' || 
             !data.status || data.status.trim() === '' ||
             !data.category || data.category.trim() === '') {
-          console.warn(`getListings: Skipping listing ${doc.id} - missing required fields:`, {
-            hostId: data.hostId,
-            status: data.status,
-            statusType: typeof data.status,
-            category: data.category
-          });
+          if (import.meta.env.DEV) {
+            console.warn(`getListings: Skipping listing ${doc.id} - missing required fields:`, {
+              hostId: data.hostId,
+              status: data.status,
+              statusType: typeof data.status,
+              category: data.category
+            });
+          }
           return null;
         }
         
         // If status filter is set, double-check the status matches (client-side safety check)
         if (filters?.status && filters.status.trim() !== '' && data.status !== filters.status) {
-          console.warn(`getListings: Skipping listing ${doc.id} - status mismatch: expected "${filters.status}", got "${data.status}"`);
+          if (import.meta.env.DEV) {
+            console.warn(`getListings: Skipping listing ${doc.id} - status mismatch: expected "${filters.status}", got "${data.status}"`);
+          }
           return null;
         }
         
@@ -178,9 +194,12 @@ export const getListings = async (filters?: { category?: string; status?: string
       return dateB - dateA; // Descending (newest first)
     });
     
-    console.log(`getListings: Successfully processed ${listings.length} valid listings out of ${snapshot.docs.length} raw documents`);
-    if (filters?.status) {
-      console.log(`getListings: Filtered by status "${filters.status}" - found ${listings.length} listings`);
+    // Only log in development
+    if (import.meta.env.DEV) {
+      console.log(`getListings: Successfully processed ${listings.length} valid listings out of ${snapshot.docs.length} raw documents`);
+      if (filters?.status) {
+        console.log(`getListings: Filtered by status "${filters.status}" - found ${listings.length} listings`);
+      }
     }
     return listings;
   } catch (error: any) {
@@ -413,6 +432,22 @@ export const sendMessage = async (data: Omit<Message, 'id' | 'createdAt'>) => {
     read: false,
     createdAt: new Date().toISOString(),
   });
+  
+  // Send notification to receiver
+  try {
+    const { notifyNewMessage } = await import('./notifications');
+    const { getUserProfile } = await import('./firestore');
+    
+    // Get sender name for notification
+    const senderProfile = await getUserProfile(data.senderId);
+    const senderName = senderProfile?.fullName || senderProfile?.email || 'Someone';
+    
+    await notifyNewMessage(data.receiverId, data.senderId, senderName, docRef.id);
+  } catch (error) {
+    console.error('Error sending message notification:', error);
+    // Don't fail message sending if notification fails
+  }
+  
   return docRef.id;
 };
 

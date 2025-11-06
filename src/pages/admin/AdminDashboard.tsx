@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield, Users, Home, DollarSign, TrendingUp, FileText, Settings, AlertCircle } from 'lucide-react';
@@ -159,6 +160,7 @@ const AdminDashboard = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <NotificationBell />
             <ThemeToggle />
             <Button variant="outline" onClick={() => setLogoutDialogOpen(true)}>Sign Out</Button>
           </div>

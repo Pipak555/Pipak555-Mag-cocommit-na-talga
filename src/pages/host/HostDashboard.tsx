@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -121,7 +122,7 @@ const TodaySchedule = () => {
 };
 
 const HostDashboard = () => {
-  const { user, userRole, userProfile, signOut } = useAuth();
+  const { user, userRole, userProfile, signOut, hasRole } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState({
     activeListings: 0,
@@ -132,7 +133,7 @@ const HostDashboard = () => {
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
   useEffect(() => {
-    if (!user || userRole !== 'host') {
+    if (!user || !hasRole('host')) {
       navigate('/host/login');
       return;
     }
@@ -226,6 +227,7 @@ const HostDashboard = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <NotificationBell />
             <ThemeToggle />
             <Button variant="outline" onClick={() => setLogoutDialogOpen(true)}>Sign Out</Button>
           </div>

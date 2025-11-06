@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { getBookings, updateBooking, createTransaction } from "@/lib/firestore";
+import { getBookings, updateBooking } from "@/lib/firestore";
+import { processBookingPayment, processBookingRefund } from "@/lib/paymentService";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -40,7 +41,10 @@ const HostBookings = () => {
 
     setLoading(true);
     
-    console.log('🔍 HostBookings: Setting up listener for host:', user.uid);
+    // Only log in development
+    if (import.meta.env.DEV) {
+      console.log('🔍 HostBookings: Setting up listener for host:', user.uid);
+    }
     
     // Start with simple query (no orderBy) to avoid index requirement
     // This will work immediately without needing indexes
@@ -250,50 +254,56 @@ const HostBookings = () => {
     try {
       // Get booking details before updating
       const bookingDoc = await getDoc(doc(db, 'bookings', bookingToUpdate.id));
-      const booking = bookingDoc.exists() ? bookingDoc.data() : null;
+      if (!bookingDoc.exists()) {
+        toast.error('Booking not found');
+        return;
+      }
       
+      const booking = { id: bookingDoc.id, ...bookingDoc.data() } as Booking;
+      const previousStatus = booking.status;
+      
+      // Update booking status
       await updateBooking(bookingToUpdate.id, { status: bookingToUpdate.action });
       
-      // If booking is cancelled and was confirmed, process refund
-      if (bookingToUpdate.action === 'cancelled' && booking?.status === 'confirmed') {
-        const refundAmount = booking.totalPrice || 0;
-        
-        if (refundAmount > 0 && booking.guestId) {
-          try {
-            // Get guest's current wallet balance
-            const guestDoc = await getDoc(doc(db, 'users', booking.guestId));
-            const currentBalance = guestDoc.exists() ? (guestDoc.data().walletBalance || 0) : 0;
-            const newBalance = currentBalance + refundAmount;
-            
-            // Update guest's wallet balance
-            await updateDoc(doc(db, 'users', booking.guestId), {
-              walletBalance: newBalance
-            });
-            
-            // Create refund transaction for guest
-            await createTransaction({
-              userId: booking.guestId,
-              type: 'refund',
-              amount: refundAmount,
-              description: `Refund for cancelled booking #${bookingToUpdate.id.slice(0, 8)} (cancelled by host)`,
-              status: 'completed'
-            });
-            
-            console.log('✅ Refund processed for host cancellation:', {
-              bookingId: bookingToUpdate.id,
-              guestId: booking.guestId,
-              refundAmount,
-              newBalance
-            });
-            
-            toast.success(`Booking cancelled. ${refundAmount > 0 ? `₱${refundAmount.toFixed(2)} has been refunded to guest's wallet.` : ''}`);
-          } catch (refundError: any) {
-            console.error('Error processing refund:', refundError);
-            toast.warning('Booking cancelled, but refund could not be processed. Please contact support.');
+      // If booking is confirmed, process payment
+      if (bookingToUpdate.action === 'confirmed' && previousStatus !== 'confirmed') {
+        try {
+          // Process payment using payment service
+          const paymentResult = await processBookingPayment(booking);
+          
+          if (paymentResult.success) {
+            console.log('✅ Payment processed successfully:', paymentResult);
+            toast.success(`Booking confirmed! Payment of ${formatPHP(booking.totalPrice || 0)} processed.`);
+          } else {
+            throw new Error('Payment processing failed');
           }
-        } else {
-          toast.success('Booking cancelled');
+        } catch (paymentError: any) {
+          console.error('Error processing payment:', paymentError);
+          // Revert booking status if payment failed
+          await updateBooking(bookingToUpdate.id, { status: previousStatus });
+          toast.error(`Payment failed: ${paymentError.message || 'Insufficient balance or processing error'}`);
+          return;
         }
+      }
+      
+      // If booking is cancelled and was confirmed, process refund
+      if (bookingToUpdate.action === 'cancelled' && previousStatus === 'confirmed') {
+        try {
+          // Process refund using payment service
+          const refundResult = await processBookingRefund(booking, 'host');
+          
+          if (refundResult.success) {
+            console.log('✅ Refund processed successfully:', refundResult);
+            toast.success(`Booking cancelled. ${formatPHP(refundResult.refundAmount || 0)} has been refunded to guest's wallet.`);
+          } else {
+            throw new Error('Refund processing failed');
+          }
+        } catch (refundError: any) {
+          console.error('Error processing refund:', refundError);
+          toast.warning('Booking cancelled, but refund could not be processed. Please contact support.');
+        }
+      } else if (bookingToUpdate.action === 'cancelled') {
+        toast.success('Booking cancelled');
       }
       
       // If booking is confirmed, send confirmation email to guest

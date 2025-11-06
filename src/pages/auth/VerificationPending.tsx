@@ -74,7 +74,7 @@ const VerificationPending = () => {
       setEmailSent(true);
       toast.success('Verification code sent! Check your inbox.');
     } catch (error: any) {
-      toast.error(error.message || 'Failed to send verification code');
+      toast.error(error.message || 'Unable to send verification code. Please try again in a moment or contact support if the problem persists.');
     } finally {
       setLoading(false);
     }

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { getBookings, updateBooking, createTransaction } from "@/lib/firestore";
+import { getBookings, updateBooking } from "@/lib/firestore";
+import { processBookingRefund } from "@/lib/paymentService";
 import { collection, query, where, onSnapshot, doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,7 @@ import { ArrowLeft, Calendar as CalendarIcon, X } from "lucide-react";
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import type { Booking } from "@/types";
 import { formatPHP } from "@/lib/currency";
-import LoadingScreen from "@/components/ui/loading-screen";
+import { BookingListSkeleton } from "@/components/ui/booking-skeleton";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -33,14 +34,17 @@ const MyBookings = () => {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
   const [cancelling, setCancelling] = useState(false);
-  const filter = searchParams.get('filter'); // 'upcoming' or null
+  const filter = searchParams.get('filter'); // 'upcoming', 'past', or null
 
   useEffect(() => {
     if (!user) return;
 
     setLoading(true);
     
-    console.log('🔍 MyBookings: Setting up listener for guest:', user.uid);
+    // Only log in development
+    if (import.meta.env.DEV) {
+      console.log('🔍 MyBookings: Setting up listener for guest:', user.uid);
+    }
     
     // Use real-time listener for guest bookings
     const bookingsQuery = query(
@@ -66,19 +70,22 @@ const MyBookings = () => {
           return dateB - dateA; // Descending
         });
         
-        console.log('📊 Real-time guest bookings update:', {
-          guestUid: user.uid,
-          count: bookingsData.length,
-          filter,
-          allBookings: snapshot.docs.map(doc => ({
-            id: doc.id,
-            hostId: doc.data().hostId,
-            guestId: doc.data().guestId,
-            status: doc.data().status,
-            listingId: doc.data().listingId,
-            createdAt: doc.data().createdAt
-          }))
-        });
+        // Only log in development
+        if (import.meta.env.DEV) {
+          console.log('📊 Real-time guest bookings update:', {
+            guestUid: user.uid,
+            count: bookingsData.length,
+            filter,
+            allBookings: snapshot.docs.map(doc => ({
+              id: doc.id,
+              hostId: doc.data().hostId,
+              guestId: doc.data().guestId,
+              status: doc.data().status,
+              listingId: doc.data().listingId,
+              createdAt: doc.data().createdAt
+            }))
+          });
+        }
         
         // Apply filter if specified
         let filteredBookings = bookingsData;
@@ -87,6 +94,13 @@ const MyBookings = () => {
           filteredBookings = bookingsData.filter(b => {
             const checkIn = new Date(b.checkIn);
             return checkIn >= now && b.status === 'confirmed';
+          });
+        } else if (filter === 'past') {
+          const now = new Date();
+          filteredBookings = bookingsData.filter(b => {
+            const checkOut = new Date(b.checkOut);
+            // Past bookings: check-out date has passed, or status is completed/cancelled
+            return checkOut < now || b.status === 'completed' || b.status === 'cancelled';
           });
         }
         
@@ -191,53 +205,29 @@ const MyBookings = () => {
       // Update booking status to cancelled
       await updateBooking(bookingToCancel.id, { status: 'cancelled' });
       
-      // Process refund if there's a total price
-      const refundAmount = bookingToCancel.totalPrice || 0;
-      
-      if (refundAmount > 0) {
+      // Process refund using payment service (if booking was confirmed)
+      if (bookingToCancel.status === 'confirmed' || bookingToCancel.status === 'pending') {
         try {
-          // Get current wallet balance
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          if (!userDoc.exists()) {
-            throw new Error('User document not found');
+          // Use payment service to process refund
+          const refundResult = await processBookingRefund(bookingToCancel, 'guest');
+          
+          if (refundResult.success) {
+            console.log('✅ Refund processed successfully:', refundResult);
+            const refundMessage = refundResult.refundAmount && refundResult.refundAmount > 0
+              ? `${formatPHP(refundResult.refundAmount)} has been refunded to your wallet.`
+              : 'No refund was processed for this booking.';
+            toast.success(`Booking cancelled successfully. ${refundMessage}`);
+          } else {
+            throw new Error('Refund processing failed');
           }
-
-          const currentBalance = userDoc.data().walletBalance || 0;
-          const newBalance = currentBalance + refundAmount;
-          
-          // Update wallet balance
-          await updateDoc(doc(db, 'users', user.uid), {
-            walletBalance: newBalance
-          });
-          
-          // Create refund transaction
-          await createTransaction({
-            userId: user.uid,
-            type: 'refund',
-            amount: refundAmount,
-            description: `Refund for cancelled ${bookingToCancel.status} booking #${bookingToCancel.id.slice(0, 8)}`,
-            status: 'completed'
-          });
-          
-          console.log('✅ Refund processed:', {
-            bookingId: bookingToCancel.id,
-            bookingStatus: bookingToCancel.status,
-            refundAmount,
-            previousBalance: currentBalance,
-            newBalance
-          });
         } catch (refundError: any) {
           console.error('Error processing refund:', refundError);
           // Don't fail the cancellation if refund fails, but log it
           toast.error(`Booking cancelled, but refund failed. Please contact support. Error: ${refundError.message}`);
         }
+      } else {
+        toast.success('Booking cancelled successfully.');
       }
-      
-      const refundMessage = refundAmount > 0 
-        ? `${formatPHP(refundAmount)} has been refunded to your wallet.`
-        : 'No refund was processed for this booking.';
-      
-      toast.success(`Booking cancelled successfully. ${refundMessage}`);
       setCancelDialogOpen(false);
       setBookingToCancel(null);
     } catch (error: any) {
@@ -262,10 +252,14 @@ const MyBookings = () => {
             </div>
             <div>
               <h1 className="text-lg font-bold">
-                {filter === 'upcoming' ? 'Upcoming Trips' : 'My Bookings'}
+                {filter === 'upcoming' ? 'Upcoming Trips' : filter === 'past' ? 'Past Bookings' : 'My Bookings'}
               </h1>
               <p className="text-xs text-muted-foreground">
-                {filter === 'upcoming' ? 'Your confirmed upcoming trips' : 'View your trips'}
+                {filter === 'upcoming' 
+                  ? 'Your confirmed upcoming trips' 
+                  : filter === 'past' 
+                  ? 'Your completed and past trips'
+                  : 'View your trips'}
               </p>
             </div>
           </div>
@@ -276,12 +270,21 @@ const MyBookings = () => {
       <div className="max-w-4xl mx-auto p-6">
 
         {loading ? (
-          <LoadingScreen />
+          <BookingListSkeleton count={5} />
         ) : bookings.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center text-muted-foreground">
               <CalendarIcon className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No bookings yet</p>
+              <p>
+                {filter === 'upcoming' 
+                  ? 'No upcoming trips' 
+                  : filter === 'past' 
+                  ? 'No past bookings yet'
+                  : 'No bookings yet'}
+              </p>
+              {filter === 'past' && (
+                <p className="text-xs mt-2">Your past bookings will appear here once trips are completed.</p>
+              )}
             </CardContent>
           </Card>
         ) : (

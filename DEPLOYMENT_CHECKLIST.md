@@ -1,175 +1,234 @@
-# 🚀 Production Deployment Checklist
+# Firebase Deployment Checklist
 
-## ✅ Pre-Deployment Checklist
+## Issues That Work on Localhost But Not on Deployed Firebase
 
-### Step 1: Fix Configuration Files
-- [x] ✅ Fixed `vercel.json` - Removed incorrect `env` section
-- [x] ✅ Server code is ready
-- [x] ✅ Frontend code is ready
+### 1. ❌ Environment Variables Not Available
+**Problem**: Vite environment variables (`VITE_*`) are bundled at BUILD time, not runtime.
 
-### Step 2: Get Firebase Admin SDK Credentials
-- [ ] Get Firebase Admin SDK JSON from Firebase Console
-- [ ] Save the JSON file content (you'll need it for Vercel)
-
-### Step 3: Prepare Environment Variables
-
-**Frontend Environment Variables (for React app):**
-```
-VITE_VERIFICATION_API_URL=https://your-project.vercel.app/api
-VITE_EMAILJS_PUBLIC_KEY=your_emailjs_public_key
-VITE_EMAILJS_SERVICE_ID=your_emailjs_service_id
-VITE_EMAILJS_TEMPLATE_VERIFICATION=your_template_id
-VITE_CLOUDINARY_CLOUD_NAME=your_cloudinary_cloud_name
-VITE_CLOUDINARY_UPLOAD_PRESET=your_cloudinary_preset
-```
-
-**Backend Environment Variables (for server function):**
-```
-FIREBASE_ADMIN_SDK_JSON={"type":"service_account","project_id":"..."}
-```
-
-## 📋 Deployment Steps
-
-### Step 1: Install Vercel CLI
+**Solution**: 
 ```bash
-npm i -g vercel
+# Before deploying, ensure ALL environment variables are in your .env file
+# Then build for production:
+npm run build:prod
+
+# The build process will inject these values into your code
 ```
 
-### Step 2: Deploy to Vercel
-```bash
-vercel
-```
+**Required Environment Variables:**
+- `VITE_FIREBASE_API_KEY`
+- `VITE_FIREBASE_AUTH_DOMAIN`
+- `VITE_FIREBASE_PROJECT_ID`
+- `VITE_FIREBASE_STORAGE_BUCKET`
+- `VITE_FIREBASE_MESSAGING_SENDER_ID`
+- `VITE_FIREBASE_APP_ID`
+- `VITE_FIREBASE_MEASUREMENT_ID`
+- `VITE_EMAILJS_PUBLIC_KEY`
+- `VITE_EMAILJS_SERVICE_ID`
+- `VITE_EMAILJS_TEMPLATE_VERIFICATION`
+- `VITE_EMAILJS_TEMPLATE_BOOKING`
+- `VITE_CLOUDINARY_CLOUD_NAME`
+- `VITE_CLOUDINARY_UPLOAD_PRESET`
+- `VITE_PAYPAL_CLIENT_ID`
+- `VITE_PAYPAL_ENV`
 
-Follow the prompts:
-1. **Set up and deploy?** → Yes
-2. **Which scope?** → Your account
-3. **Link to existing project?** → No (first time) or Yes (if redeploying)
-4. **Project name?** → Enter a name (e.g., `firebnb-verification`)
-5. **In which directory is your code located?** → `./` (current directory)
+### 2. ❌ Google Sign-In Not Enabled
+**Problem**: Google Sign-In provider disabled in Firebase Console
 
-### Step 3: Set Environment Variables in Vercel Dashboard
+**Solution:**
+1. Go to Firebase Console > Authentication > Sign-in method
+2. Enable "Google" provider
+3. Add support email
+4. Save
 
-**Important:** After deployment, you MUST set environment variables in Vercel dashboard!
+### 3. ❌ Authorized Domains Not Set
+**Problem**: OAuth domains not authorized
 
-1. Go to [Vercel Dashboard](https://vercel.com/dashboard)
-2. Select your project
-3. Go to **Settings** → **Environment Variables**
-4. Add each variable below:
+**Solution:**
+1. Go to Firebase Console > Authentication > Settings > Authorized domains
+2. Add these domains:
+   - `localhost`
+   - `your-project.firebaseapp.com`
+   - `your-project.web.app`
+3. Save
 
-#### Production Environment Variables:
+### 4. ✅ Console Logs (Already Fixed)
+Console logs are automatically removed in production builds via Vite config.
 
-**For Frontend (Public):**
-```
-Name: VITE_VERIFICATION_API_URL
-Value: https://your-project.vercel.app/api
-Environment: Production, Preview, Development
+### 5. ✅ Emulator Configuration (Already Fixed)
+Emulators only connect when `VITE_USE_EMULATORS=true` in development mode.
 
-Name: VITE_EMAILJS_PUBLIC_KEY
-Value: (your EmailJS public key)
-Environment: Production, Preview, Development
+### 6. ❌ EmailJS Configuration
+**Problem**: EmailJS templates and service might not be properly configured
 
-Name: VITE_EMAILJS_SERVICE_ID
-Value: (your EmailJS service ID)
-Environment: Production, Preview, Development
+**Solution:**
+1. Go to EmailJS Dashboard
+2. Create/verify these templates:
+   - Verification OTP template
+   - Booking confirmation template
+3. Copy template IDs to `.env`
+4. Rebuild: `npm run build:prod`
 
-Name: VITE_EMAILJS_TEMPLATE_VERIFICATION
-Value: (your EmailJS template ID)
-Environment: Production, Preview, Development
+### 7. ❌ Cloudinary Configuration
+**Problem**: Image uploads might fail if Cloudinary isn't configured
 
-Name: VITE_CLOUDINARY_CLOUD_NAME
-Value: (your Cloudinary cloud name)
-Environment: Production, Preview, Development
-
-Name: VITE_CLOUDINARY_UPLOAD_PRESET
-Value: (your Cloudinary upload preset)
-Environment: Production, Preview, Development
-```
-
-**For Backend (Server Function):**
-```
-Name: FIREBASE_ADMIN_SDK_JSON
-Value: (paste entire Firebase Admin SDK JSON as a single string)
-Environment: Production, Preview, Development
-```
-
-**Important Notes:**
-- For `FIREBASE_ADMIN_SDK_JSON`, paste the entire JSON file content as a single string
-- Make sure to select all environments (Production, Preview, Development)
-- After adding variables, you need to **redeploy** for changes to take effect
-
-### Step 4: Redeploy After Setting Environment Variables
-
-After setting environment variables, redeploy:
-```bash
-vercel --prod
-```
-
-Or trigger a redeploy from Vercel dashboard:
-1. Go to **Deployments** tab
-2. Click **...** on latest deployment
-3. Click **Redeploy**
-
-### Step 5: Verify Deployment
-
-1. **Check Health Endpoint:**
-   ```bash
-   curl https://your-project.vercel.app/api/health
+**Solution:**
+1. Go to Cloudinary Dashboard
+2. Get your Cloud Name and Upload Preset
+3. Add to `.env`:
    ```
-   Should return: `{"status":"ok","timestamp":"..."}`
-
-2. **Test Verification Link Generation:**
-   ```bash
-   curl -X POST https://your-project.vercel.app/api/generate-verification-link \
-     -H "Content-Type: application/json" \
-     -d '{"email":"test@example.com"}'
+   VITE_CLOUDINARY_CLOUD_NAME=your_cloud_name
+   VITE_CLOUDINARY_UPLOAD_PRESET=your_upload_preset
    ```
-   Should return: `{"verificationLink":"...","success":true}`
+4. Rebuild: `npm run build:prod`
 
-3. **Test Frontend:**
-   - Visit your deployed site
-   - Sign up a new account
-   - Check email - should receive EmailJS verification email
-   - Click verification link - should work
+### 8. ✅ Asset Paths (Already Correct)
+Videos and images use relative paths (`/videos/`, `/logo.png`) which work correctly on Firebase Hosting.
 
-## 🔍 Troubleshooting
+### 9. ❌ Firestore Indexes
+**Problem**: Composite queries might fail without indexes
 
-### "Failed to generate verification link" Error
-- ✅ Check if `FIREBASE_ADMIN_SDK_JSON` is set correctly in Vercel
-- ✅ Verify the JSON is valid (check for missing quotes, commas)
-- ✅ Make sure you redeployed after adding environment variables
+**Solution:**
+```bash
+# Deploy Firestore indexes
+firebase deploy --only firestore:indexes
+```
 
-### "CORS error" or "Failed to fetch"
-- ✅ Check if `VITE_VERIFICATION_API_URL` is set correctly
-- ✅ Verify the URL matches your Vercel deployment URL
-- ✅ Make sure you added `/api` at the end of the URL
+### 10. ❌ Firestore Security Rules
+**Problem**: Security rules might be outdated
 
-### "EmailJS failed"
-- ✅ Check EmailJS credentials are correct
-- ✅ Verify template ID matches your EmailJS template
-- ✅ Check EmailJS template has `{{verification_link}}` variable
+**Solution:**
+```bash
+# Deploy security rules
+firebase deploy --only firestore:rules
+```
 
-### Server Not Working
-- ✅ Check Vercel function logs (Deployments → Function Logs)
-- ✅ Verify server/verification-link.js is in the correct location
-- ✅ Check vercel.json routes configuration
+## Complete Deployment Process
 
-## 📝 Post-Deployment Checklist
+### Step 1: Environment Variables
+```bash
+# 1. Copy .env.example to .env
+cp .env.example .env
 
-- [ ] Health endpoint works: `/api/health`
-- [ ] Verification link generation works: `/api/generate-verification-link`
-- [ ] Frontend can connect to backend
-- [ ] Sign up flow works
-- [ ] EmailJS sends verification email
-- [ ] Verification link works
-- [ ] User can verify email and login
+# 2. Fill in ALL values in .env file
+# (Use your actual Firebase, EmailJS, Cloudinary credentials)
+```
 
-## 🎉 Success!
+### Step 2: Firebase Console Configuration
+1. **Enable Google Sign-In**:
+   - Authentication > Sign-in method > Google > Enable
 
-Once all checks pass, your verification system is fully deployed and working!
+2. **Add Authorized Domains**:
+   - Authentication > Settings > Authorized domains
+   - Add: `localhost`, `your-project.firebaseapp.com`, `your-project.web.app`
 
-**Remember:**
-- ✅ Only ONE email is sent (EmailJS template)
-- ✅ Firebase Admin SDK generates proper verification links
-- ✅ Everything is FREE (using free tiers)
-- ✅ Fallback to Firebase email if backend fails
+3. **Verify Firestore**:
+   - Firestore Database should be created
+   - Check that collections exist: `users`, `listing`, `bookings`, `messages`, etc.
 
+### Step 3: Build and Deploy
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Build for production (injects env vars)
+npm run build:prod
+
+# 3. Deploy everything
+npm run deploy:all
+
+# OR deploy only hosting
+npm run deploy
+```
+
+### Step 4: Test on Deployed Version
+1. Open: `https://your-project.web.app`
+2. Test these features:
+   - ✅ Sign up with email
+   - ✅ Sign in with email
+   - ✅ Google sign-in/signup autofill
+   - ✅ Email verification (OTP)
+   - ✅ Create listing (image upload)
+   - ✅ Browse listings
+   - ✅ Make booking
+   - ✅ Send message
+   - ✅ Payment/wallet
+   - ✅ Notifications
+
+## Common Issues After Deployment
+
+### Issue: "Firebase: Error (auth/operation-not-allowed)"
+**Fix**: Enable Google Sign-In provider in Firebase Console
+
+### Issue: "This domain is not authorized for OAuth"
+**Fix**: Add domain to Authorized domains in Firebase Console
+
+### Issue: Images/Videos not loading
+**Fix**: 
+- Ensure files are in `public/` folder before build
+- Check `firebase.json` hosting config
+- Verify `dist/` folder contains assets after build
+
+### Issue: Environment variables undefined
+**Fix**: 
+- Verify `.env` file has all VITE_* variables
+- Rebuild: `npm run build:prod`
+- Redeploy: `npm run deploy`
+
+### Issue: EmailJS not sending emails
+**Fix**:
+- Verify VITE_EMAILJS_* variables in `.env`
+- Check EmailJS dashboard for template IDs
+- Verify service is active
+- Rebuild and redeploy
+
+### Issue: Firestore permission denied
+**Fix**:
+- Deploy security rules: `firebase deploy --only firestore:rules`
+- Check rules in `firestore.rules`
+
+### Issue: Missing indexes error
+**Fix**:
+- Deploy indexes: `firebase deploy --only firestore:indexes`
+- Or click the link in Firebase console error message
+
+## Verification Commands
+
+```bash
+# Check if .env has all required variables
+grep "^VITE_" .env | wc -l  # Should be 16+
+
+# Build and check for errors
+npm run build:prod
+
+# Check dist folder size
+du -sh dist/
+
+# Test locally before deploying
+npm run preview
+
+# Deploy
+npm run deploy
+```
+
+## Quick Troubleshooting
+
+| Symptom | Likely Cause | Fix |
+|---------|--------------|-----|
+| Google sign-in fails | Provider not enabled | Enable in Console |
+| Domain not authorized | OAuth domains missing | Add to Authorized domains |
+| Images not uploading | Cloudinary config missing | Add to .env & rebuild |
+| Emails not sending | EmailJS config missing | Add to .env & rebuild |
+| Firestore errors | Rules/indexes not deployed | Deploy rules & indexes |
+| Features work locally but not deployed | Env vars not in build | Rebuild with .env filled |
+
+## Post-Deployment Checklist
+
+- [ ] Google Sign-In enabled in Firebase Console
+- [ ] All domains added to Authorized domains
+- [ ] .env file has ALL required variables
+- [ ] Built with `npm run build:prod`
+- [ ] Deployed with `npm run deploy:all`
+- [ ] Firestore rules deployed
+- [ ] Firestore indexes deployed
+- [ ] Tested on deployed URL
+- [ ] All features working (auth, booking, messages, payments)

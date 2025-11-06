@@ -8,32 +8,59 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { VideoBackground } from '@/components/ui/video-background';
 import { toast } from 'sonner';
 import { Shield, ArrowLeft, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { FcGoogle } from 'react-icons/fc';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
 // Import video background (replace with your actual video file)
 // import adminLoginVideo from '@/assets/videos/admin-login-bg.mp4';
-const adminLoginVideo = '/videos/admin-login-bg.mp4'; // Fallback to public folder
+const adminLoginVideo = '/videos/landing-hero.mp4'; // Same as landing page
 
 const AdminLogin = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { signIn } = useAuth();
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const { signIn, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
 
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+      const handleSignIn = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        
+        try {
+          await signIn(email, password, 'admin');
+          toast.success('Admin access granted');
+          navigate('/admin/dashboard');
+        } catch (error: any) {
+          // Check if email is not verified - redirect to verification page
+          if (error.message === 'EMAIL_NOT_VERIFIED') {
+            toast.info('Please verify your email address to continue.');
+            navigate('/verify-otp');
+            return;
+          }
+          // Error messages are already user-friendly from AuthContext
+          toast.error(error.message || 'Unable to sign in. Please check your email and password, then try again.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+  const handleGoogleSignIn = async () => {
+    // Prevent multiple simultaneous clicks
+    if (googleLoading || loading) return;
     
+    setGoogleLoading(true);
     try {
-      await signIn(email, password, 'admin');
+      await signInWithGoogle('admin');
       toast.success('Admin access granted');
       navigate('/admin/dashboard');
     } catch (error: any) {
-      toast.error(error.message || 'Failed to sign in');
+      // Error messages are already user-friendly from AuthContext
+      toast.error(error.message || 'Failed to sign in with Google');
+      console.error('Google sign-in error:', error);
     } finally {
-      setLoading(false);
+      setGoogleLoading(false);
     }
   };
 
@@ -118,6 +145,32 @@ const AdminLogin = () => {
               
               <Button type="submit" className="w-full h-12 text-base" disabled={loading}>
                 {loading ? 'Signing in...' : 'Sign In as Admin'}
+              </Button>
+              
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+                </div>
+              </div>
+              
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full h-12 text-base"
+                onClick={handleGoogleSignIn}
+                disabled={googleLoading || loading}
+              >
+                {googleLoading ? (
+                  'Signing in...'
+                ) : (
+                  <>
+                    <FcGoogle className="h-5 w-5 mr-2" />
+                    Sign in with Google
+                  </>
+                )}
               </Button>
             </form>
             

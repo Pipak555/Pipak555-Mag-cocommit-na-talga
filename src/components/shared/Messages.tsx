@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { subscribeToMessages, sendMessage, getUserProfile } from "@/lib/firestore";
 import { Button } from "@/components/ui/button";
@@ -136,7 +136,7 @@ export const Messages = () => {
     ? participantNames[selectedChat] || "Unknown User"
     : null;
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     if (!user || !selectedChat || !newMessage.trim()) return;
 
     try {
@@ -152,7 +152,7 @@ export const Messages = () => {
       console.error("Error sending message:", error);
       toast.error("Failed to send message");
     }
-  };
+  }, [user, selectedChat, newMessage]);
 
   if (loading) {
     return <LoadingScreen />;

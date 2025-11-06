@@ -65,6 +65,17 @@ export interface Transaction {
   status?: 'pending' | 'completed' | 'failed' | 'refunded';
   paymentMethod?: string;
   paymentId?: string;
+  bookingId?: string; // Link to booking
+  guestId?: string; // For platform transactions
+  hostId?: string; // For platform transactions
+  serviceFee?: number; // Service fee amount
+  netAmount?: number; // Net amount after fees
+  grossAmount?: number; // Gross amount before fees
+  cancelledBy?: 'guest' | 'host' | 'admin'; // Who cancelled
+  originalTransactionId?: string; // For refunds
+  refundedAt?: string; // When refund was processed
+  refundReason?: string; // Reason for refund
+  confirmedAt?: string; // When transaction was confirmed
   createdAt: string;
 }
 
@@ -88,7 +99,8 @@ export interface NotificationPreferences {
 export interface UserProfile {
   email: string;
   fullName: string;
-  role: 'host' | 'guest' | 'admin';
+  role: 'host' | 'guest' | 'admin'; // Primary role (for backward compatibility)
+  roles?: ('host' | 'guest' | 'admin')[]; // Array of all roles user has
   createdAt: string;
   points: number;
   walletBalance: number;

@@ -14,7 +14,8 @@ import { ArrowLeft, User, Bell, Shield, Heart, Calendar, Bookmark, Mail, Smartph
 import { toast } from "sonner";
 import { ListingCard } from "@/components/listings/ListingCard";
 import { EmptyState } from "@/components/ui/empty-state";
-import { getListings, getBookings, toggleFavorite, toggleWishlist, updateBooking, createTransaction } from "@/lib/firestore";
+import { getListings, getBookings, toggleFavorite, toggleWishlist, updateBooking } from "@/lib/firestore";
+import { processBookingRefund } from "@/lib/paymentService";
 import type { UserProfile, Listing, Booking, NotificationPreferences } from "@/types";
 import { formatPHP } from "@/lib/currency";
 import LoadingScreen from "@/components/ui/loading-screen";
@@ -32,7 +33,7 @@ import {
 const GuestAccountSettings = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, userRole, refreshUserProfile, signOut } = useAuth();
+  const { user, userRole, refreshUserProfile, signOut, hasRole } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [favoriteListings, setFavoriteListings] = useState<Listing[]>([]);
@@ -63,7 +64,7 @@ const GuestAccountSettings = () => {
   });
 
   useEffect(() => {
-    if (user && userRole !== 'guest') {
+    if (user && !hasRole('guest')) {
       navigate('/guest/login');
       return;
     }
@@ -214,53 +215,29 @@ const GuestAccountSettings = () => {
       // Update booking status to cancelled
       await updateBooking(bookingToCancel.id, { status: 'cancelled' });
       
-      // Process refund if there's a total price
-      const refundAmount = bookingToCancel.totalPrice || 0;
-      
-      if (refundAmount > 0) {
+      // Process refund using payment service (if booking was confirmed or pending)
+      if (bookingToCancel.status === 'confirmed' || bookingToCancel.status === 'pending') {
         try {
-          // Get current wallet balance
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          if (!userDoc.exists()) {
-            throw new Error('User document not found');
+          // Use payment service to process refund
+          const refundResult = await processBookingRefund(bookingToCancel, 'guest');
+          
+          if (refundResult.success) {
+            console.log('✅ Refund processed successfully:', refundResult);
+            const refundMessage = refundResult.refundAmount && refundResult.refundAmount > 0
+              ? `${formatPHP(refundResult.refundAmount)} has been refunded to your wallet.`
+              : 'No refund was processed for this booking.';
+            toast.success(`Booking cancelled successfully. ${refundMessage}`);
+          } else {
+            throw new Error('Refund processing failed');
           }
-
-          const currentBalance = userDoc.data().walletBalance || 0;
-          const newBalance = currentBalance + refundAmount;
-          
-          // Update wallet balance
-          await updateDoc(doc(db, 'users', user.uid), {
-            walletBalance: newBalance
-          });
-          
-          // Create refund transaction
-          await createTransaction({
-            userId: user.uid,
-            type: 'refund',
-            amount: refundAmount,
-            description: `Refund for cancelled ${bookingToCancel.status} booking #${bookingToCancel.id.slice(0, 8)}`,
-            status: 'completed'
-          });
-          
-          console.log('✅ Refund processed:', {
-            bookingId: bookingToCancel.id,
-            bookingStatus: bookingToCancel.status,
-            refundAmount,
-            previousBalance: currentBalance,
-            newBalance
-          });
         } catch (refundError: any) {
           console.error('Error processing refund:', refundError);
           // Don't fail the cancellation if refund fails, but log it
           toast.error(`Booking cancelled, but refund failed. Please contact support. Error: ${refundError.message}`);
         }
+      } else {
+        toast.success('Booking cancelled successfully.');
       }
-      
-      const refundMessage = refundAmount > 0 
-        ? `${formatPHP(refundAmount)} has been refunded to your wallet.`
-        : 'No refund was processed for this booking.';
-      
-      toast.success(`Booking cancelled successfully. ${refundMessage}`);
       setCancelDialogOpen(false);
       setBookingToCancel(null);
       // Reload bookings to reflect the cancellation

@@ -1,14 +1,15 @@
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
-
+# robots.txt for StayHub
 User-agent: *
 Allow: /
+
+# Disallow admin and auth pages
+Disallow: /admin/
+Disallow: /host/login
+Disallow: /guest/login
+Disallow: /admin/login
+Disallow: /verify-email
+Disallow: /verify-otp
+Disallow: /verification-pending
+
+# Sitemap
+Sitemap: https://your-project.firebaseapp.com/sitemap.xml

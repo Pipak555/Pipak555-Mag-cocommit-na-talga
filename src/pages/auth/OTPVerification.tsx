@@ -20,7 +20,7 @@ const OTPVerification = () => {
 
   useEffect(() => {
     if (!user) {
-      toast.error('Please sign in first');
+      toast.error('Please sign in first to verify your email address.');
       navigate('/guest/login');
       return;
     }
@@ -44,7 +44,7 @@ const OTPVerification = () => {
     e.preventDefault();
     
     if (otp.length !== 6) {
-      toast.error('Please enter a 6-digit OTP code');
+      toast.error('Please enter the complete 6-digit verification code from your email.');
       return;
     }
 
@@ -68,11 +68,11 @@ const OTPVerification = () => {
           }
         }, 1500);
       } else {
-        toast.error('Invalid OTP code. Please try again.');
+        toast.error('The verification code you entered is incorrect. Please check your email and try again.');
         setOtp('');
       }
     } catch (error: any) {
-      toast.error(error.message || 'Failed to verify OTP');
+      toast.error(error.message || 'Unable to verify your code. Please try again or request a new verification code.');
       setOtp('');
     } finally {
       setLoading(false);
@@ -81,18 +81,18 @@ const OTPVerification = () => {
 
   const handleResendOTP = async () => {
     if (countdown > 0) {
-      toast.error(`Please wait ${countdown} seconds before requesting a new code`);
+      toast.error(`Please wait ${countdown} seconds before requesting a new verification code.`);
       return;
     }
 
     setResending(true);
     try {
       await sendOTP();
-      toast.success('OTP code sent! Check your email.');
+      toast.success('A new verification code has been sent to your email. Please check your inbox.');
       setCountdown(60); // Reset countdown
       setOtp('');
     } catch (error: any) {
-      toast.error(error.message || 'Failed to resend OTP');
+      toast.error(error.message || 'Unable to send a new verification code. Please try again in a moment.');
     } finally {
       setResending(false);
     }

@@ -1,12 +1,15 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { collection, getDocs, query, orderBy, doc, updateDoc, getDoc } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, DollarSign, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { ArrowLeft, DollarSign, CheckCircle, XCircle, Clock, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -21,6 +24,7 @@ import {
 import type { Transaction } from "@/types";
 import { formatPHP } from "@/lib/currency";
 import LoadingScreen from "@/components/ui/loading-screen";
+import { processTransactionRefund, confirmTransaction } from "@/lib/paymentService";
 
 interface TransactionWithUser extends Transaction {
   userEmail?: string;
@@ -32,9 +36,11 @@ const ManagePayments = () => {
   const { user, userRole } = useAuth();
   const [loading, setLoading] = useState(true);
   const [transactions, setTransactions] = useState<TransactionWithUser[]>([]);
-  const [transactionToUpdate, setTransactionToUpdate] = useState<string | null>(null);
+  const [transactionToUpdate, setTransactionToUpdate] = useState<Transaction | null>(null);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [action, setAction] = useState<'confirm' | 'refund' | null>(null);
+  const [refundReason, setRefundReason] = useState('');
+  const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
     if (!user || userRole !== 'admin') {
@@ -87,29 +93,47 @@ const ManagePayments = () => {
     }
   };
 
-  const handleAction = (id: string, action: 'confirm' | 'refund') => {
-    setTransactionToUpdate(id);
-    setAction(action);
+  const handleAction = (transaction: TransactionWithUser, actionType: 'confirm' | 'refund') => {
+    setTransactionToUpdate(transaction);
+    setAction(actionType);
+    setRefundReason('');
     setConfirmDialogOpen(true);
   };
 
   const confirmAction = async () => {
     if (!transactionToUpdate || !action) return;
     
+    setProcessing(true);
     try {
-      const transactionRef = doc(db, 'transactions', transactionToUpdate);
-      const status = action === 'confirm' ? 'completed' : 'refunded';
+      if (action === 'confirm') {
+        // Confirm transaction using payment service
+        await confirmTransaction(transactionToUpdate.id);
+        toast.success('Transaction confirmed successfully');
+      } else if (action === 'refund') {
+        // Process refund using payment service
+        const result = await processTransactionRefund(
+          transactionToUpdate.id,
+          transactionToUpdate,
+          refundReason || undefined
+        );
+        
+        if (result.success) {
+          toast.success(`Refund processed successfully. ₱${result.refundAmount?.toFixed(2)} has been returned to user's wallet.`);
+        } else {
+          throw new Error('Refund processing failed');
+        }
+      }
       
-      await updateDoc(transactionRef, { status });
-      
-      toast.success(`Transaction ${action === 'confirm' ? 'confirmed' : 'refunded'}`);
-      loadTransactions();
+      // Reload transactions
+      await loadTransactions();
       setTransactionToUpdate(null);
       setAction(null);
-    } catch (error) {
-      toast.error(`Failed to ${action} transaction`);
-      console.error(error);
+      setRefundReason('');
+    } catch (error: any) {
+      console.error(`Error ${action}ing transaction:`, error);
+      toast.error(error.message || `Failed to ${action} transaction`);
     } finally {
+      setProcessing(false);
       setConfirmDialogOpen(false);
     }
   };
@@ -211,8 +235,14 @@ const ManagePayments = () => {
                       <p className="text-xs text-muted-foreground mt-1">
                         {transaction.userEmail} • {new Date(transaction.createdAt).toLocaleDateString()}
                       </p>
+                      {transaction.bookingId && (
+                        <p className="text-xs text-muted-foreground">Booking ID: {transaction.bookingId.slice(0, 8)}</p>
+                      )}
                       {transaction.paymentId && (
                         <p className="text-xs text-muted-foreground">Payment ID: {transaction.paymentId}</p>
+                      )}
+                      {transaction.serviceFee && (
+                        <p className="text-xs text-muted-foreground">Service Fee: {formatPHP(transaction.serviceFee)}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-4">
@@ -224,18 +254,27 @@ const ManagePayments = () => {
                         <div className="flex gap-2">
                           <Button
                             size="sm"
-                            onClick={() => handleAction(transaction.id, 'confirm')}
+                            onClick={() => handleAction(transaction, 'confirm')}
                           >
                             Confirm
                           </Button>
                           <Button
                             size="sm"
                             variant="destructive"
-                            onClick={() => handleAction(transaction.id, 'refund')}
+                            onClick={() => handleAction(transaction, 'refund')}
                           >
                             Refund
                           </Button>
                         </div>
+                      )}
+                      {transaction.status === 'completed' && transaction.type === 'payment' && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleAction(transaction, 'refund')}
+                        >
+                          Refund
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -245,23 +284,67 @@ const ManagePayments = () => {
           </CardContent>
         </Card>
 
-        {/* Confirm Dialog */}
+        {/* Confirm/Refund Dialog */}
         <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>
                 {action === 'confirm' ? 'Confirm Transaction?' : 'Refund Transaction?'}
               </AlertDialogTitle>
-              <AlertDialogDescription>
-                {action === 'confirm'
-                  ? 'Are you sure you want to confirm this transaction? This action cannot be undone.'
-                  : 'Are you sure you want to refund this transaction? The payment will be reversed.'}
+              <AlertDialogDescription className="space-y-4">
+                {action === 'confirm' ? (
+                  <>
+                    <p>Are you sure you want to confirm this transaction? This will process the payment and update wallet balances.</p>
+                    {transactionToUpdate && (
+                      <div className="bg-muted p-3 rounded-lg">
+                        <p className="text-sm font-medium">Transaction Details:</p>
+                        <p className="text-xs text-muted-foreground">Amount: {formatPHP(transactionToUpdate.amount)}</p>
+                        <p className="text-xs text-muted-foreground">Type: {transactionToUpdate.type}</p>
+                        <p className="text-xs text-muted-foreground">User: {transactionToUpdate.userName || transactionToUpdate.userEmail}</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <p className="font-medium">This will refund the payment and reverse wallet balances.</p>
+                      </div>
+                      {transactionToUpdate && (
+                        <div className="bg-muted p-3 rounded-lg space-y-1">
+                          <p className="text-sm font-medium">Refund Details:</p>
+                          <p className="text-xs">Refund Amount: <span className="font-semibold">{formatPHP(transactionToUpdate.amount)}</span></p>
+                          <p className="text-xs">Transaction Type: {transactionToUpdate.type}</p>
+                          <p className="text-xs">User: {transactionToUpdate.userName || transactionToUpdate.userEmail}</p>
+                          {transactionToUpdate.bookingId && (
+                            <p className="text-xs">Booking ID: {transactionToUpdate.bookingId.slice(0, 8)}</p>
+                          )}
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        <Label htmlFor="refund-reason">Refund Reason (Optional)</Label>
+                        <Textarea
+                          id="refund-reason"
+                          placeholder="Enter reason for refund..."
+                          value={refundReason}
+                          onChange={(e) => setRefundReason(e.target.value)}
+                          rows={3}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmAction}>
-                {action === 'confirm' ? 'Confirm' : 'Refund'}
+              <AlertDialogCancel disabled={processing}>Cancel</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={confirmAction}
+                disabled={processing}
+                className={action === 'refund' ? 'bg-destructive hover:bg-destructive/90' : ''}
+              >
+                {processing ? 'Processing...' : action === 'confirm' ? 'Confirm' : 'Refund'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

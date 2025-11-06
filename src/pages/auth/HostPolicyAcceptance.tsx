@@ -1,23 +1,101 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
 import { ArrowLeft, Shield, FileText, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { VideoBackground } from '@/components/ui/video-background';
 import Logo from '@/components/shared/Logo';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 
-const hostLoginVideo = '/videos/host-login-bg.mp4';
+const hostLoginVideo = '/videos/landing-hero.mp4';
 
 const HostPolicyAcceptance = () => {
   const navigate = useNavigate();
+  const { user, hasRole, addRole } = useAuth();
   const [acceptedCancellation, setAcceptedCancellation] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [acceptedRules, setAcceptedRules] = useState(false);
-  const [allAccepted, setAllAccepted] = useState(false);
+  
+  // Calculate allAccepted based on all checkboxes
+  const allAccepted = acceptedCancellation && acceptedTerms && acceptedRules;
+  
+  // Track scroll state for each section
+  const [hasScrolledCancellation, setHasScrolledCancellation] = useState(false);
+  const [hasScrolledTerms, setHasScrolledTerms] = useState(false);
+  const [hasScrolledRules, setHasScrolledRules] = useState(false);
+  
+  // Refs for section markers
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const cancellationSectionRef = useRef<HTMLDivElement>(null);
+  const termsSectionRef = useRef<HTMLDivElement>(null);
+  const rulesSectionRef = useRef<HTMLDivElement>(null);
+  
+  // Function to check if user has scrolled past a section
+  const checkScrollPositions = () => {
+    if (!scrollContainerRef.current) return;
+    
+    const container = scrollContainerRef.current;
+    const scrollTop = container.scrollTop;
+    const scrollHeight = container.scrollHeight;
+    const containerHeight = container.clientHeight;
+    const viewportBottom = scrollTop + containerHeight;
+    
+    // Check if user has scrolled to the very bottom (within 100px threshold)
+    const isAtBottom = scrollTop + containerHeight >= scrollHeight - 100;
+    
+    // If user has scrolled to bottom, mark all sections as read
+    if (isAtBottom) {
+      setHasScrolledCancellation(true);
+      setHasScrolledTerms(true);
+      setHasScrolledRules(true);
+      return;
+    }
+    
+    // Otherwise, check each section individually
+    if (cancellationSectionRef.current) {
+      const sectionTop = cancellationSectionRef.current.offsetTop;
+      const sectionHeight = cancellationSectionRef.current.offsetHeight;
+      const sectionBottom = sectionTop + sectionHeight;
+      setHasScrolledCancellation(viewportBottom >= sectionBottom - 50);
+    }
+    
+    if (termsSectionRef.current) {
+      const sectionTop = termsSectionRef.current.offsetTop;
+      const sectionHeight = termsSectionRef.current.offsetHeight;
+      const sectionBottom = sectionTop + sectionHeight;
+      setHasScrolledTerms(viewportBottom >= sectionBottom - 50);
+    }
+    
+    if (rulesSectionRef.current) {
+      const sectionTop = rulesSectionRef.current.offsetTop;
+      const sectionHeight = rulesSectionRef.current.offsetHeight;
+      const sectionBottom = sectionTop + sectionHeight;
+      setHasScrolledRules(viewportBottom >= sectionBottom - 50);
+    }
+  };
+  
+  // Set up scroll listener for the main container
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    
+    const handleScroll = () => {
+      checkScrollPositions();
+    };
+    
+    container.addEventListener('scroll', handleScroll);
+    // Check initial state
+    checkScrollPositions();
+    
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
 
   // Default policies (in production, these should be fetched from Firestore)
   const cancellationPolicy = `CANCELLATION POLICY
@@ -83,20 +161,64 @@ const HostPolicyAcceptance = () => {
    - Address guest concerns promptly`;
 
   const handleAcceptAll = () => {
-    setAcceptedCancellation(true);
-    setAcceptedTerms(true);
-    setAcceptedRules(true);
-    setAllAccepted(true);
+    // Check if user has scrolled to the end
+    if (!scrollContainerRef.current) return;
+    
+    const container = scrollContainerRef.current;
+    const scrollTop = container.scrollTop;
+    const scrollHeight = container.scrollHeight;
+    const containerHeight = container.clientHeight;
+    const isAtBottom = scrollTop + containerHeight >= scrollHeight - 100;
+    
+    // If user has scrolled to the end, automatically accept all
+    if (isAtBottom || (hasScrolledCancellation && hasScrolledTerms && hasScrolledRules)) {
+      setAcceptedCancellation(true);
+      setAcceptedTerms(true);
+      setAcceptedRules(true);
+      toast.success('All policies accepted!');
+    } else {
+      toast.error('Please scroll to the end of all policies first.');
+      // Scroll to bottom
+      container.scrollTo({ top: scrollHeight, behavior: 'smooth' });
+    }
   };
 
-  const handleContinue = () => {
-    if (acceptedCancellation && acceptedTerms && acceptedRules) {
-      // Store acceptance in sessionStorage to pass to signup
-      sessionStorage.setItem('hostPolicyAccepted', 'true');
-      sessionStorage.setItem('hostPolicyAcceptedDate', new Date().toISOString());
-      navigate('/host/login', { state: { showSignup: true } });
+  const handleContinue = async () => {
+    if (!allAccepted) {
+      toast.error('Please accept all policies and terms to continue.');
+      return;
+    }
+    
+    const policyAcceptedDate = new Date().toISOString();
+    
+    // If user is already signed in and doesn't have host role, add it directly
+    if (user && !hasRole('host')) {
+      try {
+        await addRole('host', {
+          policyAccepted: true,
+          policyAcceptedDate
+        });
+        toast.success('Welcome! You can now host properties. Redirecting to host dashboard...');
+        setTimeout(() => {
+          navigate('/host/dashboard');
+        }, 1500);
+        return;
+      } catch (error: any) {
+        toast.error(error.message || 'Failed to add host role. Please try again.');
+        return;
+      }
+    }
+    
+    // If user is not signed in or already has host role, proceed to signup/login
+    sessionStorage.setItem('hostPolicyAccepted', 'true');
+    sessionStorage.setItem('hostPolicyAcceptedDate', policyAcceptedDate);
+    
+    if (user && hasRole('host')) {
+      // Already a host, just go to dashboard
+      navigate('/host/dashboard');
     } else {
-      alert('Please accept all policies and terms to continue.');
+      // Not signed in or new user, go to login/signup
+      navigate('/host/login', { state: { showSignup: true } });
     }
   };
 
@@ -138,89 +260,159 @@ const HostPolicyAcceptance = () => {
             </div>
           </CardHeader>
           
-          <CardContent className="flex-1 overflow-y-auto py-6 max-h-[60vh]">
-            <Tabs defaultValue="cancellation" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 mb-6">
-                <TabsTrigger value="cancellation" className="text-sm">
-                  <AlertTriangle className="h-4 w-4 mr-2" />
-                  Cancellation
-                </TabsTrigger>
-                <TabsTrigger value="terms" className="text-sm">
-                  <FileText className="h-4 w-4 mr-2" />
-                  Terms of Service
-                </TabsTrigger>
-                <TabsTrigger value="rules" className="text-sm">
-                  <Shield className="h-4 w-4 mr-2" />
-                  House Rules
-                </TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="cancellation" className="space-y-4">
-                <div className="bg-muted/50 rounded-lg p-4 border">
-                  <pre className="whitespace-pre-wrap text-sm font-sans text-foreground leading-relaxed">
-                    {cancellationPolicy}
-                  </pre>
+          <CardContent className="flex-1 flex flex-col py-6 overflow-hidden">
+            {/* Progress Bar */}
+            <div className="mb-6 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Reading Progress:</span>
+                <span className="font-medium">
+                  {[hasScrolledCancellation, hasScrolledTerms, hasScrolledRules].filter(Boolean).length} / 3 sections read
+                </span>
+              </div>
+              <Progress 
+                value={([hasScrolledCancellation, hasScrolledTerms, hasScrolledRules].filter(Boolean).length / 3) * 100} 
+                className="h-2"
+              />
+            </div>
+            
+            {/* Scrollable Content Area */}
+            <div 
+              ref={scrollContainerRef}
+              className="flex-1 overflow-y-auto pr-4"
+            >
+              <div className="space-y-8 pb-4">
+                {/* Cancellation Policy Section */}
+                <div ref={cancellationSectionRef} className="space-y-4">
+                  <div className="flex items-center gap-3 pb-2 border-b">
+                    <div className="w-10 h-10 rounded-lg bg-orange-100 dark:bg-orange-900/20 flex items-center justify-center">
+                      <AlertTriangle className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold">Cancellation Policy</h3>
+                      <p className="text-sm text-muted-foreground">Read and understand our cancellation terms</p>
+                    </div>
+                    {hasScrolledCancellation && (
+                      <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 ml-auto" />
+                    )}
+                  </div>
+                  
+                  <div className="bg-muted/50 rounded-lg p-6 border">
+                    <pre className="whitespace-pre-wrap text-sm font-sans text-foreground leading-relaxed">
+                      {cancellationPolicy}
+                    </pre>
+                  </div>
+                  
+                  <div className="flex items-start space-x-3 p-4 bg-muted/30 rounded-lg border">
+                    <Checkbox
+                      id="accept-cancellation"
+                      checked={acceptedCancellation}
+                      disabled={false}
+                      onCheckedChange={(checked) => setAcceptedCancellation(checked === true)}
+                      className="mt-1"
+                    />
+                    <Label 
+                      htmlFor="accept-cancellation" 
+                      className="text-sm font-medium flex-1 cursor-pointer"
+                    >
+                      I have read and agree to the Cancellation Policy
+                    </Label>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-2 p-4 bg-muted/30 rounded-lg border">
-                  <Checkbox
-                    id="accept-cancellation"
-                    checked={acceptedCancellation}
-                    onCheckedChange={(checked) => setAcceptedCancellation(checked === true)}
-                  />
-                  <Label htmlFor="accept-cancellation" className="text-sm font-medium cursor-pointer flex-1">
-                    I have read and agree to the Cancellation Policy
-                  </Label>
+                
+                {/* Terms of Service Section */}
+                <div ref={termsSectionRef} className="space-y-4">
+                  <div className="flex items-center gap-3 pb-2 border-b">
+                    <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
+                      <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold">Terms of Service</h3>
+                      <p className="text-sm text-muted-foreground">Platform usage and responsibilities</p>
+                    </div>
+                    {hasScrolledTerms && (
+                      <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 ml-auto" />
+                    )}
+                  </div>
+                  
+                  <div className="bg-muted/50 rounded-lg p-6 border">
+                    <pre className="whitespace-pre-wrap text-sm font-sans text-foreground leading-relaxed">
+                      {termsOfService}
+                    </pre>
+                  </div>
+                  
+                  <div className="flex items-start space-x-3 p-4 bg-muted/30 rounded-lg border">
+                    <Checkbox
+                      id="accept-terms"
+                      checked={acceptedTerms}
+                      disabled={false}
+                      onCheckedChange={(checked) => setAcceptedTerms(checked === true)}
+                      className="mt-1"
+                    />
+                    <Label 
+                      htmlFor="accept-terms" 
+                      className="text-sm font-medium flex-1 cursor-pointer"
+                    >
+                      I have read and agree to the Terms of Service
+                    </Label>
+                  </div>
                 </div>
-              </TabsContent>
-              
-              <TabsContent value="terms" className="space-y-4">
-                <div className="bg-muted/50 rounded-lg p-4 border">
-                  <pre className="whitespace-pre-wrap text-sm font-sans text-foreground leading-relaxed">
-                    {termsOfService}
-                  </pre>
+                
+                {/* House Rules Section */}
+                <div ref={rulesSectionRef} className="space-y-4">
+                  <div className="flex items-center gap-3 pb-2 border-b">
+                    <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
+                      <Shield className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold">House Rules & Regulations</h3>
+                      <p className="text-sm text-muted-foreground">Property rules and guest conduct</p>
+                    </div>
+                    {hasScrolledRules && (
+                      <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 ml-auto" />
+                    )}
+                  </div>
+                  
+                  <div className="bg-muted/50 rounded-lg p-6 border">
+                    <pre className="whitespace-pre-wrap text-sm font-sans text-foreground leading-relaxed">
+                      {houseRules}
+                    </pre>
+                  </div>
+                  
+                  <div className="flex items-start space-x-3 p-4 bg-muted/30 rounded-lg border">
+                    <Checkbox
+                      id="accept-rules"
+                      checked={acceptedRules}
+                      disabled={false}
+                      onCheckedChange={(checked) => setAcceptedRules(checked === true)}
+                      className="mt-1"
+                    />
+                    <Label 
+                      htmlFor="accept-rules" 
+                      className="text-sm font-medium flex-1 cursor-pointer"
+                    >
+                      I have read and agree to the House Rules & Regulations
+                    </Label>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-2 p-4 bg-muted/30 rounded-lg border">
-                  <Checkbox
-                    id="accept-terms"
-                    checked={acceptedTerms}
-                    onCheckedChange={(checked) => setAcceptedTerms(checked === true)}
-                  />
-                  <Label htmlFor="accept-terms" className="text-sm font-medium cursor-pointer flex-1">
-                    I have read and agree to the Terms of Service
-                  </Label>
-                </div>
-              </TabsContent>
-              
-              <TabsContent value="rules" className="space-y-4">
-                <div className="bg-muted/50 rounded-lg p-4 border">
-                  <pre className="whitespace-pre-wrap text-sm font-sans text-foreground leading-relaxed">
-                    {houseRules}
-                  </pre>
-                </div>
-                <div className="flex items-center space-x-2 p-4 bg-muted/30 rounded-lg border">
-                  <Checkbox
-                    id="accept-rules"
-                    checked={acceptedRules}
-                    onCheckedChange={(checked) => setAcceptedRules(checked === true)}
-                  />
-                  <Label htmlFor="accept-rules" className="text-sm font-medium cursor-pointer flex-1">
-                    I have read and agree to the House Rules & Regulations
-                  </Label>
-                </div>
-              </TabsContent>
-            </Tabs>
+              </div>
+            </div>
             
             {/* Accept All Button */}
             <div className="mt-6 pt-6 border-t">
               <Button
                 onClick={handleAcceptAll}
                 variant="outline"
-                className="w-full mb-4"
+                className="w-full"
                 disabled={allAccepted}
               >
                 <CheckCircle2 className="h-4 w-4 mr-2" />
-                {allAccepted ? 'All Policies Accepted' : 'Accept All Policies'}
+                {allAccepted ? 'All Policies Accepted ✓' : 'Accept All Policies'}
               </Button>
+              {!allAccepted && (
+                <p className="text-xs text-muted-foreground text-center mt-2">
+                  Scroll to the end of all policies, then click "Accept All Policies"
+                </p>
+              )}
             </div>
           </CardContent>
           
@@ -228,8 +420,8 @@ const HostPolicyAcceptance = () => {
           <div className="border-t p-6 bg-muted/30">
             <div className="flex items-center justify-between gap-4">
               <p className="text-sm text-muted-foreground">
-                {acceptedCancellation && acceptedTerms && acceptedRules ? (
-                  <span className="text-green-600 font-medium flex items-center gap-2">
+                {allAccepted ? (
+                  <span className="text-green-600 dark:text-green-400 font-medium flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4" />
                     All policies accepted
                   </span>
@@ -239,7 +431,7 @@ const HostPolicyAcceptance = () => {
               </p>
               <Button
                 onClick={handleContinue}
-                disabled={!acceptedCancellation || !acceptedTerms || !acceptedRules}
+                disabled={!allAccepted}
                 className="min-w-[150px]"
                 size="lg"
               >

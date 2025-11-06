@@ -245,5 +245,23 @@ service cloud.firestore {
       // Only admins can delete transactions
       allow delete: if isAdmin();
     }
+
+    // Notifications collection
+    match /notifications/{notificationId} {
+      // Users can read their own notifications
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      // System can create notifications for users
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      
+      // Users can update their own notifications (mark as read, delete)
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      // Users can delete their own notifications
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      // Allow list/query for user's notifications
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
   }
 }
