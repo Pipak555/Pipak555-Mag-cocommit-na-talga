@@ -1,0 +1,658 @@
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { 
+  Calendar as CalendarIcon, 
+  ChevronLeft, 
+  ChevronRight, 
+  Home, 
+  MessageSquare,
+  X,
+  Filter,
+  Grid3x3,
+  List
+} from 'lucide-react';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
+import Logo from '@/components/shared/Logo';
+import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import type { Booking, Listing } from '@/types';
+import { formatPHP } from '@/lib/currency';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
+interface BookingWithListing extends Booking {
+  listingTitle?: string;
+  listingLocation?: string;
+  guestName?: string;
+}
+
+type ViewMode = 'month' | 'week' | 'list';
+
+const HostCalendar = () => {
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+  const [bookings, setBookings] = useState<BookingWithListing[]>([]);
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [viewMode, setViewMode] = useState<ViewMode>('month');
+  const [selectedListing, setSelectedListing] = useState<string>('all');
+  const [selectedBooking, setSelectedBooking] = useState<BookingWithListing | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [signOutDialogOpen, setSignOutDialogOpen] = useState(false);
+
+  // Fetch listings
+  useEffect(() => {
+    if (!user) return;
+
+    const listingsQuery = query(
+      collection(db, 'listing'),
+      where('hostId', '==', user.uid)
+    );
+
+    const unsubscribe = onSnapshot(listingsQuery, (snapshot) => {
+      const listingsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Listing));
+      setListings(listingsData);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Fetch bookings with real-time updates
+  useEffect(() => {
+    if (!user) return;
+
+    setLoading(true);
+
+    const bookingsQuery = query(
+      collection(db, 'bookings'),
+      where('hostId', '==', user.uid)
+    );
+
+    const unsubscribe = onSnapshot(bookingsQuery, async (snapshot) => {
+      const bookingsData = await Promise.all(
+        snapshot.docs.map(async (bookingDoc) => {
+          const booking = { id: bookingDoc.id, ...bookingDoc.data() } as BookingWithListing;
+
+          // Fetch listing details
+          if (booking.listingId) {
+            const listingDocRef = doc(db, 'listing', booking.listingId);
+            const listingDoc = await getDoc(listingDocRef);
+            if (listingDoc.exists()) {
+              const listingData = listingDoc.data();
+              booking.listingTitle = listingData?.title;
+              booking.listingLocation = listingData?.location;
+            }
+          }
+
+          // Fetch guest details
+          if (booking.guestId) {
+            const userDocRef = doc(db, 'users', booking.guestId);
+            const userDoc = await getDoc(userDocRef);
+            if (userDoc.exists()) {
+              booking.guestName = userDoc.data()?.fullName;
+            }
+          }
+
+          return booking;
+        })
+      );
+
+      setBookings(bookingsData);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Get status color
+  const getStatusColor = (booking: BookingWithListing) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const checkOut = new Date(booking.checkOut);
+    checkOut.setHours(0, 0, 0, 0);
+
+    // Completed bookings
+    if (checkOut < today && booking.status === 'confirmed') {
+      return 'bg-green-500'; // Successful
+    }
+
+    // Upcoming bookings (including today)
+    if (booking.status === 'confirmed') {
+      return 'bg-blue-500'; // Upcoming
+    }
+
+    // Pending
+    if (booking.status === 'pending') {
+      return 'bg-orange-500';
+    }
+
+    // Cancelled
+    if (booking.status === 'cancelled') {
+      return 'bg-gray-400';
+    }
+
+    return 'bg-gray-400';
+  };
+
+  // Get status label
+  const getStatusLabel = (booking: BookingWithListing) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const checkOut = new Date(booking.checkOut);
+    checkOut.setHours(0, 0, 0, 0);
+
+    // Completed bookings
+    if (checkOut < today && booking.status === 'confirmed') {
+      return 'Successful';
+    }
+
+    // Upcoming bookings (including today)
+    if (booking.status === 'confirmed') {
+      return 'Upcoming';
+    }
+
+    if (booking.status === 'pending') {
+      return 'Pending';
+    }
+
+    if (booking.status === 'cancelled') {
+      return 'Cancelled';
+    }
+
+    return booking.status;
+  };
+
+  // Generate calendar days
+  const generateCalendarDays = () => {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+
+    const days: (Date | null)[] = [];
+
+    // Add empty cells for days before month starts
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      days.push(null);
+    }
+
+    // Add days of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+      days.push(new Date(year, month, day));
+    }
+
+    return days;
+  };
+
+  // Get bookings for a specific date
+  const getBookingsForDate = (date: Date | null) => {
+    if (!date) return [];
+
+    const dateStr = date.toISOString().split('T')[0];
+
+    let filtered = bookings.filter(booking => {
+      // Exclude cancelled bookings from calendar display
+      if (booking.status === 'cancelled') {
+        return false;
+      }
+
+      const checkIn = new Date(booking.checkIn);
+      const checkOut = new Date(booking.checkOut);
+      checkIn.setHours(0, 0, 0, 0);
+      checkOut.setHours(0, 0, 0, 0);
+      date.setHours(0, 0, 0, 0);
+
+      return date >= checkIn && date <= checkOut;
+    });
+
+    // Filter by selected listing
+    if (selectedListing !== 'all') {
+      filtered = filtered.filter(b => b.listingId === selectedListing);
+    }
+
+    return filtered;
+  };
+
+  // Navigate months
+  const previousMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
+  };
+
+  const nextMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
+  };
+
+  const goToToday = () => {
+    setCurrentDate(new Date());
+  };
+
+  // Handle booking click
+  const handleBookingClick = (booking: BookingWithListing) => {
+    setSelectedBooking(booking);
+    setDialogOpen(true);
+  };
+
+  // Handle sign out
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      navigate('/');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
+  const calendarDays = generateCalendarDays();
+  const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  // Filter bookings for list view
+  const getFilteredBookings = () => {
+    // Exclude cancelled bookings from list view
+    let filtered = bookings.filter(booking => booking.status !== 'cancelled');
+
+    if (selectedListing !== 'all') {
+      filtered = filtered.filter(b => b.listingId === selectedListing);
+    }
+
+    // Sort by check-in date
+    filtered.sort((a, b) => new Date(a.checkIn).getTime() - new Date(b.checkIn).getTime());
+
+    return filtered;
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="border-b bg-card">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-8">
+              <Logo size="sm" />
+              <nav className="hidden md:flex items-center gap-6">
+                <Button variant="ghost" onClick={() => navigate('/host/dashboard')}>
+                  <Home className="h-4 w-4 mr-2" />
+                  Dashboard
+                </Button>
+                <Button variant="ghost" onClick={() => navigate('/host/listings')}>
+                  <Grid3x3 className="h-4 w-4 mr-2" />
+                  Listings
+                </Button>
+                <Button variant="default">
+                  <CalendarIcon className="h-4 w-4 mr-2" />
+                  Calendar
+                </Button>
+                <Button variant="ghost" onClick={() => navigate('/host/messages')}>
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Messages
+                </Button>
+              </nav>
+            </div>
+            <div className="flex items-center gap-4">
+              <NotificationBell />
+              <ThemeToggle />
+              <Button variant="outline" onClick={() => setSignOutDialogOpen(true)}>
+                Sign Out
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="container mx-auto px-6 py-8">
+        {/* Page Header */}
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold mb-2">Booking Calendar</h1>
+          <p className="text-muted-foreground">
+            Manage your bookings and availability
+          </p>
+        </div>
+
+        {/* Controls */}
+        <Card className="mb-6">
+          <CardContent className="pt-6">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+              {/* Date Navigation */}
+              <div className="flex items-center gap-4">
+                <Button variant="outline" size="icon" onClick={previousMonth}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <h2 className="text-xl font-semibold min-w-[200px] text-center">
+                  {monthName}
+                </h2>
+                <Button variant="outline" size="icon" onClick={nextMonth}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" onClick={goToToday}>
+                  Today
+                </Button>
+              </div>
+
+              {/* Filters and View Mode */}
+              <div className="flex items-center gap-4">
+                {/* Listing Filter */}
+                <Select value={selectedListing} onValueChange={setSelectedListing}>
+                  <SelectTrigger className="w-[200px]">
+                    <Filter className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="All Properties" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Properties</SelectItem>
+                    {listings.map(listing => (
+                      <SelectItem key={listing.id} value={listing.id}>
+                        {listing.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* View Mode Toggle */}
+                <div className="flex items-center gap-2 border rounded-md p-1">
+                  <Button
+                    variant={viewMode === 'month' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setViewMode('month')}
+                  >
+                    <Grid3x3 className="h-4 w-4 mr-2" />
+                    Month
+                  </Button>
+                  <Button
+                    variant={viewMode === 'list' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setViewMode('list')}
+                  >
+                    <List className="h-4 w-4 mr-2" />
+                    List
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Legend */}
+        <Card className="mb-6">
+          <CardContent className="pt-6">
+            <div className="flex flex-wrap items-center gap-6">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded border-2 border-primary bg-primary/10 flex items-center justify-center">
+                  <CalendarIcon className="h-3 w-3 text-primary" />
+                </div>
+                <span className="text-sm font-medium">Today</span>
+              </div>
+              <div className="h-4 w-px bg-border"></div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded bg-blue-500"></div>
+                <span className="text-sm">Upcoming</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded bg-green-500"></div>
+                <span className="text-sm">Successful</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded bg-orange-500"></div>
+                <span className="text-sm">Pending</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded bg-gray-400"></div>
+                <span className="text-sm">Cancelled</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Calendar View */}
+        {viewMode === 'month' && (
+          <Card>
+            <CardContent className="p-6">
+              {/* Weekday Headers */}
+              <div className="grid grid-cols-7 gap-2 mb-2">
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                  <div key={day} className="text-center font-semibold text-sm py-2">
+                    {day}
+                  </div>
+                ))}
+              </div>
+
+              {/* Calendar Grid */}
+              <div className="grid grid-cols-7 gap-2">
+                {calendarDays.map((date, index) => {
+                  const dayBookings = date ? getBookingsForDate(date) : [];
+                  const isToday = date && date.toDateString() === new Date().toDateString();
+
+                  return (
+                    <div
+                      key={index}
+                      className={`
+                        min-h-[120px] border rounded-lg p-2 relative
+                        ${date ? 'bg-card hover:bg-muted/50 cursor-pointer' : 'bg-muted/20'}
+                        ${isToday ? 'border-primary border-2 bg-primary/5' : ''}
+                        transition-colors
+                      `}
+                    >
+                      {date && (
+                        <>
+                          <div className={`text-sm font-medium mb-2 flex items-center gap-1 ${isToday ? 'text-primary font-bold' : ''}`}>
+                            {date.getDate()}
+                            {isToday && (
+                              <span className="text-xs bg-primary text-primary-foreground px-1.5 py-0.5 rounded font-normal">
+                                Today
+                              </span>
+                            )}
+                          </div>
+                          <div className="space-y-1">
+                            {dayBookings.slice(0, 3).map((booking, i) => (
+                              <div
+                                key={i}
+                                className={`text-xs p-1 rounded text-white truncate cursor-pointer hover:opacity-80 ${getStatusColor(booking)}`}
+                                onClick={() => handleBookingClick(booking)}
+                                title={booking.listingTitle}
+                              >
+                                {booking.listingTitle}
+                              </div>
+                            ))}
+                            {dayBookings.length > 3 && (
+                              <div className="text-xs text-muted-foreground">
+                                +{dayBookings.length - 3} more
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* List View */}
+        {viewMode === 'list' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>All Bookings</CardTitle>
+              <CardDescription>
+                {getFilteredBookings().length} booking{getFilteredBookings().length !== 1 ? 's' : ''}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  Loading bookings...
+                </div>
+              ) : getFilteredBookings().length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <CalendarIcon className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>No bookings found</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {getFilteredBookings().map(booking => (
+                    <div
+                      key={booking.id}
+                      className="p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                      onClick={() => handleBookingClick(booking)}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <h3 className="font-semibold">{booking.listingTitle}</h3>
+                            <Badge className={getStatusColor(booking)}>
+                              {getStatusLabel(booking)}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground mb-1">
+                            📍 {booking.listingLocation}
+                          </p>
+                          <p className="text-sm text-muted-foreground mb-1">
+                            👤 {booking.guestName || 'Guest'}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            📅 {new Date(booking.checkIn).toLocaleDateString()} - {new Date(booking.checkOut).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold text-lg">{formatPHP(booking.totalPrice || 0)}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {booking.guests} guest{booking.guests !== 1 ? 's' : ''}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </main>
+
+      {/* Booking Details Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Booking Details</DialogTitle>
+            <DialogDescription>
+              View booking information
+            </DialogDescription>
+          </DialogHeader>
+          {selectedBooking && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">{selectedBooking.listingTitle}</h3>
+                <Badge className={getStatusColor(selectedBooking)}>
+                  {getStatusLabel(selectedBooking)}
+                </Badge>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Check-in</p>
+                  <p className="font-medium">{new Date(selectedBooking.checkIn).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Check-out</p>
+                  <p className="font-medium">{new Date(selectedBooking.checkOut).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Guest</p>
+                  <p className="font-medium">{selectedBooking.guestName || 'Guest'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Guests</p>
+                  <p className="font-medium">{selectedBooking.guests}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Price</p>
+                  <p className="font-medium text-lg">{formatPHP(selectedBooking.totalPrice || 0)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Booking ID</p>
+                  <p className="font-medium text-sm">{selectedBooking.id.slice(0, 8)}...</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Location</p>
+                <p className="font-medium">{selectedBooking.listingLocation}</p>
+              </div>
+
+              <div className="flex gap-2">
+                <Button 
+                  variant="default" 
+                  className="flex-1"
+                  onClick={() => {
+                    navigate('/host/bookings');
+                    setDialogOpen(false);
+                  }}
+                >
+                  View in Bookings
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => setDialogOpen(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Sign Out Confirmation */}
+      <AlertDialog open={signOutDialogOpen} onOpenChange={setSignOutDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sign Out?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to sign out?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSignOut}>Sign Out</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+};
+
+export default HostCalendar;
+

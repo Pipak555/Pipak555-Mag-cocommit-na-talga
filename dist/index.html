@@ -1,74 +1,89 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html>
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#000000" />
-    <meta name="description" content="Connect hosts and guests for unique stays, experiences, and services. Find your perfect accommodation or become a host today." />
-    <meta name="author" content="StayHub" />
-    <meta name="keywords" content="accommodation, booking, hosting, vacation rental, experiences, services" />
-    
-    <!-- Favicons -->
-    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
-    <link rel="icon" type="image/x-icon" href="/logo.svg" />
-    <link rel="apple-touch-icon" href="/logo.svg" />
-    
-    <!-- Preconnect for performance -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="dns-prefetch" href="https://api.cloudinary.com" />
-    <link rel="dns-prefetch" href="https://firestore.googleapis.com" />
-    <link rel="dns-prefetch" href="https://firebase.googleapis.com" />
-    
-    <!-- SEO Meta Tags -->
-    <title>Mojo Dojo Casa House - Book Unique Stays, Experiences & Services</title>
-    
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content="Mojo Dojo Casa House - Book Unique Stays, Experiences & Services" />
-    <meta property="og:description" content="Connect hosts and guests for unique stays, experiences, and services. Find your perfect accommodation or become a host today." />
-    <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
-    <meta property="og:url" content="https://your-project.firebaseapp.com" />
-    
-    <!-- Twitter -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Mojo Dojo Casa House - Book Unique Stays, Experiences & Services" />
-    <meta name="twitter:description" content="Connect hosts and guests for unique stays, experiences, and services" />
-    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
-    
-    <!-- Performance hints -->
-    <link rel="preload" as="script" href="data:application/octet-stream;base64,aW1wb3J0IHsgY3JlYXRlUm9vdCB9IGZyb20gInJlYWN0LWRvbS9jbGllbnQiOw0KaW1wb3J0IEFwcCBmcm9tICIuL0FwcC50c3giOw0KaW1wb3J0ICIuL2luZGV4LmNzcyI7DQoNCi8vIFByb2R1Y3Rpb24gb3B0aW1pemF0aW9ucw0KaWYgKGltcG9ydC5tZXRhLmVudi5QUk9EKSB7DQogIC8vIERpc2FibGUgUmVhY3QgRGV2VG9vbHMgaW4gcHJvZHVjdGlvbg0KICBpZiAod2luZG93Ll9fUkVBQ1RfREVWVE9PTFNfR0xPQkFMX0hPT0tfXykgew0KICAgIHdpbmRvdy5fX1JFQUNUX0RFVlRPT0xTX0dMT0JBTF9IT09LX18ucmVuZGVyZXJzLmNsZWFyKCk7DQogIH0NCiAgDQogIC8vIFJlbW92ZSBjb25zb2xlIG1ldGhvZHMgaW4gcHJvZHVjdGlvbiAoVml0ZSBidWlsZCB3aWxsIGhhbmRsZSB0aGlzKQ0KICAvLyBUaGlzIGlzIGEgYmFja3VwIGluIGNhc2UgdGVyc2VyIGRvZXNuJ3QgY2F0Y2ggZXZlcnl0aGluZw0KfQ0KDQovLyBFcnJvciBib3VuZGFyeSBmb3Igcm9vdCBsZXZlbCBlcnJvcnMNCndpbmRvdy5hZGRFdmVudExpc3RlbmVyKCdlcnJvcicsIChldmVudCkgPT4gew0KICBjb25zb2xlLmVycm9yKCdHbG9iYWwgZXJyb3I6JywgZXZlbnQuZXJyb3IpOw0KICAvLyBZb3UgY2FuIHNlbmQgdG8gZXJyb3IgdHJhY2tpbmcgc2VydmljZSBoZXJlIChlLmcuLCBTZW50cnkpDQp9KTsNCg0Kd2luZG93LmFkZEV2ZW50TGlzdGVuZXIoJ3VuaGFuZGxlZHJlamVjdGlvbicsIChldmVudCkgPT4gew0KICBjb25zb2xlLmVycm9yKCdVbmhhbmRsZWQgcHJvbWlzZSByZWplY3Rpb246JywgZXZlbnQucmVhc29uKTsNCiAgLy8gWW91IGNhbiBzZW5kIHRvIGVycm9yIHRyYWNraW5nIHNlcnZpY2UgaGVyZQ0KfSk7DQoNCi8vIFJlbmRlciBhcHANCmNvbnN0IHJvb3RFbGVtZW50ID0gZG9jdW1lbnQuZ2V0RWxlbWVudEJ5SWQoInJvb3QiKTsNCmlmICghcm9vdEVsZW1lbnQpIHsNCiAgdGhyb3cgbmV3IEVycm9yKCJSb290IGVsZW1lbnQgbm90IGZvdW5kIik7DQp9DQoNCmNyZWF0ZVJvb3Qocm9vdEVsZW1lbnQpLnJlbmRlcig8QXBwIC8+KTsNCg==" />
-    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/inter-var.woff2" />
-    
-    <!-- Resource hints for Firebase -->
-    <link rel="dns-prefetch" href="https://firebase.googleapis.com" />
-    <link rel="dns-prefetch" href="https://firestore.googleapis.com" />
-    <link rel="dns-prefetch" href="https://identitytoolkit.googleapis.com" />
-    <link rel="dns-prefetch" href="https://securetoken.googleapis.com" />
-    <script type="module" crossorigin src="/assets/js/index-BbvEjZj9.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/js/maps-vendor-CYGXCXz5.js">
-    <link rel="modulepreload" crossorigin href="/assets/js/utils-vendor-yBsXXcRr.js">
-    <link rel="modulepreload" crossorigin href="/assets/js/react-vendor-DAkY0NgE.js">
-    <link rel="modulepreload" crossorigin href="/assets/js/ui-vendor-CZx_xpmK.js">
-    <link rel="modulepreload" crossorigin href="/assets/js/icons-vendor-3zhgXMYa.js">
-    <link rel="modulepreload" crossorigin href="/assets/js/firebase-vendor-CvoiOdvz.js">
-    <link rel="stylesheet" crossorigin href="/assets/maps-vendor-Dgihpmma.css">
-    <link rel="stylesheet" crossorigin href="/assets/index-CLiUbsBH.css">
-  </head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Welcome to Firebase Hosting</title>
 
-  <body>
-    <div id="root"></div>
-    
-    <!-- Production environment check -->
-    <script>
-      if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-        // Production optimizations
-        if ('serviceWorker' in navigator) {
-          window.addEventListener('load', () => {
-            // Service worker registration can be added here if needed
-          });
-        }
+    <!-- update the version number as needed -->
+    <script defer src="/__/firebase/12.4.0/firebase-app-compat.js"></script>
+    <!-- include only the Firebase features as you need -->
+    <script defer src="/__/firebase/12.4.0/firebase-auth-compat.js"></script>
+    <script defer src="/__/firebase/12.4.0/firebase-database-compat.js"></script>
+    <script defer src="/__/firebase/12.4.0/firebase-firestore-compat.js"></script>
+    <script defer src="/__/firebase/12.4.0/firebase-functions-compat.js"></script>
+    <script defer src="/__/firebase/12.4.0/firebase-messaging-compat.js"></script>
+    <script defer src="/__/firebase/12.4.0/firebase-storage-compat.js"></script>
+    <script defer src="/__/firebase/12.4.0/firebase-analytics-compat.js"></script>
+    <script defer src="/__/firebase/12.4.0/firebase-remote-config-compat.js"></script>
+    <script defer src="/__/firebase/12.4.0/firebase-performance-compat.js"></script>
+    <!-- 
+      initialize the SDK after all desired features are loaded, set useEmulator to false
+      to avoid connecting the SDK to running emulators.
+    -->
+    <script defer src="/__/firebase/init.js?useEmulator=true"></script>
+
+    <style media="screen">
+      body { background: #ECEFF1; color: rgba(0,0,0,0.87); font-family: Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
+      #message { background: white; max-width: 360px; margin: 100px auto 16px; padding: 32px 24px; border-radius: 3px; }
+      #message h2 { color: #ffa100; font-weight: bold; font-size: 16px; margin: 0 0 8px; }
+      #message h1 { font-size: 22px; font-weight: 300; color: rgba(0,0,0,0.6); margin: 0 0 16px;}
+      #message p { line-height: 140%; margin: 16px 0 24px; font-size: 14px; }
+      #message a { display: block; text-align: center; background: #039be5; text-transform: uppercase; text-decoration: none; color: white; padding: 16px; border-radius: 4px; }
+      #message, #message a { box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24); }
+      #load { color: rgba(0,0,0,0.4); text-align: center; font-size: 13px; }
+      @media (max-width: 600px) {
+        body, #message { margin-top: 0; background: white; box-shadow: none; }
+        body { border-top: 16px solid #ffa100; }
       }
+    </style>
+  </head>
+  <body>
+    <div id="message">
+      <h2>Welcome</h2>
+      <h1>Firebase Hosting Setup Complete</h1>
+      <p>You're seeing this because you've successfully setup Firebase Hosting. Now it's time to go build something extraordinary!</p>
+      <a target="_blank" href="https://firebase.google.com/docs/hosting/">Open Hosting Documentation</a>
+    </div>
+    <p id="load">Firebase SDK Loading&hellip;</p>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const loadEl = document.querySelector('#load');
+        // // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
+        // // The Firebase SDK is initialized and available here!
+        //
+        // firebase.auth().onAuthStateChanged(user => { });
+        // firebase.database().ref('/path/to/ref').on('value', snapshot => { });
+        // firebase.firestore().doc('/foo/bar').get().then(() => { });
+        // firebase.functions().httpsCallable('yourFunction')().then(() => { });
+        // firebase.messaging().requestPermission().then(() => { });
+        // firebase.storage().ref('/path/to/ref').getDownloadURL().then(() => { });
+        // firebase.analytics(); // call to activate
+        // firebase.analytics().logEvent('tutorial_completed');
+        // firebase.performance(); // call to activate
+        //
+        // // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
+
+        try {
+          let app = firebase.app();
+          let features = [
+            'auth', 
+            'database', 
+            'firestore',
+            'functions',
+            'messaging', 
+            'storage', 
+            'analytics', 
+            'remoteConfig',
+            'performance',
+          ].filter(feature => typeof app[feature] === 'function');
+          loadEl.textContent = `Firebase SDK loaded with ${features.join(', ')}`;
+        } catch (e) {
+          console.error(e);
+          loadEl.textContent = 'Error loading the Firebase SDK, check the console.';
+        }
+      });
     </script>
   </body>
 </html>

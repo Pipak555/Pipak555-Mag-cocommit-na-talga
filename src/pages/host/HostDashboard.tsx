@@ -5,7 +5,7 @@ import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Home, Calendar, MessageSquare, DollarSign, Settings, Award } from 'lucide-react';
+import { Plus, Home, Calendar, MessageSquare, DollarSign, Settings, Award, CalendarDays } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -341,6 +341,18 @@ const HostDashboard = () => {
               <CardTitle className="group-hover:text-secondary transition-colors">Bookings</CardTitle>
               <CardDescription>
                 Manage booking requests
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="shadow-medium hover:shadow-hover transition-all duration-300 cursor-pointer border-border/50 hover:border-primary/50 group" onClick={() => navigate('/host/calendar')}>
+            <CardHeader className="space-y-3">
+              <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <CalendarDays className="w-7 h-7 text-primary" />
+              </div>
+              <CardTitle className="group-hover:text-primary transition-colors">Calendar</CardTitle>
+              <CardDescription>
+                View bookings schedule
               </CardDescription>
             </CardHeader>
           </Card>

@@ -37,6 +37,7 @@ const HostAccountSettings = lazy(() => import("./pages/host/HostAccountSettings"
 const GuestAccountSettings = lazy(() => import("./pages/guest/GuestAccountSettings"));
 const HostMessages = lazy(() => import("./pages/host/Messages"));
 const GuestMessages = lazy(() => import("./pages/guest/Messages"));
+const HostCalendar = lazy(() => import("./pages/host/Calendar"));
 const Analytics = lazy(() => import("./pages/admin/Analytics"));
 const ManagePayments = lazy(() => import("./pages/admin/ManagePayments"));
 const Reports = lazy(() => import("./pages/admin/Reports"));
@@ -73,6 +74,7 @@ const AppRoutes = () => {
             <Route path="/host/create-listing" element={<LazyRoute component={CreateListing} />} />
             <Route path="/host/listings" element={<LazyRoute component={ManageListings} />} />
             <Route path="/host/bookings" element={<LazyRoute component={HostBookings} />} />
+            <Route path="/host/calendar" element={<LazyRoute component={HostCalendar} />} />
             <Route path="/host/payments" element={<LazyRoute component={HostPayments} />} />
             <Route path="/host/messages" element={<LazyRoute component={HostMessages} />} />
             <Route path="/host/settings" element={<LazyRoute component={HostAccountSettings} />} />
