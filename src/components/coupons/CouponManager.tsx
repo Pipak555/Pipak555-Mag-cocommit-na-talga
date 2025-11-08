@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Ticket, Check } from "lucide-react";
 import { toast } from "sonner";
+import { formatPHP } from "@/lib/currency";
 import type { Coupon } from "@/types";
 
 interface CouponManagerProps {
@@ -59,14 +60,14 @@ export const CouponManager = ({ coupons, onApplyCoupon }: CouponManagerProps) =>
                       {coupon.code}
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      {coupon.discount}% off
-                      {coupon.minSpend && ` on orders over $${coupon.minSpend}`}
+                      {formatPHP(coupon.discount)} off
+                      {coupon.minSpend && ` on orders over ${formatPHP(coupon.minSpend)}`}
                     </div>
                     <div className="text-xs text-muted-foreground">
                       Valid until: {new Date(coupon.validUntil).toLocaleDateString()}
                     </div>
                   </div>
-                  <Badge variant="secondary">{coupon.discount}%</Badge>
+                  <Badge variant="secondary">{formatPHP(coupon.discount)}</Badge>
                 </div>
               </div>
             ))}

@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Gift, Star } from "lucide-react";
+import { formatPHP } from "@/lib/currency";
 
 interface PointsDisplayProps {
   points: number;
@@ -39,7 +40,7 @@ export const PointsDisplay = ({ points, onRedeem }: PointsDisplayProps) => {
               <div className="flex items-center gap-2">
                 <Gift className="h-4 w-4 text-primary" />
                 <div>
-                  <div className="font-medium text-sm">{tier.reward}</div>
+                  <div className="font-medium text-sm">{formatPHP(tier.discount)} discount</div>
                   <div className="text-xs text-muted-foreground">
                     {tier.points} points
                   </div>
@@ -62,7 +63,6 @@ export const PointsDisplay = ({ points, onRedeem }: PointsDisplayProps) => {
             <li>• Complete a booking: +50 points</li>
             <li>• Write a review: +20 points</li>
             <li>• Refer a friend: +100 points</li>
-            <li>• Host a property: +30 points per booking</li>
           </ul>
         </div>
       </CardContent>

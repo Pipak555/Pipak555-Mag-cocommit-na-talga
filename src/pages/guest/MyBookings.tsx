@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Calendar as CalendarIcon, X } from "lucide-react";
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { PayPalButton } from "@/components/payments/PayPalButton";
 import type { Booking } from "@/types";
 import { formatPHP } from "@/lib/currency";
 import { BookingListSkeleton } from "@/components/ui/booking-skeleton";
@@ -34,10 +35,21 @@ const MyBookings = () => {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [walletBalance, setWalletBalance] = useState(0);
   const filter = searchParams.get('filter'); // 'upcoming', 'past', or null
 
   useEffect(() => {
     if (!user) return;
+
+    // Load wallet balance
+    const loadWalletBalance = async () => {
+      if (!user) return;
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists()) {
+        setWalletBalance(userDoc.data().walletBalance || 0);
+      }
+    };
+    loadWalletBalance();
 
     setLoading(true);
     
@@ -323,6 +335,36 @@ const MyBookings = () => {
                         <p className="font-medium">{formatPHP(booking.totalPrice || 0)}</p>
                       </div>
                     </div>
+                    
+                    {/* PayPal Payment Option for Pending Bookings with Insufficient Balance */}
+                    {booking.status === 'pending' && user && walletBalance < (booking.totalPrice || 0) && (
+                      <div className="pt-4 border-t space-y-2">
+                        <div className="p-3 bg-muted rounded-md">
+                          <p className="text-sm font-medium mb-1">Payment Required</p>
+                          <p className="text-xs text-muted-foreground mb-3">
+                            Your wallet balance ({formatPHP(walletBalance)}) is insufficient. 
+                            Please pay via PayPal to complete your booking.
+                          </p>
+                          <PayPalButton
+                            amount={booking.totalPrice || 0}
+                            userId={user.uid}
+                            description={`Booking payment for booking #${booking.id.slice(0, 8)}`}
+                            bookingId={booking.id}
+                            onSuccess={() => {
+                              toast.success("Payment successful! Your booking will be confirmed once the host approves.");
+                              // Reload wallet balance
+                              const userDoc = getDoc(doc(db, 'users', user.uid));
+                              userDoc.then(doc => {
+                                if (doc.exists()) {
+                                  setWalletBalance(doc.data().walletBalance || 0);
+                                }
+                              });
+                            }}
+                            redirectUrl={window.location.origin + '/guest/bookings'}
+                          />
+                        </div>
+                      </div>
+                    )}
                     
                     {/* Cancel Button for Pending or Confirmed Upcoming Bookings */}
                     {canCancel && (

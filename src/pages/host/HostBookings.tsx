@@ -268,8 +268,26 @@ const HostBookings = () => {
       // If booking is confirmed, process payment
       if (bookingToUpdate.action === 'confirmed' && previousStatus !== 'confirmed') {
         try {
-          // Process payment using payment service
-          const paymentResult = await processBookingPayment(booking);
+          // Try wallet payment first
+          let paymentResult;
+          try {
+            paymentResult = await processBookingPayment(booking, 'wallet');
+          } catch (walletError: any) {
+            // If wallet payment fails due to insufficient balance, try PayPal
+            if (walletError.message?.includes('Insufficient wallet balance')) {
+              console.log('⚠️ Wallet payment failed, checking for PayPal payment...');
+              try {
+                paymentResult = await processBookingPayment(booking, 'paypal');
+              } catch (paypalError: any) {
+                // Revert booking status if both payment methods fail
+                await updateBooking(bookingToUpdate.id, { status: previousStatus });
+                toast.error(`Payment failed: Guest has insufficient wallet balance. They need to complete PayPal payment first.`);
+                return;
+              }
+            } else {
+              throw walletError;
+            }
+          }
           
           if (paymentResult.success) {
             console.log('✅ Payment processed successfully:', paymentResult);

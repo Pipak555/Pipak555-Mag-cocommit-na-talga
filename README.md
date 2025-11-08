@@ -103,24 +103,13 @@ See `FIREBASE_SETUP.md` for detailed security rules documentation.
 
 ## Installation
 
-1. Clone the repository:
-   ```bash
-   git clone <YOUR_GIT_URL>
-   cd <YOUR_PROJECT_NAME>
-   ```
+See `GETTING_STARTED.md` for a complete step-by-step setup guide.
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Set up environment variables (see Firebase Setup above)
-
-4. Start the development server:
-   ```bash
-   npm run dev
-   ```
-
+Quick start:
+1. Clone the repository and install dependencies
+2. Set up Firebase (see `FIREBASE_SETUP.md`)
+3. Configure environment variables (see `GETTING_STARTED.md`)
+4. Run `npm run dev`
 5. Open http://localhost:8080 in your browser
 
 ## Creating Your First Admin Account

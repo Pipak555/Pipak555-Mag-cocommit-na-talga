@@ -20,17 +20,19 @@ const SERVICE_FEE_RATE = 0.15; // 15% service fee
  * This function handles the complete payment flow:
  * 1. Validates booking data
  * 2. Checks guest's wallet balance
- * 3. Deducts payment from guest's wallet
- * 4. Calculates service fee (15%)
- * 5. Credits host's wallet with net amount (after service fee)
- * 6. Creates transaction records for audit trail
- * 7. Sends notifications to guest
+ * 3. If wallet has sufficient balance, deducts payment from guest's wallet
+ * 4. If wallet is insufficient, checks for PayPal payment transaction
+ * 5. Calculates service fee (15%)
+ * 6. Credits host's wallet with net amount (after service fee)
+ * 7. Creates transaction records for audit trail
+ * 8. Sends notifications to guest
  * 
  * @param booking - The booking object to process payment for
+ * @param paymentMethod - The payment method used ('wallet' or 'paypal')
  * @returns Object containing success status, new balances, and fee information
  * @throws Error if booking data is invalid or guest has insufficient balance
  */
-export const processBookingPayment = async (booking: Booking) => {
+export const processBookingPayment = async (booking: Booking, paymentMethod: 'wallet' | 'paypal' = 'wallet') => {
   try {
     const { guestId, totalPrice, id: bookingId } = booking;
     
@@ -47,33 +49,70 @@ export const processBookingPayment = async (booking: Booking) => {
     const guestData = guestDoc.data();
     const currentBalance = guestData.walletBalance || 0;
 
-    // Check if guest has sufficient balance
-    if (currentBalance < totalPrice) {
-      throw new Error(`Insufficient wallet balance. Required: ₱${totalPrice.toFixed(2)}, Available: ₱${currentBalance.toFixed(2)}`);
+    let newBalance = currentBalance;
+    
+    // If payment method is PayPal, check for PayPal payment transaction
+    if (paymentMethod === 'paypal') {
+      // Check if guest has linked and verified PayPal account
+      if (!guestData.paypalEmail) {
+        throw new Error('PayPal account not linked. Please link your PayPal account in the wallet settings before making payments.');
+      }
+      
+      // Check if PayPal account is verified
+      if (!guestData.paypalEmailVerified) {
+        throw new Error('PayPal account not verified. Please verify your PayPal account in the wallet settings before making payments.');
+      }
+      
+      // Note: Account verification happens automatically during payment
+      // If the PayPal account is invalid, PayPal will reject the payment
+
+      // Check if PayPal payment was already made
+      const paypalTransactionsQuery = query(
+        collection(db, 'transactions'),
+        where('bookingId', '==', bookingId),
+        where('type', '==', 'payment'),
+        where('paymentMethod', '==', 'paypal'),
+        where('status', '==', 'completed')
+      );
+      const paypalTx = await getDocs(paypalTransactionsQuery);
+      
+      if (paypalTx.empty) {
+        throw new Error('PayPal payment not found. Please complete the PayPal payment first.');
+      }
+      
+      // PayPal payment was successful, proceed with processing
+      // No wallet deduction needed for PayPal payments
+    } else {
+      // Check if guest has sufficient balance for wallet payment
+      if (currentBalance < totalPrice) {
+        throw new Error(`Insufficient wallet balance. Required: ₱${totalPrice.toFixed(2)}, Available: ₱${currentBalance.toFixed(2)}. Please use PayPal to complete the payment.`);
+      }
+
+      // Deduct from guest wallet
+      newBalance = currentBalance - totalPrice;
+      await updateDoc(doc(db, 'users', guestId), {
+        walletBalance: newBalance
+      });
     }
 
     // Calculate service fee and net amount to host
     const serviceFee = totalPrice * SERVICE_FEE_RATE;
     const netToHost = totalPrice - serviceFee;
 
-    // Deduct from guest wallet
-    const newBalance = currentBalance - totalPrice;
-    await updateDoc(doc(db, 'users', guestId), {
-      walletBalance: newBalance
-    });
-
-    // Create payment transaction for guest
-    await createTransaction({
-      userId: guestId,
-      type: 'payment',
-      amount: totalPrice,
-      description: `Booking payment for booking #${bookingId.slice(0, 8)}`,
-      status: 'completed',
-      paymentMethod: 'wallet',
-      bookingId: bookingId,
-      serviceFee: serviceFee,
-      netAmount: netToHost
-    });
+    // Create payment transaction for guest (if not already created by PayPal)
+    if (paymentMethod === 'wallet') {
+      await createTransaction({
+        userId: guestId,
+        type: 'payment',
+        amount: totalPrice,
+        description: `Booking payment for booking #${bookingId.slice(0, 8)}`,
+        status: 'completed',
+        paymentMethod: 'wallet',
+        bookingId: bookingId,
+        serviceFee: serviceFee,
+        netAmount: netToHost
+      });
+    }
 
     // Get host's current wallet balance
     const hostDoc = await getDoc(doc(db, 'users', booking.hostId));
@@ -127,6 +166,68 @@ export const processBookingPayment = async (booking: Booking) => {
         guestNewBalance: newBalance,
         hostNewBalance
       });
+    }
+
+    // Mark coupon as used if one was applied to this booking
+    if (booking.couponCode && guestData.coupons) {
+      try {
+        const updatedCoupons = guestData.coupons.map((coupon: any) => 
+          coupon.code === booking.couponCode && !coupon.used
+            ? { 
+                ...coupon, 
+                used: true, 
+                usedAt: new Date().toISOString(), 
+                usedForBookingId: bookingId 
+              }
+            : coupon
+        );
+        
+        await updateDoc(doc(db, 'users', guestId), {
+          coupons: updatedCoupons
+        });
+
+        if (import.meta.env.DEV) {
+          console.log('✅ Coupon marked as used:', {
+            couponCode: booking.couponCode,
+            bookingId
+          });
+        }
+      } catch (couponError) {
+        console.error('Error marking coupon as used:', couponError);
+        // Don't fail payment if coupon update fails
+      }
+    }
+
+    // Award points to guest for completed booking (50 points per booking)
+    try {
+      const guestCurrentPoints = guestData.points || 0;
+      const pointsToAward = 50; // Points for completing a booking
+      const newPoints = guestCurrentPoints + pointsToAward;
+      
+      await updateDoc(doc(db, 'users', guestId), {
+        points: newPoints
+      });
+
+      // Create reward transaction
+      await createTransaction({
+        userId: guestId,
+        type: 'reward',
+        amount: pointsToAward,
+        description: `Points earned for booking #${bookingId.slice(0, 8)}`,
+        status: 'completed',
+        bookingId: bookingId
+      });
+
+      if (import.meta.env.DEV) {
+        console.log('✅ Points awarded to guest:', {
+          guestId,
+          pointsAwarded: pointsToAward,
+          newPoints
+        });
+      }
+    } catch (pointsError) {
+      console.error('Error awarding points:', pointsError);
+      // Don't fail payment if points award fails
     }
 
     // Send notifications
@@ -227,6 +328,36 @@ export const processBookingRefund = async (
     const hostData = hostDoc.data();
     const guestCurrentBalance = guestData.walletBalance || 0;
     const hostCurrentBalance = hostData.walletBalance || 0;
+
+    // Restore coupon if one was used for this booking
+    if (booking.couponCode && guestData.coupons) {
+      try {
+        const updatedCoupons = guestData.coupons.map((coupon: any) => 
+          coupon.code === booking.couponCode && coupon.used && coupon.usedForBookingId === bookingId
+            ? { 
+                ...coupon, 
+                used: false, 
+                usedAt: undefined, 
+                usedForBookingId: undefined 
+              }
+            : coupon
+        );
+        
+        await updateDoc(doc(db, 'users', guestId), {
+          coupons: updatedCoupons
+        });
+
+        if (import.meta.env.DEV) {
+          console.log('✅ Coupon restored after refund:', {
+            couponCode: booking.couponCode,
+            bookingId
+          });
+        }
+      } catch (couponError) {
+        console.error('Error restoring coupon:', couponError);
+        // Don't fail refund if coupon restore fails
+      }
+    }
 
     // Refund full amount to guest
     const guestNewBalance = guestCurrentBalance + totalPrice;

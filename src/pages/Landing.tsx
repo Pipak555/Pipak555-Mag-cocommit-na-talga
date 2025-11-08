@@ -19,7 +19,7 @@ const Landing = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="absolute top-0 left-0 right-0 z-50 bg-black/20 backdrop-blur-md border-b border-white/10">
+      <header className="absolute top-0 left-0 right-0 z-50 bg-background/80 dark:bg-black/20 backdrop-blur-md border-b border-border/50 dark:border-white/10">
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
           <Logo size="md" />
           <ThemeToggle />
@@ -36,8 +36,8 @@ const Landing = () => {
         />
         
         {/* Enhanced Overlay - Lighter and more balanced */}
-        <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-black/40 to-black/60 z-10" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent z-10" />
+        <div className="absolute inset-0 bg-gradient-to-br from-background/40 dark:from-black/60 via-background/20 dark:via-black/40 to-background/40 dark:to-black/60 z-10" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background/50 dark:from-black/70 via-transparent to-transparent z-10" />
         
         {/* Animated Background Elements */}
         <div className="absolute inset-0 overflow-hidden z-10">
@@ -49,7 +49,7 @@ const Landing = () => {
         <div className="relative z-20 container mx-auto px-4 sm:px-6 lg:px-8 h-full flex flex-col justify-center animate-fadeInUp py-32">
           <div className="max-w-3xl">
             {/* Title with better contrast */}
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight text-white drop-shadow-2xl">
+            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight text-foreground dark:text-white drop-shadow-2xl">
               Welcome to{' '}
               <span className="bg-gradient-to-r from-orange-400 via-blue-400 to-green-400 bg-clip-text text-transparent drop-shadow-lg">
                 Mojo Dojo Casa House
@@ -57,7 +57,7 @@ const Landing = () => {
             </h1>
             
             {/* Tagline with much better contrast */}
-            <p className="text-xl md:text-2xl text-white/95 mb-10 leading-relaxed max-w-2xl drop-shadow-lg font-medium">
+            <p className="text-xl md:text-2xl text-foreground/90 dark:text-white/95 mb-10 leading-relaxed max-w-2xl drop-shadow-lg font-medium">
               Your gateway to amazing stays. Connect with hosts and guests for unique experiences
             </p>
             
@@ -66,8 +66,8 @@ const Landing = () => {
               <Button size="lg" asChild className="shadow-2xl hover:shadow-2xl hover:scale-105 transition-all h-14 px-8 text-lg bg-primary hover:bg-primary/90">
                 <Link to="/guest/login">Browse Listings</Link>
               </Button>
-              <Button size="lg" variant="outline" asChild className="h-14 px-8 text-lg border-2 border-white/30 bg-white/10 backdrop-blur-md hover:bg-white/20 text-white hover:text-white">
-                <Link to="/host/policies">Become a Host</Link>
+              <Button size="lg" variant="outline" asChild className="h-14 px-8 text-lg border-2 border-border/50 dark:border-white/30 bg-background/80 dark:bg-white/10 backdrop-blur-md hover:bg-background/90 dark:hover:bg-white/20 text-foreground dark:text-white hover:text-foreground dark:hover:text-white">
+                <Link to="/host/login">Become a Host</Link>
               </Button>
             </div>
           </div>
@@ -75,7 +75,7 @@ const Landing = () => {
         
         {/* Scroll Indicator */}
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 animate-bounce">
-          <ChevronDown className="h-6 w-6 text-white drop-shadow-lg" />
+          <ChevronDown className="h-6 w-6 text-foreground dark:text-white drop-shadow-lg" />
         </div>
       </section>
 

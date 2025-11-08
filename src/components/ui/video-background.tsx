@@ -5,17 +5,22 @@ interface VideoBackgroundProps {
   className?: string;
   overlay?: boolean;
   fallbackImage?: string;
+  style?: React.CSSProperties;
 }
 
 export const VideoBackground = ({ 
   src, 
   className = '', 
   overlay = true,
-  fallbackImage 
+  fallbackImage,
+  style
 }: VideoBackgroundProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [videoError, setVideoError] = useState(false);
+  const [isInView, setIsInView] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -28,11 +33,75 @@ export const VideoBackground = ({
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // Intersection Observer to load video only when in viewport
   useEffect(() => {
-    if (videoRef.current && !isMobile && !videoError) {
-      videoRef.current.playbackRate = 0.8; // Slight slow motion for elegance
+    if (isMobile || videoError) return;
+    
+    if (!containerRef.current) {
+      // If container not ready yet, check again after a short delay
+      const timer = setTimeout(() => {
+        if (containerRef.current) {
+          const rect = containerRef.current.getBoundingClientRect();
+          const isVisible = rect.top < window.innerHeight + 50 && rect.bottom > -50;
+          if (isVisible) {
+            setIsInView(true);
+          }
+        }
+      }, 100);
+      return () => clearTimeout(timer);
     }
+
+    // Check if element is already in viewport
+    const rect = containerRef.current.getBoundingClientRect();
+    const isVisible = rect.top < window.innerHeight + 50 && rect.bottom > -50;
+    
+    if (isVisible) {
+      setIsInView(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setIsInView(true);
+            observer.disconnect();
+          }
+        });
+      },
+      { rootMargin: '50px' } // Start loading 50px before entering viewport
+    );
+
+    observer.observe(containerRef.current);
+
+    return () => observer.disconnect();
   }, [isMobile, videoError]);
+
+  useEffect(() => {
+    if (videoRef.current && !isMobile && !videoError && isInView) {
+      const video = videoRef.current;
+      
+      // Set playback rate
+      video.playbackRate = 0.8;
+      
+      // Load video when in view
+      video.load();
+      
+      // Play when ready
+      const handleCanPlay = () => {
+        video.play().catch(() => {
+          // Auto-play might fail, that's okay
+        });
+        setIsLoaded(true);
+      };
+      
+      video.addEventListener('canplay', handleCanPlay, { once: true });
+      
+      return () => {
+        video.removeEventListener('canplay', handleCanPlay);
+      };
+    }
+  }, [isMobile, videoError, isInView]);
 
   const handleVideoError = () => {
     setVideoError(true);
@@ -56,24 +125,62 @@ export const VideoBackground = ({
   }
 
   return (
-    <div className={`absolute inset-0 overflow-hidden ${className}`}>
-      <video
-        ref={videoRef}
-        autoPlay
-        loop
-        muted
-        playsInline
-        className="absolute inset-0 w-full h-full object-cover"
-        preload="auto"
-        onError={handleVideoError}
-      >
-        <source src={src} type="video/mp4" />
-        Your browser does not support the video tag.
-      </video>
+    <div 
+      ref={containerRef}
+      className={`absolute inset-0 overflow-hidden ${className}`} 
+      style={style}
+    >
+      {/* Show fallback image while video loads */}
+      {!isLoaded && fallbackImage && (
+        <div 
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-opacity duration-500"
+          style={{ 
+            backgroundImage: `url(${fallbackImage})`,
+            opacity: isLoaded ? 0 : 1,
+            zIndex: 1
+          }}
+        />
+      )}
+      
+      {isInView && (
+        <video
+          ref={videoRef}
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500"
+          style={{ 
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            transform: 'scale(1) translateZ(0)',
+            willChange: 'auto',
+            objectFit: 'cover',
+            objectPosition: 'center center',
+            minWidth: '100%',
+            minHeight: '100%',
+            maxWidth: '100%',
+            maxHeight: '100%',
+            pointerEvents: 'none',
+            opacity: isLoaded ? 1 : 0,
+            zIndex: 2
+          }}
+          preload="metadata"
+          poster={fallbackImage}
+          onError={handleVideoError}
+        >
+          <source src={src} type="video/mp4" />
+          Your browser does not support the video tag.
+        </video>
+      )}
+      
       {overlay && (
         <>
-          <div className="absolute inset-0 bg-gradient-to-br from-black/50 via-black/30 to-black/50" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-br from-background/30 dark:from-black/50 via-background/15 dark:via-black/30 to-background/30 dark:to-black/50 z-10" />
+          <div className="absolute inset-0 bg-gradient-to-t from-background/40 dark:from-black/60 via-transparent to-transparent z-10" />
         </>
       )}
     </div>

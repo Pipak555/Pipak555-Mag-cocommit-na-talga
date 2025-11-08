@@ -236,7 +236,10 @@ const GuestDashboard = () => {
 
         {/* Quick Stats */}
         <div className={`grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8 ${hasRole('host') ? 'lg:grid-cols-5' : 'lg:grid-cols-6'}`}>
-          <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group">
+          <Card 
+            className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer hover:scale-105 active:scale-100"
+            onClick={() => navigate('/guest/favorites')}
+          >
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-secondary to-accent" />
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
@@ -250,7 +253,10 @@ const GuestDashboard = () => {
             </CardContent>
           </Card>
 
-          <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group">
+          <Card 
+            className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer hover:scale-105 active:scale-100"
+            onClick={() => navigate('/guest/wishlist')}
+          >
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-blue-400 to-blue-300" />
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
@@ -407,7 +413,7 @@ const GuestDashboard = () => {
 
         {/* Quick Actions */}
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/guest/settings?tab=favorites')}>
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/guest/favorites')}>
             <CardHeader>
               <Heart className="w-8 h-8 text-primary mb-2" />
               <CardTitle>Favorites</CardTitle>

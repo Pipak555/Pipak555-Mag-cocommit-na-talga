@@ -32,6 +32,9 @@ export interface Booking {
   checkOut: string;
   guests: number;
   totalPrice: number;
+  originalPrice?: number; // Price before coupon discount
+  couponCode?: string; // Applied coupon code
+  discountAmount?: number; // Discount amount applied
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
   createdAt: string;
 }
@@ -113,9 +116,11 @@ export interface UserProfile {
 export interface Coupon {
   id: string;
   code: string;
-  discount: number; // percentage
+  discount: number; // Fixed discount amount (not percentage)
   validUntil: string;
   used: boolean;
+  usedAt?: string; // When coupon was used
+  usedForBookingId?: string; // Booking ID where coupon was used
   minSpend?: number;
 }
 

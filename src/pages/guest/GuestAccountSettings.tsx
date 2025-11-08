@@ -10,13 +10,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { ArrowLeft, User, Bell, Shield, Heart, Calendar, Bookmark, Mail, Smartphone, X } from "lucide-react";
+import { ArrowLeft, User, Bell, Shield, Calendar, Mail, Smartphone, X } from "lucide-react";
 import { toast } from "sonner";
-import { ListingCard } from "@/components/listings/ListingCard";
 import { EmptyState } from "@/components/ui/empty-state";
-import { getListings, getBookings, toggleFavorite, toggleWishlist, updateBooking } from "@/lib/firestore";
+import { getBookings, updateBooking } from "@/lib/firestore";
 import { processBookingRefund } from "@/lib/paymentService";
-import type { UserProfile, Listing, Booking, NotificationPreferences } from "@/types";
+import type { UserProfile, Booking, NotificationPreferences } from "@/types";
 import { formatPHP } from "@/lib/currency";
 import LoadingScreen from "@/components/ui/loading-screen";
 import {
@@ -36,11 +35,7 @@ const GuestAccountSettings = () => {
   const { user, userRole, refreshUserProfile, signOut, hasRole } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(false);
-  const [favoriteListings, setFavoriteListings] = useState<Listing[]>([]);
-  const [wishlistListings, setWishlistListings] = useState<Listing[]>([]);
   const [userBookings, setUserBookings] = useState<Booking[]>([]);
-  const [favorites, setFavorites] = useState<string[]>([]);
-  const [wishlist, setWishlist] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'profile');
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -82,8 +77,6 @@ const GuestAccountSettings = () => {
 
   useEffect(() => {
     if (user && profile && userRole === 'guest') {
-      loadFavoriteListings();
-      loadWishlistListings();
       loadBookings();
       // Load notification preferences
       if (profile.notifications) {
@@ -99,45 +92,9 @@ const GuestAccountSettings = () => {
       if (docSnap.exists()) {
         const data = docSnap.data() as UserProfile;
         setProfile(data);
-        setFavorites(data.favorites || []);
-        setWishlist(data.wishlist || []);
       }
     } catch (error) {
       console.error(error);
-    }
-  };
-
-  const loadFavoriteListings = async () => {
-    if (!user || !profile?.favorites?.length) {
-      setFavoriteListings([]);
-      return;
-    }
-    try {
-      const { getListing } = await import('@/lib/firestore');
-      const favoriteDetails = await Promise.all(
-        profile.favorites.map(id => getListing(id))
-      );
-      setFavoriteListings(favoriteDetails.filter((l): l is Listing => l !== null));
-    } catch (error) {
-      console.error('Error loading favorite listings:', error);
-      setFavoriteListings([]);
-    }
-  };
-
-  const loadWishlistListings = async () => {
-    if (!user || !profile?.wishlist?.length) {
-      setWishlistListings([]);
-      return;
-    }
-    try {
-      const { getListing } = await import('@/lib/firestore');
-      const wishlistDetails = await Promise.all(
-        profile.wishlist.map(id => getListing(id))
-      );
-      setWishlistListings(wishlistDetails.filter((l): l is Listing => l !== null));
-    } catch (error) {
-      console.error('Error loading wishlist listings:', error);
-      setWishlistListings([]);
     }
   };
 
@@ -251,37 +208,6 @@ const GuestAccountSettings = () => {
     }
   };
 
-  const handleFavorite = async (listingId: string) => {
-    if (!user) {
-      toast.error("Please login to manage favorites");
-      return;
-    }
-    try {
-      const newFavorites = await toggleFavorite(user.uid, listingId, favorites);
-      setFavorites(newFavorites);
-      setProfile(prev => prev ? { ...prev, favorites: newFavorites } : null);
-      loadFavoriteListings();
-      toast.success(newFavorites.includes(listingId) ? "Added to favorites" : "Removed from favorites");
-    } catch (error) {
-      toast.error("Failed to update favorites");
-    }
-  };
-
-  const handleWishlist = async (listingId: string) => {
-    if (!user) {
-      toast.error("Please login to manage wishlist");
-      return;
-    }
-    try {
-      const newWishlist = await toggleWishlist(user.uid, listingId, wishlist);
-      setWishlist(newWishlist);
-      setProfile(prev => prev ? { ...prev, wishlist: newWishlist } : null);
-      loadWishlistListings();
-      toast.success(newWishlist.includes(listingId) ? "Added to wishlist" : "Removed from wishlist");
-    } catch (error) {
-      toast.error("Failed to update wishlist");
-    }
-  };
 
   const handleSaveProfile = async () => {
     if (!user || !profile) return;
@@ -349,18 +275,10 @@ const GuestAccountSettings = () => {
         <h1 className="text-3xl font-bold mb-6">Account Settings</h1>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-4 relative">
             <TabsTrigger value="profile">
               <User className="h-4 w-4 mr-2" />
               Profile
-            </TabsTrigger>
-            <TabsTrigger value="favorites">
-              <Heart className="h-4 w-4 mr-2" />
-              Favorites
-            </TabsTrigger>
-            <TabsTrigger value="wishlist">
-              <Bookmark className="h-4 w-4 mr-2" />
-              Wishlist
             </TabsTrigger>
             <TabsTrigger value="bookings">
               <Calendar className="h-4 w-4 mr-2" />
@@ -376,8 +294,9 @@ const GuestAccountSettings = () => {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="profile">
-            <Card>
+          <div className="h-[600px] relative">
+            <TabsContent value="profile" className="mt-0 absolute inset-0 w-full overflow-y-auto">
+              <Card className="h-full flex flex-col">
               <CardHeader>
                 <CardTitle>Profile Information</CardTitle>
                 <CardDescription>Update your account details</CardDescription>
@@ -421,82 +340,8 @@ const GuestAccountSettings = () => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="favorites">
-            <Card>
-              <CardHeader>
-                <CardTitle>Your Favorites</CardTitle>
-                <CardDescription>Listings you've liked and saved</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {favoriteListings.length === 0 ? (
-                  <EmptyState
-                    icon={<Heart className="h-10 w-10" />}
-                    title="No favorites yet"
-                    description="Start exploring and add listings to your favorites!"
-                    action={
-                      <Button onClick={() => navigate('/guest/browse')}>
-                        Browse Listings
-                      </Button>
-                    }
-                  />
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {favoriteListings.map((listing) => (
-                      <ListingCard
-                        key={listing.id}
-                        listing={listing}
-                        onView={() => navigate(`/guest/listing/${listing.id}`)}
-                        onFavorite={() => handleFavorite(listing.id)}
-                        onWishlist={() => handleWishlist(listing.id)}
-                        isFavorite={favorites.includes(listing.id)}
-                        isInWishlist={wishlist.includes(listing.id)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="wishlist">
-            <Card>
-              <CardHeader>
-                <CardTitle>Your Wishlist</CardTitle>
-                <CardDescription>Listings you're planning to book in the future</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {wishlistListings.length === 0 ? (
-                  <EmptyState
-                    icon={<Bookmark className="h-10 w-10" />}
-                    title="No wishlist items yet"
-                    description="Add listings to your wishlist for future trips!"
-                    action={
-                      <Button onClick={() => navigate('/guest/browse')}>
-                        Browse Listings
-                      </Button>
-                    }
-                  />
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {wishlistListings.map((listing) => (
-                      <ListingCard
-                        key={listing.id}
-                        listing={listing}
-                        onView={() => navigate(`/guest/listing/${listing.id}`)}
-                        onFavorite={() => handleFavorite(listing.id)}
-                        onWishlist={() => handleWishlist(listing.id)}
-                        isFavorite={favorites.includes(listing.id)}
-                        isInWishlist={wishlist.includes(listing.id)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="bookings">
-            <Card>
+            <TabsContent value="bookings" className="mt-0 absolute inset-0 w-full overflow-y-auto">
+              <Card className="h-full flex flex-col">
               <CardHeader>
                 <CardTitle>My Bookings</CardTitle>
                 <CardDescription>View your booking history</CardDescription>
@@ -561,8 +406,8 @@ const GuestAccountSettings = () => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="notifications">
-            <Card>
+            <TabsContent value="notifications" className="mt-0 absolute inset-0 w-full overflow-y-auto">
+              <Card className="h-full flex flex-col">
               <CardHeader>
                 <CardTitle>Notification Preferences</CardTitle>
                 <CardDescription>Manage how you receive updates</CardDescription>
@@ -757,17 +602,18 @@ const GuestAccountSettings = () => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="security">
-            <Card>
-              <CardHeader>
-                <CardTitle>Security Settings</CardTitle>
-                <CardDescription>Manage your account security</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">Security settings coming soon</p>
-              </CardContent>
-            </Card>
-          </TabsContent>
+            <TabsContent value="security" className="mt-0 absolute inset-0 w-full overflow-y-auto">
+              <Card className="h-full flex flex-col">
+                <CardHeader>
+                  <CardTitle>Security Settings</CardTitle>
+                  <CardDescription>Manage your account security</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground">Security settings coming soon</p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </div>
         </Tabs>
       </div>
 

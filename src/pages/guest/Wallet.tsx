@@ -1,16 +1,18 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState, useCallback } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUserTransactions, createTransaction } from "@/lib/firestore";
 import { doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Wallet as WalletIcon, TrendingUp, TrendingDown } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { ArrowLeft, Wallet as WalletIcon, TrendingUp, TrendingDown, CreditCard, CheckCircle2, XCircle, AlertCircle, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
-import { PointsDisplay } from "@/components/rewards/PointsDisplay";
 import { CouponManager } from "@/components/coupons/CouponManager";
+import { PayPalButton } from "@/components/payments/PayPalButton";
+import PayPalIdentity from "@/components/payments/PayPalIdentity";
 import type { Transaction, Coupon } from "@/types";
 import { formatPHP } from "@/lib/currency";
 
@@ -18,11 +20,13 @@ const Wallet = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [balance, setBalance] = useState(0);
-  const [points, setPoints] = useState(0);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
+  const [paypalEmail, setPaypalEmail] = useState("");
+  const [paypalLinked, setPaypalLinked] = useState(false);
+  const [paypalVerified, setPaypalVerified] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -35,9 +39,12 @@ const Wallet = () => {
     if (!user) return;
     const userDoc = await getDoc(doc(db, 'users', user.uid));
     if (userDoc.exists()) {
-      setBalance(userDoc.data().walletBalance || 0);
-      setPoints(userDoc.data().points || 0);
-      setCoupons(userDoc.data().coupons || []);
+      const data = userDoc.data();
+      setBalance(data.walletBalance || 0);
+      setCoupons(data.coupons || []);
+      setPaypalEmail(data.paypalEmail || "");
+      setPaypalLinked(!!data.paypalEmail);
+      setPaypalVerified(!!data.paypalEmailVerified);
     }
   };
 
@@ -47,64 +54,63 @@ const Wallet = () => {
     setTransactions(data);
   };
 
+  const handlePayPalVerified = useCallback((email: string) => {
+    setPaypalEmail(email);
+    setPaypalLinked(true);
+    setPaypalVerified(true);
+    loadWallet(); // Reload to get updated data
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleUnlinkPayPal = async () => {
+    if (!user) return;
+
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        paypalEmail: null,
+        paypalEmailVerified: false,
+        paypalLinkedAt: null
+      });
+
+      setPaypalLinked(false);
+      setPaypalEmail("");
+      toast.success("PayPal account unlinked");
+    } catch (error) {
+      console.error('Error unlinking PayPal:', error);
+      toast.error("Failed to unlink PayPal account");
+    }
+  };
+
   const handleDeposit = async () => {
     if (!user || !amount || Number(amount) <= 0) {
       toast.error("Enter a valid amount");
       return;
     }
 
-    setLoading(true);
-    try {
-      const newBalance = balance + Number(amount);
-      await updateDoc(doc(db, 'users', user.uid), { walletBalance: newBalance });
-      await createTransaction({
-        userId: user.uid,
-        type: 'deposit',
-        amount: Number(amount),
-        description: 'Wallet deposit',
-      });
-      setBalance(newBalance);
-      setAmount("");
-      loadTransactions();
-      toast.success("Deposit successful!");
-    } catch (error) {
-      toast.error("Deposit failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRedeemPoints = async (pointsToRedeem: number) => {
-    if (!user) return;
-    if (points < pointsToRedeem) {
-      toast.error("Not enough points");
+    if (!paypalEmail) {
+      toast.error("Please link your PayPal account first to make deposits");
       return;
     }
-    
-    try {
-      const discountAmount = pointsToRedeem === 100 ? 10 : 
-                            pointsToRedeem === 250 ? 30 : 
-                            pointsToRedeem === 500 ? 75 : 200;
-      
-      const newCoupon: Coupon = {
-        id: `REWARD${Date.now()}`,
-        code: `REWARD${Date.now()}`,
-        discount: (discountAmount / balance) * 100,
-        validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        used: false
-      };
 
-      const newPoints = points - pointsToRedeem;
-      await updateDoc(doc(db, 'users', user.uid), {
-        points: newPoints,
-        coupons: [...coupons, newCoupon]
-      });
-      
-      setPoints(newPoints);
-      setCoupons([...coupons, newCoupon]);
-      toast.success(`Redeemed ${pointsToRedeem} points for ${formatPHP(discountAmount)} coupon!`);
-    } catch (error) {
-      toast.error("Failed to redeem points");
+    // The PayPal button will handle the payment
+    toast.info("Please use PayPal to add funds to your wallet");
+  };
+
+  const handlePayPalDepositSuccess = async () => {
+    if (!user || !amount || Number(amount) <= 0) return;
+
+    // Reload wallet balance, transactions, and verification status
+    await loadWallet();
+    await loadTransactions();
+    setAmount("");
+    
+    // Check if account is now verified
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (userDoc.exists()) {
+      const data = userDoc.data();
+      if (data.paypalEmailVerified && !paypalVerified) {
+        setPaypalVerified(true);
+        toast.success("PayPal account verified! Your account has been verified through a successful payment.");
+      }
     }
   };
 
@@ -114,7 +120,7 @@ const Wallet = () => {
       toast.error("Invalid or already used coupon");
       return;
     }
-    toast.success(`Coupon ${code} applied! ${coupon.discount}% discount`);
+    toast.success(`Coupon ${code} applied! ${formatPHP(coupon.discount)} discount`);
   };
 
   return (
@@ -125,35 +131,88 @@ const Wallet = () => {
           Back to Dashboard
         </Button>
 
-        <h1 className="text-3xl font-bold mb-6">E-Wallet & Rewards</h1>
+        <h1 className="text-3xl font-bold mb-6">E-Wallet</h1>
 
-        <div className="grid md:grid-cols-2 gap-6 mb-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <WalletIcon className="h-5 w-5" />
-                Current Balance
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-4xl font-bold text-primary mb-6">{formatPHP(balance)}</p>
-              
+        {/* PayPal Account Verification Section */}
+        <Card className="mb-6 border-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5" />
+              PayPal Account Verification
+            </CardTitle>
+            <CardDescription>
+              Link your PayPal account by logging in with your PayPal credentials. This verifies you have a real PayPal account.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {user ? (
+              <PayPalIdentity
+                userId={user.uid}
+                onVerified={handlePayPalVerified}
+                paypalEmail={paypalEmail}
+                paypalVerified={paypalVerified}
+              />
+            ) : (
+              <div className="p-4 bg-muted rounded-lg">
+                <p className="text-sm text-muted-foreground">
+                  Please sign in to verify your PayPal account
+                </p>
+              </div>
+            )}
+            {paypalVerified && paypalEmail && (
+              <div className="mt-4">
+                <Button variant="outline" size="sm" onClick={handleUnlinkPayPal} className="w-full">
+                  Unlink PayPal Account
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <WalletIcon className="h-5 w-5" />
+              Current Balance
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-4xl font-bold text-primary mb-6">{formatPHP(balance)}</p>
+            
+            <div className="space-y-4">
               <div className="flex gap-2">
                 <Input
                   type="number"
                   placeholder="Amount"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
+                  min="1"
+                  step="0.01"
+                  disabled={!paypalEmail}
                 />
-                <Button onClick={handleDeposit} disabled={loading}>
-                  Deposit
-                </Button>
               </div>
-            </CardContent>
-          </Card>
-
-          <PointsDisplay points={points} onRedeem={handleRedeemPoints} />
-        </div>
+              {!paypalEmail ? (
+                <div className="p-4 bg-muted rounded-lg">
+                  <p className="text-sm text-muted-foreground text-center">
+                    Link your PayPal account above to make deposits
+                  </p>
+                </div>
+              ) : user && amount && Number(amount) > 0 ? (
+                <PayPalButton
+                  amount={Number(amount)}
+                  userId={user.uid}
+                  description={`Wallet deposit: ${formatPHP(Number(amount))}`}
+                  onSuccess={handlePayPalDepositSuccess}
+                  redirectUrl={window.location.origin + '/guest/wallet'}
+                />
+              ) : (
+                <Button onClick={handleDeposit} disabled={!amount || Number(amount) <= 0}>
+                  Enter amount to deposit
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid md:grid-cols-2 gap-6 mb-6">
           <CouponManager coupons={coupons} onApplyCoupon={handleApplyCoupon} />

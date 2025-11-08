@@ -41,7 +41,9 @@ const ManageListings = () => {
       console.log("Loading listings for hostId:", user.uid);
       const data = await getListings({ hostId: user.uid });
       console.log("Loaded listings:", data);
-      setListings(data);
+      // Filter out drafts - drafts should not appear in the listings management
+      const publishedListings = data.filter(listing => listing.status !== 'draft');
+      setListings(publishedListings);
     } catch (error: any) {
       console.error("Failed to load listings:", error);
       toast.error(`Failed to load listings: ${error.message || 'Unknown error'}`);

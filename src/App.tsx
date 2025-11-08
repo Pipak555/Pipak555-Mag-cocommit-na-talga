@@ -19,6 +19,9 @@ const AdminLogin = lazy(() => import("./pages/auth/AdminLogin"));
 const EmailVerification = lazy(() => import("./pages/auth/EmailVerification"));
 const OTPVerification = lazy(() => import("./pages/auth/OTPVerification"));
 const VerificationPending = lazy(() => import("./pages/auth/VerificationPending"));
+const ForgotPassword = lazy(() => import("./pages/auth/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/auth/ResetPassword"));
+const PayPalCallback = lazy(() => import("./pages/auth/PayPalCallback"));
 const HostDashboard = lazy(() => import("./pages/host/HostDashboard"));
 const GuestDashboard = lazy(() => import("./pages/guest/GuestDashboard"));
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
@@ -35,6 +38,8 @@ const ReviewListings = lazy(() => import("./pages/admin/ReviewListings"));
 const AccountSettings = lazy(() => import("./pages/shared/AccountSettings"));
 const HostAccountSettings = lazy(() => import("./pages/host/HostAccountSettings"));
 const GuestAccountSettings = lazy(() => import("./pages/guest/GuestAccountSettings"));
+const Favorites = lazy(() => import("./pages/guest/Favorites"));
+const Wishlist = lazy(() => import("./pages/guest/Wishlist"));
 const HostMessages = lazy(() => import("./pages/host/Messages"));
 const GuestMessages = lazy(() => import("./pages/guest/Messages"));
 const HostCalendar = lazy(() => import("./pages/host/Calendar"));
@@ -70,6 +75,9 @@ const AppRoutes = () => {
             <Route path="/verify-email" element={<LazyRoute component={EmailVerification} />} />
             <Route path="/verify-otp" element={<LazyRoute component={OTPVerification} />} />
             <Route path="/verification-pending" element={<LazyRoute component={VerificationPending} />} />
+            <Route path="/forgot-password" element={<LazyRoute component={ForgotPassword} />} />
+            <Route path="/reset-password" element={<LazyRoute component={ResetPassword} />} />
+            <Route path="/paypal-callback" element={<LazyRoute component={PayPalCallback} />} />
             <Route path="/host/dashboard" element={<LazyRoute component={HostDashboard} />} />
             <Route path="/host/create-listing" element={<LazyRoute component={CreateListing} />} />
             <Route path="/host/listings" element={<LazyRoute component={ManageListings} />} />
@@ -85,6 +93,8 @@ const AppRoutes = () => {
             <Route path="/guest/wallet" element={<LazyRoute component={Wallet} />} />
             <Route path="/guest/messages" element={<LazyRoute component={GuestMessages} />} />
             <Route path="/guest/settings" element={<LazyRoute component={GuestAccountSettings} />} />
+            <Route path="/guest/favorites" element={<LazyRoute component={Favorites} />} />
+            <Route path="/guest/wishlist" element={<LazyRoute component={Wishlist} />} />
             <Route path="/admin/dashboard" element={<LazyRoute component={AdminDashboard} />} />
             <Route path="/admin/users" element={<LazyRoute component={ManageUsers} />} />
             <Route path="/admin/listings" element={<LazyRoute component={ReviewListings} />} />

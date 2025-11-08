@@ -6,14 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
-import { ArrowLeft, MapPin, Users, Heart, Bookmark, User } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ArrowLeft, MapPin, Users, Heart, Bookmark, User, Ticket, X } from "lucide-react";
 import { toast } from "sonner";
 import { ReviewList } from "@/components/reviews/ReviewList";
 import { SocialShare } from "@/components/shared/SocialShare";
 import { ListingCard } from "@/components/listings/ListingCard";
-import type { Listing } from "@/types";
+import type { Listing, Coupon } from "@/types";
 import { sendBookingConfirmationEmail } from '@/lib/emailjs';
-import { getDoc, doc } from 'firebase/firestore';
+import { getDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { formatPHP } from '@/lib/currency';
 import LoadingScreen from "@/components/ui/loading-screen";
@@ -30,6 +31,9 @@ const ListingDetails = () => {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [hostInfo, setHostInfo] = useState<{ fullName?: string; email?: string } | null>(null);
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [couponCode, setCouponCode] = useState("");
 
   useEffect(() => {
     if (id) {
@@ -38,6 +42,7 @@ const ListingDetails = () => {
     if (user) {
       loadFavorites();
       loadWishlist();
+      loadCoupons();
     }
   }, [id, user]);
 
@@ -109,6 +114,15 @@ const ListingDetails = () => {
     }
   };
 
+  const loadCoupons = async () => {
+    if (!user) return;
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
+      setCoupons(userData.coupons || []);
+    }
+  };
+
   const handleFavorite = async () => {
     if (!user || !listing) {
       toast.error("Please login to add favorites");
@@ -142,7 +156,50 @@ const ListingDetails = () => {
   const calculateTotal = () => {
     if (!checkIn || !checkOut || !listing) return 0;
     const days = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
-    return days * listing.price;
+    const basePrice = days * listing.price;
+    
+    // Apply coupon discount if available
+    if (appliedCoupon && basePrice >= (appliedCoupon.minSpend || 0)) {
+      return Math.max(0, basePrice - appliedCoupon.discount);
+    }
+    
+    return basePrice;
+  };
+
+  const handleApplyCoupon = () => {
+    if (!couponCode.trim()) {
+      toast.error("Please enter a coupon code");
+      return;
+    }
+
+    const coupon = coupons.find(
+      c => c.code.toUpperCase() === couponCode.toUpperCase().trim() && 
+      !c.used && 
+      new Date(c.validUntil) > new Date()
+    );
+
+    if (!coupon) {
+      toast.error("Invalid, expired, or already used coupon");
+      return;
+    }
+
+    const basePrice = checkIn && checkOut && listing 
+      ? Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)) * listing.price
+      : 0;
+
+    if (coupon.minSpend && basePrice < coupon.minSpend) {
+      toast.error(`This coupon requires a minimum spend of ${formatPHP(coupon.minSpend)}`);
+      return;
+    }
+
+    setAppliedCoupon(coupon);
+    setCouponCode("");
+    toast.success(`Coupon ${coupon.code} applied! ${formatPHP(coupon.discount)} discount`);
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    toast.info("Coupon removed");
   };
 
   const handleBooking = async () => {
@@ -159,6 +216,9 @@ const ListingDetails = () => {
 
     setLoading(true);
     try {
+      const basePrice = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)) * listing.price;
+      const finalPrice = calculateTotal();
+      
       const bookingData = {
         listingId: listing.id,
         guestId: user.uid,
@@ -166,7 +226,10 @@ const ListingDetails = () => {
         checkIn: checkIn.toISOString(),
         checkOut: checkOut.toISOString(),
         guests,
-        totalPrice: calculateTotal(),
+        totalPrice: finalPrice,
+        originalPrice: basePrice,
+        couponCode: appliedCoupon?.code,
+        discountAmount: appliedCoupon ? basePrice - finalPrice : 0,
         status: 'pending' as const, // Booking is pending host approval
       };
 
@@ -180,6 +243,9 @@ const ListingDetails = () => {
       // Create booking and get the booking ID
       const bookingId = await createBooking(bookingData);
 
+      // Don't mark coupon as used yet - wait for payment to be processed
+      // The coupon will be marked as used in the payment service after successful payment
+      
       console.log('✅ Booking created successfully:', bookingId);
       console.log('📊 Booking details:', {
         bookingId,
@@ -382,11 +448,67 @@ const ListingDetails = () => {
                   />
                 </div>
 
+                {/* Coupon Application */}
+                <div className="pt-4 border-t">
+                  {!appliedCoupon ? (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Have a coupon code?</label>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Enter coupon code"
+                          value={couponCode}
+                          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                          onKeyDown={(e) => e.key === 'Enter' && handleApplyCoupon()}
+                        />
+                        <Button 
+                          type="button"
+                          variant="outline" 
+                          onClick={handleApplyCoupon}
+                          disabled={!couponCode.trim()}
+                        >
+                          <Ticket className="h-4 w-4 mr-2" />
+                          Apply
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-primary/10 rounded-lg flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Ticket className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-medium">{appliedCoupon.code}</span>
+                        <span className="text-xs text-muted-foreground">
+                          -{formatPHP(appliedCoupon.discount)}
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleRemoveCoupon}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
                 {checkIn && checkOut && (
-                  <div className="pt-4 border-t">
-                    <div className="flex justify-between mb-2">
+                  <div className="pt-4 border-t space-y-2">
+                    {appliedCoupon && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Subtotal</span>
+                        <span>{formatPHP(Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)) * listing.price)}</span>
+                      </div>
+                    )}
+                    {appliedCoupon && (
+                      <div className="flex justify-between text-sm text-primary">
+                        <span>Discount ({appliedCoupon.code})</span>
+                        <span>-{formatPHP(appliedCoupon.discount)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-bold pt-2 border-t">
                       <span>Total</span>
-                      <span className="font-bold">{formatPHP(calculateTotal())}</span>
+                      <span>{formatPHP(calculateTotal())}</span>
                     </div>
                   </div>
                 )}

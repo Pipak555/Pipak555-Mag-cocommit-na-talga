@@ -4,7 +4,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Star } from "lucide-react";
 import { createReview } from "@/lib/firestore";
+import { createTransaction } from "@/lib/firestore";
 import { useAuth } from "@/contexts/AuthContext";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { toast } from "sonner";
 
 interface ReviewFormProps {
@@ -34,7 +37,44 @@ export const ReviewForm = ({ listingId, bookingId, onSuccess }: ReviewFormProps)
         rating,
         comment,
       });
-      toast.success("Review submitted!");
+
+      // Award points for writing a review (20 points)
+      try {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          const currentPoints = userData.points || 0;
+          const pointsToAward = 20; // Points for writing a review
+          const newPoints = currentPoints + pointsToAward;
+          
+          await updateDoc(doc(db, 'users', user.uid), {
+            points: newPoints
+          });
+
+          // Create reward transaction
+          await createTransaction({
+            userId: user.uid,
+            type: 'reward',
+            amount: pointsToAward,
+            description: `Points earned for writing a review`,
+            status: 'completed',
+            bookingId: bookingId
+          });
+
+          if (import.meta.env.DEV) {
+            console.log('✅ Points awarded for review:', {
+              guestId: user.uid,
+              pointsAwarded: pointsToAward,
+              newPoints
+            });
+          }
+        }
+      } catch (pointsError) {
+        console.error('Error awarding points for review:', pointsError);
+        // Don't fail review submission if points award fails
+      }
+
+      toast.success("Review submitted! You earned 20 points.");
       onSuccess();
     } catch (error) {
       toast.error("Failed to submit review");

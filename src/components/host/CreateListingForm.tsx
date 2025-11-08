@@ -68,7 +68,6 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
   const [draftId, setDraftId] = useState<string | null>(null);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [paymentConfirmOpen, setPaymentConfirmOpen] = useState(false);
-  const SUBSCRIPTION_FEE = 500; // PHP (₱500)
 
   // debounce timer ref
   const saveTimeoutRef = useRef<number | null>(null);
@@ -96,6 +95,16 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
 
   const watchedValues = form.watch();
   const formErrors = form.formState.errors;
+  
+  // Calculate publish fee as 1 day of booking cost
+  const getPublishFee = (): number => {
+    const price = watchedValues.price;
+    if (!price || price.trim() === "") return 0;
+    const priceNum = Number(price);
+    return isNaN(priceNum) || priceNum <= 0 ? 0 : priceNum;
+  };
+  
+  const publishFee = getPublishFee();
 
   // Helper: deterministic draft doc id (one draft per user)
   const getDraftDocId = useCallback(() => {
@@ -539,9 +548,16 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
   const handleProceedToPayment = async () => {
     const isValid = await form.trigger();
     const dateRange = form.getValues("dateRange");
+    const price = form.getValues("price");
     
     if (!isValid) {
       toast.error("Please fix the errors in the form before proceeding.");
+      return;
+    }
+
+    if (!price || price.trim() === "" || isNaN(Number(price)) || Number(price) <= 0) {
+      toast.error("Please set a valid listing price. The publish fee is 1 day of your listing price.");
+      form.setError("price", { message: "Price is required for publishing" });
       return;
     }
 
@@ -872,7 +888,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                           onChange={(e) => field.onChange(e.target.value)}
                         />
                       </FormControl>
-                      <FormDescription>Can be 0.5, 1, 1.5, etc.</FormDescription>
+                      <FormDescription>0.5 = half bath (toilet + sink), 1 = full bath (toilet + sink + shower)</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -977,7 +993,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
               <div className="flex gap-2 pt-4">
                 <Button
                   type="submit"
-                  disabled={loading || isUploading}
+                  disabled={loading || isUploading || publishFee === 0}
                   className="flex-1"
                 >
                   {loading ? (
@@ -986,7 +1002,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                       Processing...
                     </>
                   ) : (
-                    `Pay & Publish (${formatPHP(SUBSCRIPTION_FEE)})`
+                    `Pay & Publish (${formatPHP(publishFee)})`
                   )}
                 </Button>
                 <Button
@@ -1009,9 +1025,9 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
       <Dialog open={showPayment} onOpenChange={setShowPayment}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Complete Subscription to Publish</DialogTitle>
+            <DialogTitle>Complete Payment to Publish</DialogTitle>
             <DialogDescription>
-              Pay a one-time subscription fee of {formatPHP(SUBSCRIPTION_FEE)} to submit your listing for review.
+              Pay a one-time publish fee of {formatPHP(publishFee)} (1 day of your listing price) to submit your listing for review.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1033,21 +1049,29 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
 
             <div className="rounded-lg bg-muted p-4">
               <div className="flex justify-between text-sm mb-2">
-                <span>Subscription Fee:</span>
-                <span className="font-medium">{formatPHP(SUBSCRIPTION_FEE)}</span>
+                <span>Publish Fee:</span>
+                <span className="font-medium">{formatPHP(publishFee)}</span>
+              </div>
+              <div className="text-xs text-muted-foreground mb-2">
+                This fee equals 1 day of your listing price ({formatPHP(Number(watchedValues.price) || 0)}/night).
               </div>
               <div className="text-xs text-muted-foreground">
                 This fee covers listing review and processing. Your listing will be reviewed by our team before going live.
               </div>
             </div>
 
-            {user && (
+            {user && publishFee > 0 && (
               <PayPalButton
-                amount={SUBSCRIPTION_FEE}
+                amount={publishFee}
                 userId={user.uid}
-                description={`Host subscription for listing: ${watchedValues.title || "Untitled"}`}
+                description={`Host publish fee for listing: ${watchedValues.title || "Untitled"}`}
                 onSuccess={createListingAfterPayment}
               />
+            )}
+            {publishFee === 0 && (
+              <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-4 text-sm text-yellow-700 dark:text-yellow-400">
+                Please set a valid listing price before publishing. The publish fee is 1 day of your listing price.
+              </div>
             )}
           </div>
         </DialogContent>
@@ -1080,7 +1104,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
           <AlertDialogHeader>
             <AlertDialogTitle>Proceed to Payment?</AlertDialogTitle>
             <AlertDialogDescription>
-              You're about to pay a one-time subscription fee of {formatPHP(SUBSCRIPTION_FEE)} to publish this listing.
+              You're about to pay a one-time publish fee of {formatPHP(publishFee)} (1 day of your listing price) to publish this listing.
               After payment, your listing will be submitted for admin review.
             </AlertDialogDescription>
           </AlertDialogHeader>

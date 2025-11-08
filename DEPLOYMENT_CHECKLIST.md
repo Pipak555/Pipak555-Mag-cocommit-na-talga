@@ -51,10 +51,10 @@ npm run build:prod
    - `your-project.web.app`
 3. Save
 
-### 4. ✅ Console Logs (Already Fixed)
-Console logs are automatically removed in production builds via Vite config.
+### 4. ✅ Console Logs (Already Configured)
+Console logs are automatically removed in production builds.
 
-### 5. ✅ Emulator Configuration (Already Fixed)
+### 5. ✅ Emulator Configuration (Already Configured)
 Emulators only connect when `VITE_USE_EMULATORS=true` in development mode.
 
 ### 6. ❌ EmailJS Configuration
@@ -81,8 +81,8 @@ Emulators only connect when `VITE_USE_EMULATORS=true` in development mode.
    ```
 4. Rebuild: `npm run build:prod`
 
-### 8. ✅ Asset Paths (Already Correct)
-Videos and images use relative paths (`/videos/`, `/logo.png`) which work correctly on Firebase Hosting.
+### 8. ✅ Asset Paths (Already Configured)
+Videos and images use relative paths that work correctly on Firebase Hosting.
 
 ### 9. ❌ Firestore Indexes
 **Problem**: Composite queries might fail without indexes
@@ -104,14 +104,10 @@ firebase deploy --only firestore:rules
 
 ## Complete Deployment Process
 
-### Step 1: Environment Variables
-```bash
-# 1. Copy .env.example to .env
-cp .env.example .env
-
-# 2. Fill in ALL values in .env file
-# (Use your actual Firebase, EmailJS, Cloudinary credentials)
-```
+### Step 1: Configure Environment Variables
+1. Copy `env.example.txt` to `.env`
+2. Fill in ALL values with your service credentials
+3. See individual setup guides for each service
 
 ### Step 2: Firebase Console Configuration
 1. **Enable Google Sign-In**:
@@ -121,19 +117,17 @@ cp .env.example .env
    - Authentication > Settings > Authorized domains
    - Add: `localhost`, `your-project.firebaseapp.com`, `your-project.web.app`
 
-3. **Verify Firestore**:
-   - Firestore Database should be created
-   - Check that collections exist: `users`, `listing`, `bookings`, `messages`, etc.
+3. **Deploy Security Rules**:
+   ```bash
+   firebase deploy --only firestore:rules,storage:rules
+   ```
 
 ### Step 3: Build and Deploy
 ```bash
-# 1. Install dependencies
-npm install
-
-# 2. Build for production (injects env vars)
+# Build for production (injects env vars)
 npm run build:prod
 
-# 3. Deploy everything
+# Deploy everything (hosting + rules + indexes)
 npm run deploy:all
 
 # OR deploy only hosting

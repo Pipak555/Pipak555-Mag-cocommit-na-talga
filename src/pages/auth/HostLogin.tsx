@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -35,11 +35,18 @@ const HostLogin = () => {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleUserInfo, setGoogleUserInfo] = useState<{ email: string; fullName: string } | null>(null);
+  const [activeTab, setActiveTab] = useState<'signin' | 'signup'>('signin');
   const { signIn, signUp, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   
   const shouldShowSignup = location.state?.showSignup === true;
+  
+  useEffect(() => {
+    if (shouldShowSignup) {
+      setActiveTab('signup');
+    }
+  }, [shouldShowSignup]);
 
   // Login form
   const loginForm = useForm<LoginFormData>({
@@ -138,7 +145,7 @@ const HostLogin = () => {
         fullName: user.displayName || user.email?.split('@')[0] || ''
       });
       
-      toast.success('Form pre-filled with your Google account! Please set a password to complete registration.');
+      toast.success('Signed up with Google! Please set a password to complete registration.');
     } catch (error: any) {
       if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
         toast.error(error.message || 'Failed to get Google account info');
@@ -173,11 +180,31 @@ const HostLogin = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col relative">
-      <VideoBackground 
-        src={hostLoginVideo} 
-        overlay={true}
-        className="z-0"
-      />
+      <div 
+        className="fixed inset-0 z-0"
+        style={{ 
+          width: '100vw',
+          height: '100vh',
+          transform: 'translateZ(0)',
+          willChange: 'auto',
+          pointerEvents: 'none'
+        }}
+      >
+        <VideoBackground 
+          src={hostLoginVideo} 
+          overlay={true}
+          className="w-full h-full"
+          style={{ 
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            transform: 'scale(1) translateZ(0)',
+            willChange: 'auto'
+          }}
+        />
+      </div>
       
       <header className="relative z-10 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
@@ -193,24 +220,41 @@ const HostLogin = () => {
       </header>
       
       <div className="relative z-10 flex-1 flex items-center justify-center p-6">
-        <Card className="w-full max-w-md shadow-2xl border-border/50 bg-card/95 backdrop-blur-md">
-          <CardHeader className="space-y-4 text-center pb-8">
-            <div className="w-16 h-16 mx-auto rounded-2xl bg-secondary/10 flex items-center justify-center">
-              <Building2 className="w-8 h-8 text-secondary" />
+        <Card className="w-full max-w-md shadow-2xl border-2 border-secondary/20 bg-card/95 backdrop-blur-md relative overflow-hidden">
+          {/* Decorative gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-br from-secondary/5 via-transparent to-primary/5 pointer-events-none" />
+          
+          <CardHeader className="space-y-4 text-center pb-8 relative z-10">
+            <div className="w-20 h-20 mx-auto rounded-3xl bg-gradient-to-br from-secondary via-secondary/80 to-primary/60 flex items-center justify-center shadow-lg ring-4 ring-secondary/20 animate-in fade-in zoom-in duration-500">
+              <Building2 className="w-10 h-10 text-white" />
             </div>
-            <div>
-              <CardTitle className="text-3xl font-bold">Host Portal</CardTitle>
-              <CardDescription className="text-base mt-2">
+            <div className="space-y-2">
+              <CardTitle className="text-4xl font-bold bg-gradient-to-r from-secondary to-primary bg-clip-text text-transparent">
+                Host Portal
+              </CardTitle>
+              <CardDescription className="text-base mt-2 font-medium text-foreground/80 dark:text-muted-foreground">
                 Start hosting and earning today
               </CardDescription>
             </div>
           </CardHeader>
           
-          <CardContent>
-            <Tabs defaultValue={shouldShowSignup ? "signup" : "signin"} className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-8">
-                <TabsTrigger value="signin" className="text-base">Sign In</TabsTrigger>
-                <TabsTrigger value="signup" className="text-base">Sign Up</TabsTrigger>
+          <CardContent className="relative z-10">
+            <Tabs defaultValue={shouldShowSignup ? "signup" : "signin"} onValueChange={(value) => setActiveTab(value as 'signin' | 'signup')} className="w-full">
+              <TabsList className="grid w-full grid-cols-2 mb-8 bg-muted/50 p-1 rounded-xl relative overflow-hidden">
+                <div 
+                  className="absolute inset-y-1 bg-gradient-to-r from-secondary to-secondary/80 rounded-lg transition-all duration-300 ease-in-out"
+                  style={{
+                    left: activeTab === 'signin' ? '4px' : '50%',
+                    right: activeTab === 'signin' ? '50%' : '4px',
+                    width: 'calc(50% - 4px)',
+                  }}
+                />
+                <TabsTrigger value="signin" className="text-base font-semibold text-foreground/90 dark:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-300 ease-in-out relative z-10">
+                  Sign In
+                </TabsTrigger>
+                <TabsTrigger value="signup" className="text-base font-semibold text-foreground/90 dark:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-300 ease-in-out relative z-10">
+                  Sign Up
+                </TabsTrigger>
               </TabsList>
               
               <TabsContent value="signin">
@@ -221,14 +265,14 @@ const HostLogin = () => {
                       name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-base">Email</FormLabel>
+                          <FormLabel className="text-base font-semibold">Email</FormLabel>
                           <FormControl>
-                            <div className="relative">
-                              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                            <div className="relative group">
+                              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary group-focus-within:text-secondary transition-colors" />
                               <Input
                                 type="email"
                                 placeholder="host@example.com"
-                                className="pl-10 h-12"
+                                className="pl-10 h-12 border-2 transition-all"
                                 {...field}
                               />
                             </div>
@@ -243,20 +287,20 @@ const HostLogin = () => {
                       name="password"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-base">Password</FormLabel>
+                          <FormLabel className="text-base font-semibold">Password</FormLabel>
                           <FormControl>
-                            <div className="relative">
-                              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                            <div className="relative group">
+                              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary group-focus-within:text-secondary transition-colors" />
                               <Input
                                 type={showPassword ? "text" : "password"}
                                 placeholder="••••••••"
-                                className="pl-10 pr-10 h-12"
+                                className="pl-10 pr-10 h-12 border-2 transition-all"
                                 {...field}
                               />
                               <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-secondary transition-colors"
                               >
                                 {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                               </button>
@@ -267,7 +311,22 @@ const HostLogin = () => {
                       )}
                     />
                     
-                    <Button type="submit" className="w-full h-12 text-base" disabled={loading} variant="secondary">
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        variant="link"
+                        onClick={() => navigate('/forgot-password', { state: { userType: 'host' } })}
+                        className="text-sm text-secondary hover:text-secondary/80 p-0 h-auto font-semibold"
+                      >
+                        Forgot Password?
+                      </Button>
+                    </div>
+                    
+                    <Button 
+                      type="submit" 
+                      className="w-full h-12 text-base font-semibold bg-gradient-to-r from-secondary to-secondary/90 hover:from-secondary/90 hover:to-secondary text-white shadow-lg hover:shadow-xl transition-all duration-300" 
+                      disabled={loading}
+                    >
                       {loading ? 'Signing in...' : 'Sign In'}
                     </Button>
                     
@@ -276,14 +335,14 @@ const HostLogin = () => {
                         <span className="w-full border-t" />
                       </div>
                       <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+                        <span className="bg-card px-2 text-foreground/70 dark:text-muted-foreground">Or continue with</span>
                       </div>
                     </div>
                     
                     <Button
                       type="button"
                       variant="outline"
-                      className="w-full h-12 text-base"
+                      className="w-full h-12 text-base font-semibold border-2 hover:bg-muted/50 hover:border-secondary/50 transition-all duration-300"
                       onClick={handleGoogleSignIn}
                       disabled={googleLoading || loading}
                     >
@@ -301,14 +360,14 @@ const HostLogin = () => {
               </TabsContent>
               
               <TabsContent value="signup">
-                <div className="mb-6 p-4 bg-primary/10 border border-primary/20 rounded-lg">
-                  <p className="text-sm text-foreground">
-                    <strong>Important:</strong> Before creating your host account, you must read and accept our policies and compliance terms.
+                <div className="mb-6 p-4 bg-gradient-to-r from-secondary/10 via-primary/10 to-secondary/10 border-2 border-secondary/30 rounded-xl shadow-md">
+                  <p className="text-sm text-foreground font-medium">
+                    <strong className="text-secondary">Important:</strong> Before creating your host account, you must read and accept our policies and compliance terms.
                   </p>
                   <Button
                     type="button"
                     variant="outline"
-                    className="mt-3 w-full"
+                    className="mt-3 w-full border-2 border-secondary/50 hover:bg-secondary/10 hover:border-secondary transition-all"
                     onClick={() => navigate('/host/policies')}
                   >
                     Review Policies & Terms
@@ -321,14 +380,14 @@ const HostLogin = () => {
                       name="fullName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-base">Full Name</FormLabel>
+                          <FormLabel className="text-base font-semibold">Full Name</FormLabel>
                           <FormControl>
-                            <div className="relative">
-                              <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                            <div className="relative group">
+                              <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary group-focus-within:text-secondary transition-colors" />
                               <Input
                                 type="text"
                                 placeholder="Jane Smith"
-                                className="pl-10 h-12"
+                                className="pl-10 h-12 border-2 transition-all"
                                 {...field}
                               />
                             </div>
@@ -343,14 +402,14 @@ const HostLogin = () => {
                       name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-base">Email</FormLabel>
+                          <FormLabel className="text-base font-semibold">Email</FormLabel>
                           <FormControl>
-                            <div className="relative">
-                              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                            <div className="relative group">
+                              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary group-focus-within:text-secondary transition-colors" />
                               <Input
                                 type="email"
                                 placeholder="host@example.com"
-                                className="pl-10 h-12"
+                                className="pl-10 h-12 border-2 transition-all"
                                 {...field}
                               />
                             </div>
@@ -365,27 +424,27 @@ const HostLogin = () => {
                       name="password"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-base">Password</FormLabel>
+                          <FormLabel className="text-base font-semibold">Password</FormLabel>
                           <FormControl>
-                            <div className="relative">
-                              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                            <div className="relative group">
+                              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary group-focus-within:text-secondary transition-colors" />
                               <Input
                                 type={showPassword ? "text" : "password"}
                                 placeholder="••••••••"
-                                className="pl-10 pr-10 h-12"
+                                className="pl-10 pr-10 h-12 border-2 transition-all"
                                 {...field}
                               />
                               <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-secondary transition-colors"
                               >
                                 {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                               </button>
                             </div>
                           </FormControl>
                           <FormMessage />
-                          <p className="text-xs text-muted-foreground">Must contain uppercase, lowercase, and number</p>
+                          <p className="text-xs text-muted-foreground">Must be at least 8 characters long</p>
                         </FormItem>
                       )}
                     />
@@ -395,20 +454,20 @@ const HostLogin = () => {
                       name="confirmPassword"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-base">Confirm Password</FormLabel>
+                          <FormLabel className="text-base font-semibold">Confirm Password</FormLabel>
                           <FormControl>
-                            <div className="relative">
-                              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                            <div className="relative group">
+                              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary group-focus-within:text-secondary transition-colors" />
                               <Input
                                 type={showConfirmPassword ? "text" : "password"}
                                 placeholder="••••••••"
-                                className="pl-10 pr-10 h-12"
+                                className="pl-10 pr-10 h-12 border-2 transition-all"
                                 {...field}
                               />
                               <button
                                 type="button"
                                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-secondary transition-colors"
                               >
                                 {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                               </button>
@@ -419,7 +478,11 @@ const HostLogin = () => {
                       )}
                     />
                     
-                    <Button type="submit" className="w-full h-12 text-base" disabled={loading} variant="secondary">
+                    <Button 
+                      type="submit" 
+                      className="w-full h-12 text-base font-semibold bg-gradient-to-r from-secondary to-secondary/90 hover:from-secondary/90 hover:to-secondary text-white shadow-lg hover:shadow-xl transition-all duration-300" 
+                      disabled={loading}
+                    >
                       {loading ? 'Creating account...' : 'Create Account'}
                     </Button>
                     
@@ -428,23 +491,23 @@ const HostLogin = () => {
                         <span className="w-full border-t" />
                       </div>
                       <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+                        <span className="bg-card px-2 text-foreground/70 dark:text-muted-foreground">Or continue with</span>
                       </div>
                     </div>
                     
                     <Button
                       type="button"
                       variant="outline"
-                      className="w-full h-12 text-base"
+                      className="w-full h-12 text-base font-semibold border-2 hover:bg-muted/50 hover:border-secondary/50 transition-all duration-300"
                       onClick={handleGoogleAutofill}
                       disabled={googleLoading || loading}
                     >
                       {googleLoading ? (
-                        'Getting info...'
+                        'Signing up...'
                       ) : (
                         <>
                           <FcGoogle className="h-5 w-5 mr-2" />
-                          Autofill with Google
+                          Sign up with Google
                         </>
                       )}
                     </Button>
@@ -453,9 +516,9 @@ const HostLogin = () => {
               </TabsContent>
             </Tabs>
             
-            <div className="mt-8 text-center text-sm text-muted-foreground">
+            <div className="mt-8 text-center text-sm text-foreground/70 dark:text-muted-foreground">
               <p>
-                Not a host? <Link to="/guest/login" className="text-primary hover:underline font-medium">Browse as Guest</Link>
+                Not a host? <Link to="/guest/login" className="text-secondary hover:text-secondary/80 hover:underline font-semibold transition-colors">Browse as Guest</Link>
               </p>
             </div>
           </CardContent>

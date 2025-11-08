@@ -40,7 +40,7 @@ const getAuthErrorMessage = (error: any): string => {
       return 'This email address is already registered. Please sign in instead, or use a different email address.';
     
     case 'auth/weak-password':
-      return 'Your password is too weak. Please use at least 6 characters.';
+      return 'Your password is too weak. Please use at least 8 characters.';
     
     case 'auth/too-many-requests':
       return 'Too many failed login attempts. Please wait a few minutes and try again, or reset your password.';
@@ -558,7 +558,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const sendPasswordReset = async (email: string) => {
-    await sendPasswordResetEmail(auth, email);
+    // Get the current origin (localhost in dev, or your domain in production)
+    const actionCodeSettings = {
+      url: `${window.location.origin}/reset-password`,
+      handleCodeInApp: false, // Set to false to open the link in a browser
+    };
+    await sendPasswordResetEmail(auth, email, actionCodeSettings);
   };
 
   const resetPassword = async (actionCode: string, newPassword: string) => {

@@ -5,6 +5,7 @@ import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { VideoBackground } from '@/components/ui/video-background';
 import { Plus, Home, Calendar, MessageSquare, DollarSign, Settings, Award, CalendarDays } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
@@ -13,6 +14,7 @@ import { db } from '@/lib/firebase';
 import { getBookings } from '@/lib/firestore';
 import type { Booking } from '@/types';
 import { formatPHP } from '@/lib/currency';
+import heroImage from '@/assets/hero-home.jpg';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,6 +25,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
+const landingVideo = '/videos/landing-hero.mp4';
 
 // Today's Schedule Component
 const TodaySchedule = () => {
@@ -128,7 +132,6 @@ const HostDashboard = () => {
     activeListings: 0,
     upcomingBookings: 0,
     totalEarnings: 0,
-    rewardPoints: userProfile?.points || 0,
   });
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
@@ -195,10 +198,6 @@ const HostDashboard = () => {
         return checkIn.getTime() === today.getTime();
       });
 
-      // Update reward points from userProfile
-      if (userProfile?.points) {
-        setStats(prev => ({ ...prev, rewardPoints: userProfile.points }));
-      }
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     }
@@ -235,16 +234,12 @@ const HostDashboard = () => {
       </header>
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Welcome Section */}
-        <div className="mb-8 p-6 rounded-xl bg-gradient-hero text-white">
-          <h2 className="text-3xl font-bold mb-2">Welcome back, {userProfile?.fullName || 'Host'}!</h2>
-          <p className="text-white/90">{userProfile?.fullName || 'Host'}</p>
-        </div>
-
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group">
-            {/* Accent Bar */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+          <Card 
+            className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer hover:scale-105 active:scale-100"
+            onClick={() => navigate('/host/listings')}
+          >
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-secondary to-accent" />
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
@@ -252,156 +247,132 @@ const HostDashboard = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-baseline justify-between">
-                <div className="text-4xl font-bold bg-gradient-to-br from-primary to-primary-glow bg-clip-text text-transparent">
-                  {stats.activeListings}
-                </div>
+              <div className="text-3xl font-bold bg-gradient-to-br from-primary to-primary-glow bg-clip-text text-transparent">
+                {stats.activeListings}
               </div>
             </CardContent>
           </Card>
 
-          <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-secondary via-primary to-accent" />
+          <Card 
+            className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer hover:scale-105 active:scale-100"
+            onClick={() => navigate('/host/bookings')}
+          >
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-blue-400 to-blue-300" />
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
                 Upcoming Bookings
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-baseline justify-between">
-                <div className="text-4xl font-bold bg-gradient-to-br from-secondary to-secondary/80 bg-clip-text text-transparent">
-                  {stats.upcomingBookings}
-                </div>
+              <div className="text-3xl font-bold bg-gradient-to-br from-blue-500 to-blue-600 bg-clip-text text-transparent">
+                {stats.upcomingBookings}
               </div>
             </CardContent>
           </Card>
 
-          <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-accent via-primary to-secondary" />
+          <Card 
+            className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer"
+            onClick={() => navigate('/host/payments')}
+          >
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-secondary via-primary to-accent" />
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
                 Total Earnings
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-baseline justify-between">
-                <div className="text-4xl font-bold">{formatPHP(stats.totalEarnings)}</div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-accent via-green-500 to-green-600" />
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                Reward Points
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-baseline justify-between">
-                <div className="text-4xl font-bold bg-gradient-accent bg-clip-text text-transparent">
-                  {stats.rewardPoints}
-                </div>
+              <div className="text-3xl font-bold bg-gradient-to-br from-secondary to-secondary/80 bg-clip-text text-transparent">
+                {formatPHP(stats.totalEarnings)}
               </div>
             </CardContent>
           </Card>
         </div>
 
+        {/* Hero Video Section */}
+        <div className="relative mb-8 rounded-xl overflow-hidden h-64 md:h-80 lg:h-96 shadow-lg">
+          <VideoBackground 
+            src={landingVideo} 
+            overlay={true}
+            fallbackImage={heroImage}
+          />
+          
+          {/* Enhanced Overlay */}
+          <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-black/40 to-black/60 z-10" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent z-10" />
+          
+          {/* Content */}
+          <div className="relative z-20 h-full flex flex-col items-center justify-center text-center px-6">
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4 text-white drop-shadow-2xl">
+              Welcome back, {userProfile?.fullName || 'Host'}!
+            </h2>
+            <p className="text-lg md:text-xl text-white/90 mb-6 max-w-2xl drop-shadow-lg">
+              Manage your properties and track your performance
+            </p>
+            <Button 
+              size="lg" 
+              className="h-12 px-8 text-lg bg-primary hover:bg-primary/90 shadow-2xl hover:shadow-2xl hover:scale-105 transition-all"
+              onClick={() => navigate('/host/create-listing')}
+            >
+              Create New Listing
+            </Button>
+          </div>
+        </div>
+
         {/* Main Actions */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          <Card className="shadow-medium hover:shadow-hover transition-all duration-300 cursor-pointer border-border/50 hover:border-primary/50 group" onClick={() => navigate('/host/create-listing')}>
-            <CardHeader className="space-y-3">
-              <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Plus className="w-7 h-7 text-primary" />
-              </div>
-              <CardTitle className="group-hover:text-primary transition-colors">Create New Listing</CardTitle>
-              <CardDescription>
-                Add a new property, experience, or service
-              </CardDescription>
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/host/create-listing')}>
+            <CardHeader>
+              <Plus className="w-8 h-8 text-primary mb-2" />
+              <CardTitle>Create New Listing</CardTitle>
+              <CardDescription>Add a new property, experience, or service</CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-all duration-300 cursor-pointer border-border/50 hover:border-primary/50 group" onClick={() => navigate('/host/listings')}>
-            <CardHeader className="space-y-3">
-              <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Home className="w-7 h-7 text-primary" />
-              </div>
-              <CardTitle className="group-hover:text-primary transition-colors">My Listings</CardTitle>
-              <CardDescription>
-                View and manage your active listings
-              </CardDescription>
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/host/listings')}>
+            <CardHeader>
+              <Home className="w-8 h-8 text-secondary mb-2" />
+              <CardTitle>My Listings</CardTitle>
+              <CardDescription>View and manage your active listings</CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-all duration-300 cursor-pointer border-border/50 hover:border-secondary/50 group" onClick={() => navigate('/host/bookings')}>
-            <CardHeader className="space-y-3">
-              <div className="w-14 h-14 rounded-xl bg-secondary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Calendar className="w-7 h-7 text-secondary" />
-              </div>
-              <CardTitle className="group-hover:text-secondary transition-colors">Bookings</CardTitle>
-              <CardDescription>
-                Manage booking requests
-              </CardDescription>
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/host/bookings')}>
+            <CardHeader>
+              <Calendar className="w-8 h-8 text-accent mb-2" />
+              <CardTitle>Bookings</CardTitle>
+              <CardDescription>Manage booking requests</CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-all duration-300 cursor-pointer border-border/50 hover:border-primary/50 group" onClick={() => navigate('/host/calendar')}>
-            <CardHeader className="space-y-3">
-              <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <CalendarDays className="w-7 h-7 text-primary" />
-              </div>
-              <CardTitle className="group-hover:text-primary transition-colors">Calendar</CardTitle>
-              <CardDescription>
-                View bookings schedule
-              </CardDescription>
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/host/calendar')}>
+            <CardHeader>
+              <CalendarDays className="w-8 h-8 text-primary mb-2" />
+              <CardTitle>Calendar</CardTitle>
+              <CardDescription>View bookings schedule</CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-all duration-300 cursor-pointer border-border/50 hover:border-secondary/50 group" onClick={() => navigate('/host/messages')}>
-            <CardHeader className="space-y-3">
-              <div className="w-14 h-14 rounded-xl bg-secondary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <MessageSquare className="w-7 h-7 text-secondary" />
-              </div>
-              <CardTitle className="group-hover:text-secondary transition-colors">Messages</CardTitle>
-              <CardDescription>
-                Chat with guests and respond to inquiries
-              </CardDescription>
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/host/messages')}>
+            <CardHeader>
+              <MessageSquare className="w-8 h-8 text-secondary mb-2" />
+              <CardTitle>Messages</CardTitle>
+              <CardDescription>Chat with guests and respond to inquiries</CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-all duration-300 cursor-pointer border-border/50 hover:border-accent/50 group" onClick={() => navigate('/host/payments')}>
-            <CardHeader className="space-y-3">
-              <div className="w-14 h-14 rounded-xl bg-accent/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <DollarSign className="w-7 h-7 text-accent" />
-              </div>
-              <CardTitle className="group-hover:text-accent transition-colors">Payments</CardTitle>
-              <CardDescription>
-                View earnings and payment methods
-              </CardDescription>
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/host/payments')}>
+            <CardHeader>
+              <DollarSign className="w-8 h-8 text-accent mb-2" />
+              <CardTitle>Payments</CardTitle>
+              <CardDescription>View earnings and payment methods</CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-all duration-300 cursor-pointer border-border/50 hover:border-accent/50 group" onClick={() => navigate('/host/settings?tab=profile')}>
-            <CardHeader className="space-y-3">
-              <div className="w-14 h-14 rounded-xl bg-accent/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Award className="w-7 h-7 text-accent" />
-              </div>
-              <CardTitle className="group-hover:text-accent transition-colors">Points & Rewards</CardTitle>
-              <CardDescription>
-                Track your rewards and achievements
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          <Card className="shadow-medium hover:shadow-hover transition-all duration-300 cursor-pointer border-border/50 hover:border-muted-foreground/50 group" onClick={() => navigate('/host/settings')}>
-            <CardHeader className="space-y-3">
-              <div className="w-14 h-14 rounded-xl bg-muted/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Settings className="w-7 h-7 text-muted-foreground" />
-              </div>
-              <CardTitle className="group-hover:text-muted-foreground transition-colors">Settings</CardTitle>
-              <CardDescription>
-                Manage your account preferences
-              </CardDescription>
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/host/settings')}>
+            <CardHeader>
+              <Settings className="w-8 h-8 text-muted-foreground mb-2" />
+              <CardTitle>Settings</CardTitle>
+              <CardDescription>Manage your account preferences</CardDescription>
             </CardHeader>
           </Card>
         </div>
