@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,7 +34,7 @@ import { ImagePreview } from "./ImagePreview";
 import { LocationMapPicker } from "./LocationMapPicker";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/contexts/AuthContext";
-import { createListing, uploadListingImages } from "@/lib/firestore";
+import { createListing, uploadListingImages, getListing, updateListing } from "@/lib/firestore";
 import { listingFormSchema, type ListingFormData } from "@/lib/validation";
 import { toast } from "sonner";
 import { formatPHP } from "@/lib/currency";
@@ -45,6 +46,7 @@ import {
   setDoc,
   getDoc,
   deleteDoc,
+  updateDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -55,8 +57,14 @@ const MAX_IMAGES = 10;
 
 export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const editListingId = searchParams.get('edit');
+  const isEditMode = !!editListingId;
+  
   const [loading, setLoading] = useState(false);
+  const [loadingListing, setLoadingListing] = useState(false);
   const [images, setImages] = useState<File[]>([]);
+  const [existingImages, setExistingImages] = useState<string[]>([]);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -68,6 +76,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
   const [draftId, setDraftId] = useState<string | null>(null);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [paymentConfirmOpen, setPaymentConfirmOpen] = useState(false);
+  const [isPublished, setIsPublished] = useState(false); // Track if listing has been published
 
   // debounce timer ref
   const saveTimeoutRef = useRef<number | null>(null);
@@ -182,13 +191,20 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
       toast.error(errors.join(", "));
     }
 
-    const newImages = [...images, ...validFiles].slice(0, MAX_IMAGES);
+    // Calculate available slots (account for existing images in edit mode)
+    const existingCount = isEditMode ? existingImages.length : 0;
+    const availableSlots = MAX_IMAGES - existingCount;
+    const newImages = [...images, ...validFiles].slice(0, availableSlots);
+    
+    if (validFiles.length > availableSlots) {
+      toast.warning(`Maximum ${MAX_IMAGES} total images allowed. You can add ${availableSlots} more image(s).`);
+    }
+
     setImages(newImages);
     form.setValue("images", newImages, { shouldValidate: true });
     
-    if (newImages.length > MAX_IMAGES) {
-      toast.warning(`Maximum ${MAX_IMAGES} images allowed. Only the first ${MAX_IMAGES} were added.`);
-    }
+    // Reset file input
+    e.target.value = '';
   };
 
   const removeImage = (index: number) => {
@@ -201,6 +217,12 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
   const saveDraftToFirestore = useCallback(
     async (opts?: { manual?: boolean }) => {
       if (!user) return;
+      // Don't save draft if listing has been published
+      if (isPublished) {
+        console.log('saveDraftToFirestore: Skipping save - listing already published');
+        return;
+      }
+      
       const id = getDraftDocId();
       if (!id) return;
 
@@ -209,12 +231,21 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         ? generateAvailableDates(formValues.dateRange.from, formValues.dateRange.to)
         : availableDates;
 
-      // Check if draft already exists to preserve createdAt
+      // Check if draft already exists to preserve createdAt and status
       let existingCreatedAt = null;
+      let existingStatus = null;
       try {
         const existing = await getDoc(doc(db, "listing", id));
         if (existing.exists()) {
-          existingCreatedAt = existing.data().createdAt;
+          const existingData = existing.data();
+          existingCreatedAt = existingData.createdAt;
+          existingStatus = existingData.status;
+          
+          // Don't overwrite if listing is not a draft (e.g., pending, approved, rejected)
+          if (existingStatus && existingStatus !== "draft") {
+            console.log('saveDraftToFirestore: Skipping save - listing status is', existingStatus, 'not draft');
+            return;
+          }
         }
       } catch (err) {
         console.error("Error checking existing draft:", err);
@@ -236,7 +267,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         availableDates: finalAvailableDates,
         blockedDates,
         images: [],
-        status: "draft",
+        status: "draft", // Only save as draft
         createdAt: existingCreatedAt || new Date().toISOString(),
         updatedAt: serverTimestamp(),
       };
@@ -268,16 +299,19 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         setTimeout(() => setSaveStatus("idle"), 3000);
       }
     },
-    [user, getDraftDocId, form, availableDates, blockedDates]
+    [user, getDraftDocId, form, availableDates, blockedDates, isPublished]
   );
 
-  // Debounced autosave effect
+  // Debounced autosave effect (disabled in edit mode)
   useEffect(() => {
     if (!hasMountedRef.current) {
       hasMountedRef.current = true;
       return;
     }
     if (!user) return;
+    
+    // Don't auto-save if we're in edit mode, payment flow, if listing is already published, or if loading
+    if (isEditMode || showPayment || loading || isPublished) return;
 
     if (saveTimeoutRef.current) {
       window.clearTimeout(saveTimeoutRef.current);
@@ -294,21 +328,94 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         window.clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [watchedValues, images, user, form.formState.isDirty, saveDraftToFirestore]);
+  }, [watchedValues, images, user, form.formState.isDirty, saveDraftToFirestore, showPayment, loading, isPublished, isEditMode]);
 
-  // Save draft on page unload
+  // Save draft on page unload (disabled in edit mode)
   useEffect(() => {
+    if (isEditMode) return; // Don't save draft in edit mode
+    
     const handler = () => {
-      if (user && form.formState.isDirty) {
+      if (user && form.formState.isDirty && !isPublished) {
         saveDraftToFirestore();
       }
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [saveDraftToFirestore, user, form.formState.isDirty]);
+  }, [saveDraftToFirestore, user, form.formState.isDirty, isPublished, isEditMode]);
 
-  // On mount: check if a draft exists
+  // Load existing listing data when in edit mode
   useEffect(() => {
+    const loadExistingListing = async () => {
+      if (!isEditMode || !editListingId || !user) return;
+      
+      setLoadingListing(true);
+      try {
+        const listing = await getListing(editListingId);
+        if (!listing) {
+          toast.error("Listing not found");
+          return;
+        }
+
+        // Check if user owns this listing
+        if (listing.hostId !== user.uid) {
+          toast.error("You don't have permission to edit this listing");
+          return;
+        }
+
+        // Load existing data into form
+        form.reset({
+          title: listing.title || "",
+          description: listing.description || "",
+          category: listing.category || "home",
+          price: listing.price ? String(listing.price) : "",
+          discount: listing.discount ? String(listing.discount) : "",
+          promo: listing.promo || "",
+          location: listing.location || "",
+          maxGuests: listing.maxGuests ? String(listing.maxGuests) : "",
+          bedrooms: listing.bedrooms ? String(listing.bedrooms) : "",
+          bathrooms: listing.bathrooms ? String(listing.bathrooms) : "",
+          amenities: Array.isArray(listing.amenities) ? listing.amenities.join(", ") : "",
+          dateRange: listing.availableDates && listing.availableDates.length > 0
+            ? {
+                from: new Date(listing.availableDates[0]),
+                to: new Date(listing.availableDates[listing.availableDates.length - 1]),
+              }
+            : { from: undefined, to: undefined },
+          images: [],
+        });
+
+        // Set existing images
+        if (listing.images && Array.isArray(listing.images)) {
+          setExistingImages(listing.images);
+        }
+
+        // Set dates
+        if (listing.availableDates && Array.isArray(listing.availableDates)) {
+          setAvailableDates(listing.availableDates);
+        }
+        if (listing.blockedDates && Array.isArray(listing.blockedDates)) {
+          setBlockedDates(listing.blockedDates);
+        }
+
+        // Disable auto-save in edit mode
+        setIsPublished(true);
+        
+        toast.success("Listing loaded successfully");
+      } catch (error: any) {
+        console.error("Error loading listing:", error);
+        toast.error(`Failed to load listing: ${error.message || 'Unknown error'}`);
+      } finally {
+        setLoadingListing(false);
+      }
+    };
+
+    loadExistingListing();
+  }, [isEditMode, editListingId, user, form]);
+
+  // On mount: check if a draft exists (only in create mode)
+  useEffect(() => {
+    if (isEditMode) return; // Skip draft check in edit mode
+    
     const checkDraft = async () => {
       if (!user) return;
       const id = getDraftDocId();
@@ -330,7 +437,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
       }
     };
     checkDraft();
-  }, [user, getDraftDocId]);
+  }, [user, getDraftDocId, isEditMode]);
 
   // Load the draft into form state
   const loadDraft = async () => {
@@ -456,10 +563,30 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
 
     if (status === "pending") {
       console.log('persistListing: Creating listing with status "pending"');
-      const newId = await createListing(payload);
+      // Ensure status is explicitly set to "pending"
+      const pendingPayload = {
+        ...payload,
+        status: "pending" as const, // Explicitly set status to pending
+      };
+      const newId = await createListing(pendingPayload);
+      
+      // Verify the listing was created with correct status
+      const listingDoc = await getDoc(doc(db, "listing", newId));
+      if (listingDoc.exists()) {
+        const listingData = listingDoc.data();
+        if (listingData.status !== "pending") {
+          console.warn('persistListing: Listing status is not "pending" after creation, fixing it...');
+          await updateDoc(doc(db, "listing", newId), {
+            status: "pending",
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }
+      
       if (draftId) {
         try {
           await deleteDoc(doc(db, "listing", draftId));
+          console.log('persistListing: Draft deleted successfully');
         } catch (err) {
           console.error("Error deleting draft:", err);
         }
@@ -510,19 +637,38 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
       const listingId = await persistListing("pending");
       console.log('createListingAfterPayment: Listing created with ID:', listingId);
 
+      // Verify the listing was created with status "pending"
+      const listingDoc = await getDoc(doc(db, "listing", listingId));
+      if (listingDoc.exists()) {
+        const listingData = listingDoc.data();
+        console.log('createListingAfterPayment: Listing status after creation:', listingData.status);
+        
+        // If status is not "pending", fix it
+        if (listingData.status !== "pending") {
+          console.warn('createListingAfterPayment: Listing status is not "pending", fixing it...');
+          await setDoc(doc(db, "listing", listingId), {
+            status: "pending",
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
+        }
+      }
+
       if (images.length > 0) {
         console.log('createListingAfterPayment: Uploading', images.length, 'images');
         const imageUrls = await uploadImagesWithProgress(images, listingId);
         console.log('createListingAfterPayment: Images uploaded, updating listing with URLs');
+        // Explicitly preserve status when updating with images
         await setDoc(doc(db, "listing", listingId), {
           images: imageUrls,
-          updatedAt: serverTimestamp(),
+          status: "pending", // Explicitly set status to pending
+          updatedAt: new Date().toISOString(),
         }, { merge: true });
-        console.log('createListingAfterPayment: Listing updated with images');
+        console.log('createListingAfterPayment: Listing updated with images and status preserved');
       }
 
       setDraftId(null);
       setDraftFound(false);
+      setIsPublished(true); // Mark as published to prevent auto-save from overwriting
       console.log('createListingAfterPayment: Success! Listing ID:', listingId, 'Status: pending');
       toast.success("Payment received. Listing submitted for review!");
       onSuccess();
@@ -587,6 +733,76 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
     await saveDraftToFirestore({ manual: true });
   };
 
+  // Save/update listing in edit mode
+  const handleSaveListing = async () => {
+    if (!isEditMode || !editListingId || !user) return;
+
+    const isValid = await form.trigger();
+    if (!isValid) {
+      toast.error("Please fix the errors in the form before saving.");
+      return;
+    }
+
+    setLoading(true);
+    setSaveStatus("saving");
+
+    try {
+      const formValues = form.getValues();
+      const finalAvailableDates = formValues.dateRange?.from && formValues.dateRange?.to
+        ? generateAvailableDates(formValues.dateRange.from, formValues.dateRange.to)
+        : availableDates;
+
+      // Prepare update data
+      const updateData: any = {
+        title: formValues.title,
+        description: formValues.description,
+        category: formValues.category || "home",
+        price: Number(formValues.price),
+        discount: formValues.discount && formValues.discount.trim() ? Number(formValues.discount) : undefined,
+        promo: formValues.promo || undefined,
+        location: formValues.location,
+        maxGuests: Number(formValues.maxGuests),
+        bedrooms: formValues.bedrooms && formValues.bedrooms.trim() ? Number(formValues.bedrooms) : undefined,
+        bathrooms: formValues.bathrooms && formValues.bathrooms.trim() ? Number(formValues.bathrooms) : undefined,
+        amenities: formValues.amenities ? formValues.amenities.split(",").map((a: string) => a.trim()).filter(Boolean) : [],
+        availableDates: finalAvailableDates,
+        blockedDates,
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Remove undefined values
+      const cleanedData = removeUndefined(updateData);
+
+      // Upload new images if any
+      let imageUrls = [...existingImages];
+      if (images.length > 0) {
+        const newImageUrls = await uploadImagesWithProgress(images, editListingId);
+        imageUrls = [...existingImages, ...newImageUrls];
+      }
+
+      // Update listing with new data and images
+      await updateListing(editListingId, {
+        ...cleanedData,
+        images: imageUrls,
+      });
+
+      setSaveStatus("saved");
+      setExistingImages(imageUrls);
+      setImages([]); // Clear new images after saving
+      toast.success("Listing updated successfully!");
+      
+      // Reset form dirty state
+      form.reset(form.getValues(), { keepDirty: false });
+    } catch (error: any) {
+      console.error("Error updating listing:", error);
+      setSaveStatus("error");
+      toast.error(`Failed to update listing: ${error.message || 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+      setTimeout(() => setSaveStatus("idle"), 2000);
+    }
+  };
+
   return (
     <>
       {/* Draft confirmation dialog */}
@@ -615,10 +831,20 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         </DialogContent>
       </Dialog>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Create New Listing</CardTitle>
+      {loadingListing ? (
+        <Card>
+          <CardContent className="py-12">
+            <div className="flex items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="ml-3 text-muted-foreground">Loading listing...</p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>{isEditMode ? 'Edit Listing' : 'Create New Listing'}</CardTitle>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               {saveStatus === "saving" && (
                 <>
@@ -651,7 +877,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         </CardHeader>
         <CardContent>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleProceedToPayment)} className="space-y-6">
+            <form onSubmit={isEditMode ? (e) => { e.preventDefault(); handleSaveListing(); } : form.handleSubmit(handleProceedToPayment)} className="space-y-6">
               {/* Title */}
               <FormField
                 control={form.control}
@@ -706,7 +932,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
               />
 
               {/* Category and Price */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <FormField
                   control={form.control}
                   name="category"
@@ -758,7 +984,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
               </div>
 
               {/* Discount and Promo */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <FormField
                   control={form.control}
                   name="discount"
@@ -826,7 +1052,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
               />
 
               {/* Max Guests, Bedrooms, Bathrooms */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                 <FormField
                   control={form.control}
                   name="maxGuests"
@@ -967,12 +1193,43 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                             type="button"
                             variant="outline"
                             onClick={() => document.getElementById("images")?.click()}
-                            disabled={images.length >= MAX_IMAGES}
+                            disabled={(isEditMode ? existingImages.length : 0) + images.length >= MAX_IMAGES}
                           >
                             <Upload className="h-4 w-4 mr-2" />
-                            Upload Images ({images.length}/{MAX_IMAGES})
+                            Upload Images ({(isEditMode ? existingImages.length : 0) + images.length}/{MAX_IMAGES})
                           </Button>
                         </div>
+                        {/* Show existing images in edit mode */}
+                        {isEditMode && existingImages.length > 0 && (
+                          <div className="space-y-2 mb-4">
+                            <p className="text-sm font-medium text-foreground">Existing Images ({existingImages.length}):</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3">
+                              {existingImages.map((imageUrl, index) => (
+                                <div key={`existing-${index}`} className="relative group aspect-square">
+                                  <div className="w-full h-full rounded-lg overflow-hidden border-2 border-border">
+                                    <img
+                                      src={imageUrl}
+                                      alt={`Existing image ${index + 1}`}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    variant="destructive"
+                                    size="icon"
+                                    className="absolute top-2 right-2 h-7 w-7 opacity-80 group-hover:opacity-100 transition-opacity shadow-lg"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setExistingImages(existingImages.filter((_, i) => i !== index));
+                                    }}
+                                  >
+                                    <span className="text-lg font-bold">×</span>
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         <ImagePreview
                           images={images}
                           onRemove={removeImage}
@@ -991,35 +1248,75 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
 
               {/* Action Buttons */}
               <div className="flex gap-2 pt-4">
-                <Button
-                  type="submit"
-                  disabled={loading || isUploading || publishFee === 0}
-                  className="flex-1"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    `Pay & Publish (${formatPHP(publishFee)})`
-                  )}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={loading || isUploading}
-                  className="flex-1"
-                  onClick={handleSaveDraft}
-                >
-                  <Save className="h-4 w-4 mr-2" />
-                  Save as Draft
-                </Button>
+                {isEditMode ? (
+                  <>
+                    <Button
+                      type="button"
+                      onClick={handleSaveListing}
+                      disabled={loading || isUploading || saveStatus === "saving"}
+                      className="flex-1"
+                    >
+                      {saveStatus === "saving" || loading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : saveStatus === "saved" ? (
+                        <>
+                          <CheckCircle2 className="h-4 w-4 mr-2" />
+                          Saved
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-4 w-4 mr-2" />
+                          Save Changes
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => onSuccess()}
+                      disabled={loading || isUploading}
+                      className="flex-1"
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      type="submit"
+                      disabled={loading || isUploading || publishFee === 0}
+                      className="flex-1"
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        `Pay & Publish (${formatPHP(publishFee)})`
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={loading || isUploading}
+                      className="flex-1"
+                      onClick={handleSaveDraft}
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      Save as Draft
+                    </Button>
+                  </>
+                )}
               </div>
             </form>
           </Form>
         </CardContent>
       </Card>
+      )}
 
       {/* Payment Dialog */}
       <Dialog open={showPayment} onOpenChange={setShowPayment}>

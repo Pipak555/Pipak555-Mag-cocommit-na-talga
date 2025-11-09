@@ -83,10 +83,15 @@ export const createListing = async (data: Omit<Listing, 'id' | 'createdAt' | 'up
 };
 
 export const updateListing = async (id: string, data: Partial<Listing>) => {
-  await updateDoc(doc(db, 'listing', id), {
-    ...data,
-    updatedAt: new Date().toISOString(),
-  });
+  try {
+    await updateDoc(doc(db, 'listing', id), {
+      ...data,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error('Error updating listing:', error);
+    throw new Error(error.message || 'Failed to update listing');
+  }
 };
 
 export const deleteListing = async (id: string) => {
@@ -306,7 +311,13 @@ export const getBookings = async (filters?: { guestId?: string; hostId?: string;
     }
     
     const snapshot = await getDocs(q);
-    const bookings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+    const bookings = snapshot.docs
+      .map(doc => {
+        const data = doc.data();
+        if (!data) return null;
+        return Object.assign({ id: doc.id }, data) as Booking;
+      })
+      .filter((booking): booking is Booking => booking !== null);
     
     console.log('📊 getBookings query result:', {
       filters,
@@ -333,7 +344,13 @@ export const getBookings = async (filters?: { guestId?: string; hostId?: string;
       }
       
       const snapshot = await getDocs(q);
-      const bookings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+      const bookings = snapshot.docs
+        .map(doc => {
+          const data = doc.data();
+          if (!data) return null;
+          return Object.assign({ id: doc.id }, data) as Booking;
+        })
+        .filter((booking): booking is Booking => booking !== null);
       // Sort manually
       bookings.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       return bookings;
@@ -560,6 +577,31 @@ export const subscribeToMessages = (
     unsubscribeReceived();
     unsubscribeSent();
   };
+};
+
+// Mark messages as read
+export const markMessagesAsRead = async (userId: string, otherUserId: string): Promise<void> => {
+  try {
+    // Get all unread messages where user is receiver and other user is sender
+    const unreadQuery = query(
+      collection(db, 'messages'),
+      where('receiverId', '==', userId),
+      where('senderId', '==', otherUserId),
+      where('read', '==', false)
+    );
+    
+    const snapshot = await getDocs(unreadQuery);
+    
+    // Mark all as read
+    await Promise.all(
+      snapshot.docs.map(doc => 
+        updateDoc(doc.ref, { read: true })
+      )
+    );
+  } catch (error) {
+    console.error('Error marking messages as read:', error);
+    throw error;
+  }
 };
 
 // 💳 Transactions

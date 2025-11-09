@@ -15,8 +15,8 @@ const Footer = () => {
 
   return (
     <footer className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
-      <div className="container mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+      <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 sm:gap-8 mb-6 sm:mb-8">
           
           {/* Logo & Brand */}
           <div>
@@ -88,8 +88,8 @@ const Footer = () => {
         </div>
 
         {/* Bottom Bar */}
-        <div className="border-t border-slate-700 pt-6">
-          <div className="flex flex-col md:flex-row justify-between items-center space-y-2 md:space-y-0">
+        <div className="border-t border-slate-700 pt-4 sm:pt-6">
+          <div className="flex flex-col md:flex-row justify-between items-center space-y-2 md:space-y-0 gap-2">
             <p className="text-slate-500 text-xs text-center md:text-left">
               © 2024 Mojo Dojo Casa House. All rights reserved.
             </p>

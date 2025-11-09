@@ -141,41 +141,89 @@ export const sendBookingConfirmationEmail = async (
       return false;
     }
 
-    const checkInDate = new Date(checkIn).toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-    const checkOutDate = new Date(checkOut).toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
+    // Validate required fields
+    if (!guestEmail || !guestName || !listingTitle) {
+      console.error('❌ Missing required fields for booking confirmation email:', {
+        guestEmail: !!guestEmail,
+        guestName: !!guestName,
+        listingTitle: !!listingTitle
+      });
+      return false;
+    }
 
+    // Format dates properly
+    let checkInDate = '';
+    let checkOutDate = '';
+    
+    try {
+      checkInDate = new Date(checkIn).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    } catch (e) {
+      checkInDate = new Date(checkIn).toLocaleDateString('en-US');
+    }
+    
+    try {
+      checkOutDate = new Date(checkOut).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    } catch (e) {
+      checkOutDate = new Date(checkOut).toLocaleDateString('en-US');
+    }
+
+    // Format guests text - EmailJS doesn't support Handlebars conditionals like {{#if plural}},
+    // so we need to send the full formatted text including "guest" or "guests"
+    const guestsText = guests ? (guests === 1 ? '1 guest' : `${guests} guests`) : '1 guest';
+    
+    // Format total price - The template shows ${{total_price}}, but we use PHP currency
+    // We'll send the formatted price with currency symbol, and the template should use {{total_price}} without the $ prefix
+    // If the template has ${{total_price}}, update it to just {{total_price}} in EmailJS dashboard
+    const formattedPrice = totalPrice ? formatPHP(totalPrice) : formatPHP(0);
+    
+    // Ensure all template parameters have valid values (no null/undefined)
+    // These must match exactly what's in the EmailJS template variables
     const templateParams = {
-      to_email: guestEmail,
-      to_name: guestName,
-      listing_title: listingTitle,
-      listing_location: listingLocation,
-      check_in: checkInDate,
-      check_out: checkOutDate,
-      guests: guests === 1 ? '1 guest' : `${guests} guests`, // Handle plural here
-      total_price: formatPHP(totalPrice), // Format with PHP currency symbol
-      booking_id: bookingId,
-      booking_link: `${window.location.origin}/guest/dashboard`,
+      to_email: String(guestEmail || ''),
+      to_name: String(guestName || 'Guest'),
+      listing_title: String(listingTitle || 'Your Booking'),
+      listing_location: String(listingLocation || 'Location not specified'),
+      check_in: String(checkInDate || new Date(checkIn).toLocaleDateString()),
+      check_out: String(checkOutDate || new Date(checkOut).toLocaleDateString()),
+      guests: String(guestsText), // Already formatted: "1 guest" or "2 guests"
+      total_price: String(formattedPrice), // Formatted with currency: "₱900.00"
+      booking_id: String(bookingId || 'N/A'),
+      booking_link: String(`${window.location.origin}/guest/dashboard`),
       platform_name: 'Mojo Dojo Casa House',
       support_email: 'johnpatrickrobles143@gmail.com',
-      year: new Date().getFullYear().toString(),
+      year: String(new Date().getFullYear()),
+      logo_url: 'https://mojo-dojo-casa-house-f31a5.web.app/logo.png',
     };
+
+    console.log('📧 Sending booking confirmation email with params:', {
+      to_email: templateParams.to_email,
+      to_name: templateParams.to_name,
+      listing_title: templateParams.listing_title,
+      check_in: templateParams.check_in,
+      check_out: templateParams.check_out,
+    });
 
     await emailjs.send(SERVICE_ID, TEMPLATE_ID_BOOKING, templateParams);
     
     console.log('✅ Booking confirmation email sent successfully to:', guestEmail);
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Failed to send booking confirmation email:', error);
+    console.error('Error details:', {
+      message: error?.message,
+      status: error?.status,
+      text: error?.text
+    });
     return false;
   }
 };

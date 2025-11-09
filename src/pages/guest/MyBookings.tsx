@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { getBookings, updateBooking } from "@/lib/firestore";
+import { getBookings, updateBooking, getListing, getUserProfile } from "@/lib/firestore";
 import { processBookingRefund } from "@/lib/paymentService";
 import { collection, query, where, onSnapshot, doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Calendar as CalendarIcon, X } from "lucide-react";
+import { ArrowLeft, Calendar as CalendarIcon, X, MessageSquare, Home, MapPin, DollarSign, Users, Bed, Bath, ChevronLeft, ChevronRight, ZoomIn } from "lucide-react";
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { PayPalButton } from "@/components/payments/PayPalButton";
 import type { Booking } from "@/types";
@@ -25,6 +25,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
+import type { Listing } from "@/types";
 
 const MyBookings = () => {
   const navigate = useNavigate();
@@ -36,6 +45,13 @@ const MyBookings = () => {
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
+  const [listingDialogOpen, setListingDialogOpen] = useState(false);
+  const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
+  const [loadingListing, setLoadingListing] = useState(false);
+  const [hostInfo, setHostInfo] = useState<{ fullName?: string; email?: string } | null>(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxImageIndex, setLightboxImageIndex] = useState(0);
   const filter = searchParams.get('filter'); // 'upcoming', 'past', or null
 
   useEffect(() => {
@@ -189,6 +205,62 @@ const MyBookings = () => {
     setCancelDialogOpen(true);
   };
 
+  const handleViewListing = async (booking: Booking) => {
+    if (!booking.listingId) {
+      toast.error('Listing information not available');
+      return;
+    }
+
+    setLoadingListing(true);
+    setListingDialogOpen(true);
+    setCurrentImageIndex(0);
+    
+    try {
+      // Fetch listing details
+      const listing = await getListing(booking.listingId);
+      if (listing) {
+        setSelectedListing(listing);
+        
+        // Fetch host information
+        if (listing.hostId) {
+          try {
+            const hostProfile = await getUserProfile(listing.hostId);
+            if (hostProfile) {
+              setHostInfo({
+                fullName: hostProfile.fullName || 'N/A',
+                email: hostProfile.email || 'N/A'
+              });
+            } else {
+              setHostInfo({ fullName: 'N/A', email: 'N/A' });
+            }
+          } catch (error) {
+            console.error('Error fetching host info:', error);
+            setHostInfo({ fullName: 'N/A', email: 'N/A' });
+          }
+        } else {
+          setHostInfo({ fullName: 'N/A', email: 'N/A' });
+        }
+      } else {
+        toast.error('Listing not found');
+        setListingDialogOpen(false);
+      }
+    } catch (error: any) {
+      console.error('Error loading listing:', error);
+      toast.error(`Failed to load listing: ${error.message || 'Unknown error'}`);
+      setListingDialogOpen(false);
+    } finally {
+      setLoadingListing(false);
+    }
+  };
+
+  const handleMessageHost = (booking: Booking) => {
+    if (booking.hostId) {
+      navigate(`/guest/messages?userId=${booking.hostId}`);
+    } else {
+      toast.error('Host information not available');
+    }
+  };
+
   const confirmCancel = async () => {
     if (!bookingToCancel || !user) {
       toast.error('Invalid booking or user');
@@ -254,16 +326,16 @@ const MyBookings = () => {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-soft">
-        <div className="container mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/guest/dashboard')}>
-              <ArrowLeft className="h-5 w-5" />
+        <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+            <Button variant="ghost" size="icon" onClick={() => navigate('/guest/dashboard')} className="h-9 w-9 sm:h-10 sm:w-10 touch-manipulation">
+              <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
-            <div className="p-2 rounded-lg bg-secondary/10">
+            <div className="hidden sm:block p-2 rounded-lg bg-secondary/10">
               <CalendarIcon className="w-5 h-5 text-secondary" />
             </div>
-            <div>
-              <h1 className="text-lg font-bold">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-base sm:text-lg font-bold truncate">
                 {filter === 'upcoming' ? 'Upcoming Trips' : filter === 'past' ? 'Past Bookings' : 'My Bookings'}
               </h1>
               <p className="text-xs text-muted-foreground">
@@ -279,7 +351,7 @@ const MyBookings = () => {
         </div>
       </header>
       
-      <div className="max-w-4xl mx-auto p-6">
+      <div className="max-w-4xl mx-auto p-4 sm:p-6">
 
         {loading ? (
           <BookingListSkeleton count={5} />
@@ -317,22 +389,49 @@ const MyBookings = () => {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Check-in</p>
-                        <p className="font-medium">{new Date(booking.checkIn).toLocaleDateString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Check-out</p>
-                        <p className="font-medium">{new Date(booking.checkOut).toLocaleDateString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Guests</p>
-                        <p className="font-medium">{booking.guests}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Total</p>
-                        <p className="font-medium">{formatPHP(booking.totalPrice || 0)}</p>
+                    <div className="space-y-4">
+                      {/* Message Host Button */}
+                      {booking.hostId && (
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleMessageHost(booking)}
+                            className="flex items-center justify-center gap-2 flex-1 h-11 sm:h-auto touch-manipulation"
+                          >
+                            <MessageSquare className="h-4 w-4" />
+                            <span className="text-sm sm:text-base">Message Host</span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleViewListing(booking)}
+                            className="flex items-center justify-center gap-2 flex-1 h-11 sm:h-auto touch-manipulation"
+                          >
+                            <Home className="h-4 w-4" />
+                            <span className="text-sm sm:text-base">View Listing</span>
+                          </Button>
+                        </div>
+                      )}
+                      
+                      {/* Booking Details */}
+                      <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Check-in</p>
+                          <p className="font-medium">{new Date(booking.checkIn).toLocaleDateString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Check-out</p>
+                          <p className="font-medium">{new Date(booking.checkOut).toLocaleDateString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Guests</p>
+                          <p className="font-medium">{booking.guests}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Total</p>
+                          <p className="font-medium">{formatPHP(booking.totalPrice || 0)}</p>
+                        </div>
                       </div>
                     </div>
                     
@@ -430,6 +529,332 @@ const MyBookings = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Listing Details Dialog */}
+      <Dialog open={listingDialogOpen} onOpenChange={setListingDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl">{selectedListing?.title || 'Listing Details'}</DialogTitle>
+            <DialogDescription>
+              View full listing information and host details
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingListing ? (
+            <div className="py-8 text-center text-muted-foreground">Loading listing details...</div>
+          ) : selectedListing ? (
+            <div className="space-y-6">
+              {/* Images */}
+              {selectedListing.images && selectedListing.images.length > 0 && (
+                <div className="space-y-3">
+                  {/* Main Image Carousel/Slider */}
+                  <div className="relative w-full h-[400px] rounded-lg overflow-hidden group bg-muted cursor-pointer" onClick={() => {
+                    setLightboxImageIndex(currentImageIndex);
+                    setLightboxOpen(true);
+                  }}>
+                    {/* Slider Container */}
+                    <div 
+                      className="flex transition-transform duration-500 ease-in-out h-full"
+                      style={{ transform: `translateX(-${currentImageIndex * 100}%)` }}
+                    >
+                      {selectedListing.images.map((img, index) => (
+                        <div 
+                          key={index}
+                          className="min-w-full h-full flex-shrink-0 relative"
+                        >
+                          <img 
+                            src={img || '/placeholder.svg'} 
+                            alt={`${selectedListing.title} - Image ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    
+                    {selectedListing.images.length > 1 && (
+                      <>
+                        {/* Previous Button */}
+                        <Button
+                          variant="secondary"
+                          size="icon"
+                          className="absolute left-4 top-1/2 -translate-y-1/2 opacity-80 hover:opacity-100 transition-opacity bg-black/70 hover:bg-black/90 text-white border-none z-10 shadow-lg backdrop-blur-sm h-10 w-10"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCurrentImageIndex((prev) => 
+                              prev === 0 ? selectedListing.images.length - 1 : prev - 1
+                            );
+                          }}
+                          aria-label="Previous image"
+                        >
+                          <ChevronLeft className="h-5 w-5" />
+                        </Button>
+                        {/* Next Button */}
+                        <Button
+                          variant="secondary"
+                          size="icon"
+                          className="absolute right-4 top-1/2 -translate-y-1/2 opacity-80 hover:opacity-100 transition-opacity bg-black/70 hover:bg-black/90 text-white border-none z-10 shadow-lg backdrop-blur-sm h-10 w-10"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCurrentImageIndex((prev) => 
+                              prev === selectedListing.images.length - 1 ? 0 : prev + 1
+                            );
+                          }}
+                          aria-label="Next image"
+                        >
+                          <ChevronRight className="h-5 w-5" />
+                        </Button>
+                        {/* Click to zoom hint */}
+                        <div className="absolute top-4 right-4 bg-black/70 text-white px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-sm z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <ZoomIn className="h-3 w-3 inline mr-1" />
+                          Click to zoom
+                        </div>
+                        {/* Image Counter */}
+                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/70 text-white px-4 py-1.5 rounded-full text-sm font-medium backdrop-blur-sm z-10">
+                          {currentImageIndex + 1} / {selectedListing.images.length}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  
+                  {/* Horizontal Thumbnail Slider */}
+                  {selectedListing.images.length > 1 && (
+                    <div className="relative">
+                      <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2 snap-x snap-mandatory">
+                        {selectedListing.images.map((img, i) => (
+                          <button
+                            key={i}
+                            onClick={() => setCurrentImageIndex(i)}
+                            className={`relative flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-all snap-start ${
+                              currentImageIndex === i 
+                                ? 'border-primary ring-2 ring-primary/50 scale-105' 
+                                : 'border-transparent hover:border-border opacity-70 hover:opacity-100'
+                            }`}
+                          >
+                            <img 
+                              src={img} 
+                              alt={`Thumbnail ${i + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Host Information */}
+              {hostInfo && (
+                <div className="bg-muted/50 p-4 rounded-lg">
+                  <h3 className="font-semibold mb-3 flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Host Information
+                  </h3>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Name:</span>
+                      <span>{hostInfo.fullName || 'N/A'}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Email:</span>
+                      <a 
+                        href={`mailto:${hostInfo.email || ''}`}
+                        className="text-primary hover:underline"
+                      >
+                        {hostInfo.email || 'N/A'}
+                      </a>
+                    </div>
+                    {selectedListing.hostId && (
+                      <div className="pt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setListingDialogOpen(false);
+                            navigate(`/guest/messages?userId=${selectedListing.hostId}`);
+                          }}
+                          className="flex items-center gap-2"
+                        >
+                          <MessageSquare className="h-4 w-4" />
+                          Message Host
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <Separator />
+
+              {/* Listing Details */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-semibold mb-2 flex items-center gap-2">
+                    <MapPin className="h-5 w-5" />
+                    Location
+                  </h3>
+                  <p className="text-muted-foreground">{selectedListing.location}</p>
+                </div>
+
+                <div>
+                  <h3 className="font-semibold mb-2">Description</h3>
+                  <p className="text-muted-foreground whitespace-pre-wrap">{selectedListing.description}</p>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Price</p>
+                      <p className="font-semibold">{formatPHP(selectedListing.price)}/night</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Users className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Max Guests</p>
+                      <p className="font-semibold">{selectedListing.maxGuests}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Bed className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Bedrooms</p>
+                      <p className="font-semibold">{selectedListing.bedrooms || 'N/A'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Bath className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Bathrooms</p>
+                      <p className="font-semibold">{selectedListing.bathrooms !== undefined ? selectedListing.bathrooms : 'N/A'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Home className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Category</p>
+                    <Badge variant="secondary">{selectedListing.category}</Badge>
+                  </div>
+                </div>
+
+                {selectedListing.amenities && selectedListing.amenities.length > 0 && (
+                  <div>
+                    <h3 className="font-semibold mb-2">Amenities</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedListing.amenities.map((amenity, index) => (
+                        <Badge key={index} variant="outline">{amenity}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="py-8 text-center text-muted-foreground">Listing not found</div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Lightbox/Modal for Full-Size Image Viewing */}
+      <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
+        <DialogContent className="max-w-[98vw] max-h-[98vh] w-auto h-auto p-0 bg-black/95 border-none m-1">
+          <DialogTitle className="sr-only">View Full Size Image</DialogTitle>
+          <DialogDescription className="sr-only">
+            Viewing image {lightboxImageIndex + 1} of {selectedListing?.images?.length || 0} for {selectedListing?.title}
+          </DialogDescription>
+          <div className="relative w-full h-full flex items-center justify-center min-h-[400px]">
+            {selectedListing?.images && selectedListing.images.length > 0 && (
+              <>
+                {/* Close Button */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-2 right-2 z-50 bg-black/70 hover:bg-black/90 text-white border-none h-8 w-8 sm:h-10 sm:w-10"
+                  onClick={() => setLightboxOpen(false)}
+                >
+                  <X className="h-4 w-4 sm:h-5 sm:w-5" />
+                </Button>
+
+                {/* Image Counter */}
+                <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-black/70 text-white px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium backdrop-blur-sm z-50">
+                  {lightboxImageIndex + 1} / {selectedListing.images.length}
+                </div>
+
+                {/* Main Image */}
+                <div className="w-full h-full flex items-center justify-center p-2 sm:p-4 pt-12 pb-20 sm:pb-24">
+                  <img 
+                    src={selectedListing.images[lightboxImageIndex] || '/placeholder.svg'} 
+                    alt={`${selectedListing.title} - Image ${lightboxImageIndex + 1}`}
+                    className="max-w-full max-h-[calc(98vh-160px)] object-contain"
+                  />
+                </div>
+
+                {/* Navigation Buttons */}
+                {selectedListing.images.length > 1 && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-50 bg-black/70 hover:bg-black/90 text-white border-none h-8 w-8 sm:h-12 sm:w-12"
+                      onClick={() => setLightboxImageIndex((prev) => 
+                        prev === 0 ? selectedListing.images.length - 1 : prev - 1
+                      )}
+                    >
+                      <ChevronLeft className="h-4 w-4 sm:h-6 sm:w-6" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-50 bg-black/70 hover:bg-black/90 text-white border-none h-8 w-8 sm:h-12 sm:w-12"
+                      onClick={() => setLightboxImageIndex((prev) => 
+                        prev === selectedListing.images.length - 1 ? 0 : prev + 1
+                      )}
+                    >
+                      <ChevronRight className="h-4 w-4 sm:h-6 sm:w-6" />
+                    </Button>
+                  </>
+                )}
+
+                {/* Thumbnail Strip at Bottom for Navigation */}
+                {selectedListing.images.length > 1 && (
+                  <div className="absolute bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-sm rounded-lg p-2 sm:p-3 z-50 max-w-[calc(98vw-32px)]">
+                    <div className="flex gap-2 sm:gap-3 overflow-x-auto scrollbar-hide px-1">
+                      {selectedListing.images.map((img, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setLightboxImageIndex(i)}
+                          className={`relative flex-shrink-0 w-12 h-12 sm:w-16 sm:h-16 rounded transition-all ${
+                            lightboxImageIndex === i 
+                              ? 'scale-110 shadow-lg shadow-primary/50' 
+                              : 'opacity-70 hover:opacity-100'
+                          }`}
+                        >
+                          <div className={`absolute inset-0 rounded overflow-hidden border-2 ${
+                            lightboxImageIndex === i 
+                              ? 'border-primary ring-2 ring-primary/50 ring-offset-2 ring-offset-black/70' 
+                              : 'border-transparent hover:border-white/50'
+                          }`}>
+                            <img 
+                              src={img} 
+                              alt={`Thumbnail ${i + 1}`}
+                              className={`w-full h-full object-cover transition-opacity ${
+                                lightboxImageIndex === i ? 'opacity-100' : 'opacity-70'
+                              }`}
+                            />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

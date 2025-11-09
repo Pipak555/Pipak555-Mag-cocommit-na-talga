@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CategoryCardVideo } from '@/components/ui/category-card-video';
 import { VideoBackground } from '@/components/ui/video-background';
-import { Heart, MapPin, Calendar, Wallet, Settings, User, Sparkles, Bookmark, Home, Compass, Wrench, Building2 } from 'lucide-react';
+import { Heart, MapPin, Calendar, Wallet, Settings, User, Sparkles, Bookmark, Home, Compass, Wrench, Building2, MessageSquare } from 'lucide-react';
 import { formatPHP } from '@/lib/currency';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
@@ -182,23 +182,26 @@ const GuestDashboard = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-soft">
-        <div className="container mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
+        <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <Logo size="sm" />
-            <div className="p-2 rounded-lg bg-secondary/10">
+            <div className="hidden sm:block p-2 rounded-lg bg-secondary/10">
               <User className="w-5 h-5 text-secondary" />
             </div>
-            <div>
-              <h1 className="text-lg font-bold">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-base sm:text-lg font-bold truncate">
                 Welcome, {userProfile?.fullName || 'Guest'}!
               </h1>
-              <p className="text-xs text-muted-foreground">Discover your next adventure</p>
+              <p className="text-xs text-muted-foreground hidden sm:block">Discover your next adventure</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             <NotificationBell />
             <ThemeToggle />
-            <Button variant="outline" onClick={() => setLogoutDialogOpen(true)}>Sign Out</Button>
+            <Button variant="outline" onClick={() => setLogoutDialogOpen(true)} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation">
+              <span className="hidden sm:inline">Sign Out</span>
+              <span className="sm:hidden">Out</span>
+            </Button>
           </div>
         </div>
       </header>
@@ -235,7 +238,7 @@ const GuestDashboard = () => {
         </div>
 
         {/* Quick Stats */}
-        <div className={`grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8 ${hasRole('host') ? 'lg:grid-cols-5' : 'lg:grid-cols-6'}`}>
+        <div className={`grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-6 sm:mb-8 ${hasRole('host') ? 'lg:grid-cols-5' : 'lg:grid-cols-6'}`}>
           <Card 
             className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer hover:scale-105 active:scale-100"
             onClick={() => navigate('/guest/favorites')}
@@ -412,7 +415,7 @@ const GuestDashboard = () => {
         )}
 
         {/* Quick Actions */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-6">
           <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/guest/favorites')}>
             <CardHeader>
               <Heart className="w-8 h-8 text-primary mb-2" />
@@ -426,6 +429,14 @@ const GuestDashboard = () => {
               <Calendar className="w-8 h-8 text-secondary mb-2" />
               <CardTitle>My Bookings</CardTitle>
               <CardDescription>View your trips</CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/guest/messages')}>
+            <CardHeader>
+              <MessageSquare className="w-8 h-8 text-primary mb-2" />
+              <CardTitle>Messages</CardTitle>
+              <CardDescription>View your conversations</CardDescription>
             </CardHeader>
           </Card>
 

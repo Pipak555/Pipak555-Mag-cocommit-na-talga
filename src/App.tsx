@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
@@ -35,13 +35,17 @@ const HostPayments = lazy(() => import("./pages/host/HostPayments"));
 const Wallet = lazy(() => import("./pages/guest/Wallet"));
 const ManageUsers = lazy(() => import("./pages/admin/ManageUsers"));
 const ReviewListings = lazy(() => import("./pages/admin/ReviewListings"));
+const ActiveListings = lazy(() => import("./pages/admin/ActiveListings"));
 const AccountSettings = lazy(() => import("./pages/shared/AccountSettings"));
 const HostAccountSettings = lazy(() => import("./pages/host/HostAccountSettings"));
 const GuestAccountSettings = lazy(() => import("./pages/guest/GuestAccountSettings"));
+const HostRegister = lazy(() => import("./pages/host/HostRegister"));
+const HostPayment = lazy(() => import("./pages/host/HostPayment"));
 const Favorites = lazy(() => import("./pages/guest/Favorites"));
 const Wishlist = lazy(() => import("./pages/guest/Wishlist"));
 const HostMessages = lazy(() => import("./pages/host/Messages"));
 const GuestMessages = lazy(() => import("./pages/guest/Messages"));
+const AdminMessages = lazy(() => import("./pages/admin/Messages"));
 const HostCalendar = lazy(() => import("./pages/host/Calendar"));
 const Analytics = lazy(() => import("./pages/admin/Analytics"));
 const ManagePayments = lazy(() => import("./pages/admin/ManagePayments"));
@@ -69,6 +73,10 @@ const AppRoutes = () => {
     <Routes>
             <Route path="/" element={<LazyRoute component={Landing} />} />
             <Route path="/host/policies" element={<LazyRoute component={HostPolicyAcceptance} />} />
+            <Route path="/host/register" element={<LazyRoute component={HostRegister} />} />
+            <Route path="/host/payment" element={<LazyRoute component={HostPayment} />} />
+            <Route path="/host/payment/success" element={<LazyRoute component={HostPayment} />} />
+            <Route path="/login" element={<Navigate to="/guest/login" replace />} />
             <Route path="/host/login" element={<LazyRoute component={HostLogin} />} />
             <Route path="/guest/login" element={<LazyRoute component={GuestLogin} />} />
             <Route path="/admin/login" element={<LazyRoute component={AdminLogin} />} />
@@ -95,9 +103,12 @@ const AppRoutes = () => {
             <Route path="/guest/settings" element={<LazyRoute component={GuestAccountSettings} />} />
             <Route path="/guest/favorites" element={<LazyRoute component={Favorites} />} />
             <Route path="/guest/wishlist" element={<LazyRoute component={Wishlist} />} />
+            <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="/admin/dashboard" element={<LazyRoute component={AdminDashboard} />} />
             <Route path="/admin/users" element={<LazyRoute component={ManageUsers} />} />
             <Route path="/admin/listings" element={<LazyRoute component={ReviewListings} />} />
+            <Route path="/admin/active-listings" element={<LazyRoute component={ActiveListings} />} />
+            <Route path="/admin/messages" element={<LazyRoute component={AdminMessages} />} />
             <Route path="/admin/payments" element={<LazyRoute component={ManagePayments} />} />
             <Route path="/admin/analytics" element={<LazyRoute component={Analytics} />} />
             <Route path="/admin/reports" element={<LazyRoute component={Reports} />} />
@@ -115,7 +126,12 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner />
-          <BrowserRouter>
+          <BrowserRouter
+            future={{
+              v7_startTransition: true,
+              v7_relativeSplatPath: true,
+            }}
+          >
             <ErrorBoundary>
               <AuthProvider>
                 <NotificationProvider>

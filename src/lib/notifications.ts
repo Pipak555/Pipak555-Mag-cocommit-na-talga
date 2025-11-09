@@ -227,6 +227,19 @@ export const notifyNewMessage = async (
   messageId: string
 ): Promise<void> => {
   try {
+    // Get user profile to determine role and correct messages URL
+    const { getUserProfile } = await import('./firestore');
+    const userProfile = await getUserProfile(userId);
+    const userRole = userProfile?.role || 'guest';
+    
+    // Determine the correct messages URL based on user role
+    let actionUrl = '/guest/messages';
+    if (userRole === 'host') {
+      actionUrl = '/host/messages';
+    } else if (userRole === 'admin') {
+      actionUrl = '/admin/messages';
+    }
+    
     await createNotification({
       userId,
       type: 'message',
@@ -236,7 +249,7 @@ export const notifyNewMessage = async (
       relatedType: 'message',
       read: false,
       priority: 'high',
-      actionUrl: `/guest/messages`
+      actionUrl
     });
   } catch (error) {
     console.error('Error creating new message notification:', error);

@@ -20,7 +20,7 @@ const Landing = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="absolute top-0 left-0 right-0 z-50 bg-background/80 dark:bg-black/20 backdrop-blur-md border-b border-border/50 dark:border-white/10">
-        <div className="container mx-auto px-6 py-4 flex justify-between items-center">
+        <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center">
           <Logo size="md" />
           <ThemeToggle />
         </div>
@@ -46,10 +46,10 @@ const Landing = () => {
         </div>
         
         {/* Content */}
-        <div className="relative z-20 container mx-auto px-4 sm:px-6 lg:px-8 h-full flex flex-col justify-center animate-fadeInUp py-32">
+        <div className="relative z-20 container mx-auto px-4 sm:px-6 lg:px-8 h-full flex flex-col justify-center animate-fadeInUp py-20 sm:py-24 md:py-32">
           <div className="max-w-3xl">
             {/* Title with better contrast */}
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight text-foreground dark:text-white drop-shadow-2xl">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold mb-4 sm:mb-6 leading-tight text-foreground dark:text-white drop-shadow-2xl">
               Welcome to{' '}
               <span className="bg-gradient-to-r from-orange-400 via-blue-400 to-green-400 bg-clip-text text-transparent drop-shadow-lg">
                 Mojo Dojo Casa House
@@ -57,16 +57,16 @@ const Landing = () => {
             </h1>
             
             {/* Tagline with much better contrast */}
-            <p className="text-xl md:text-2xl text-foreground/90 dark:text-white/95 mb-10 leading-relaxed max-w-2xl drop-shadow-lg font-medium">
+            <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-foreground/90 dark:text-white/95 mb-6 sm:mb-8 md:mb-10 leading-relaxed max-w-2xl drop-shadow-lg font-medium">
               Your gateway to amazing stays. Connect with hosts and guests for unique experiences
             </p>
             
             {/* Buttons */}
-            <div className="flex flex-wrap gap-4">
-              <Button size="lg" asChild className="shadow-2xl hover:shadow-2xl hover:scale-105 transition-all h-14 px-8 text-lg bg-primary hover:bg-primary/90">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+              <Button size="lg" asChild className="shadow-2xl hover:shadow-2xl hover:scale-105 transition-all h-12 sm:h-14 px-6 sm:px-8 text-base sm:text-lg bg-primary hover:bg-primary/90 w-full sm:w-auto">
                 <Link to="/guest/login">Browse Listings</Link>
               </Button>
-              <Button size="lg" variant="outline" asChild className="h-14 px-8 text-lg border-2 border-border/50 dark:border-white/30 bg-background/80 dark:bg-white/10 backdrop-blur-md hover:bg-background/90 dark:hover:bg-white/20 text-foreground dark:text-white hover:text-foreground dark:hover:text-white">
+              <Button size="lg" variant="outline" asChild className="h-12 sm:h-14 px-6 sm:px-8 text-base sm:text-lg border-2 border-border/50 dark:border-white/30 bg-background/80 dark:bg-white/10 backdrop-blur-md hover:bg-background/90 dark:hover:bg-white/20 text-foreground dark:text-white hover:text-foreground dark:hover:text-white w-full sm:w-auto">
                 <Link to="/host/login">Become a Host</Link>
               </Button>
             </div>
@@ -80,16 +80,16 @@ const Landing = () => {
       </section>
 
       {/* Categories Section */}
-      <section className="py-16 md:py-20 bg-muted/30">
+      <section className="py-12 sm:py-16 md:py-20 bg-muted/30">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">Explore Categories</h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+          <div className="text-center mb-8 sm:mb-12 md:mb-16">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4">Explore Categories</h2>
+            <p className="text-sm sm:text-base md:text-lg text-muted-foreground max-w-2xl mx-auto px-4">
               Discover the perfect experience for your needs
             </p>
           </div>
           
-          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 md:gap-8 max-w-6xl mx-auto">
             <CategoryCardVideo
               videoSrc="/videos/category-home.mp4"
               fallbackImage={homeIcon}
@@ -124,25 +124,25 @@ const Landing = () => {
       </section>
 
       {/* Role Selection */}
-      <section className="py-20 bg-background">
-        <div className="container mx-auto px-6">
-          <h2 className="text-3xl font-bold text-center mb-4">Get Started</h2>
-          <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
+      <section className="py-12 sm:py-16 md:py-20 bg-background">
+        <div className="container mx-auto px-4 sm:px-6">
+          <h2 className="text-2xl sm:text-3xl font-bold text-center mb-3 sm:mb-4">Get Started</h2>
+          <p className="text-center text-sm sm:text-base text-muted-foreground mb-8 sm:mb-10 md:mb-12 max-w-2xl mx-auto px-4">
             Choose your role to access your personalized portal
           </p>
           
-          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 md:gap-8 max-w-6xl mx-auto">
             {/* Guest Card */}
             <Card className="group relative overflow-hidden border-2 hover:border-primary transition-all duration-300">
-              <div className="p-8 text-center">
-                <div className="mb-6 mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Users className="w-8 h-8 text-primary" />
+              <div className="p-6 sm:p-8 text-center">
+                <div className="mb-4 sm:mb-6 mx-auto w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Users className="w-7 h-7 sm:w-8 sm:h-8 text-primary" />
                 </div>
-                <h3 className="text-2xl font-bold mb-3">For Guests</h3>
-                <p className="text-muted-foreground mb-6 min-h-[48px]">
+                <h3 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-3">For Guests</h3>
+                <p className="text-sm sm:text-base text-muted-foreground mb-4 sm:mb-6 min-h-[48px]">
                   Find and book amazing places to stay and experiences to enjoy
                 </p>
-                <Button asChild className="w-full shadow-soft hover:shadow-medium transition-all">
+                <Button asChild className="w-full shadow-soft hover:shadow-medium transition-all h-11 sm:h-auto">
                   <Link to="/guest/login">Guest Portal</Link>
                 </Button>
               </div>
@@ -151,32 +151,37 @@ const Landing = () => {
 
             {/* Host Card */}
             <Card className="group relative overflow-hidden border-2 hover:border-secondary transition-all duration-300">
-              <div className="p-8 text-center">
-                <div className="mb-6 mx-auto w-16 h-16 rounded-full bg-secondary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Building2 className="w-8 h-8 text-secondary" />
+              <div className="p-6 sm:p-8 text-center">
+                <div className="mb-4 sm:mb-6 mx-auto w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-secondary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Building2 className="w-7 h-7 sm:w-8 sm:h-8 text-secondary" />
                 </div>
-                <h3 className="text-2xl font-bold mb-3">For Hosts</h3>
-                <p className="text-muted-foreground mb-6 min-h-[48px]">
-                  Share your space and earn by hosting guests from around the world
+                <h3 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-3">For Hosts</h3>
+                <p className="text-sm sm:text-base text-muted-foreground mb-4 sm:mb-6 min-h-[48px]">
+                  List your properties and start earning with our platform
                 </p>
-                <Button asChild className="w-full shadow-soft hover:shadow-medium transition-all" variant="secondary">
-                  <Link to="/host/login">Host Portal</Link>
-                </Button>
+                <div className="space-y-2">
+                  <Button asChild className="w-full shadow-soft hover:shadow-medium transition-all h-11 sm:h-auto">
+                    <Link to="/host/register">Get Started</Link>
+                  </Button>
+                  <Button asChild variant="outline" className="w-full h-11 sm:h-auto">
+                    <Link to="/host/login">Host Login</Link>
+                  </Button>
+                </div>
               </div>
-              <div className="absolute inset-x-0 bottom-0 h-1 bg-secondary transform scale-x-0 group-hover:scale-x-100 transition-transform" />
+              <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-hero transform scale-x-0 group-hover:scale-x-100 transition-transform" />
             </Card>
 
             {/* Admin Card */}
             <Card className="group relative overflow-hidden border-2 hover:border-accent transition-all duration-300">
-              <div className="p-8 text-center">
-                <div className="mb-6 mx-auto w-16 h-16 rounded-full bg-accent/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Shield className="w-8 h-8 text-accent" />
+              <div className="p-6 sm:p-8 text-center">
+                <div className="mb-4 sm:mb-6 mx-auto w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-accent/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Shield className="w-7 h-7 sm:w-8 sm:h-8 text-accent" />
                 </div>
-                <h3 className="text-2xl font-bold mb-3">Admin</h3>
-                <p className="text-muted-foreground mb-6 min-h-[48px]">
+                <h3 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-3">Admin</h3>
+                <p className="text-sm sm:text-base text-muted-foreground mb-4 sm:mb-6 min-h-[48px]">
                   Manage platform operations, policies, and user activities
                 </p>
-                <Button asChild className="w-full shadow-soft hover:shadow-medium transition-all" variant="outline">
+                <Button asChild className="w-full shadow-soft hover:shadow-medium transition-all h-11 sm:h-auto" variant="outline">
                   <Link to="/admin/login">Admin Portal</Link>
                 </Button>
               </div>

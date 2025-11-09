@@ -71,7 +71,26 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
       
       // Determine transaction type based on description
       const isDeposit = description.toLowerCase().includes('wallet deposit');
+      const isSubscription = description.toLowerCase().includes('host subscription') || description.toLowerCase().includes('subscription');
       const transactionType = isDeposit ? 'deposit' : 'payment';
+      
+      // Handle subscription payments
+      if (isSubscription) {
+        try {
+          const { processSubscriptionPayment } = await import('@/lib/billingService');
+          // Extract plan ID from description or use a default
+          const planIdMatch = description.match(/planId=([^)]+)/);
+          const planId = planIdMatch ? planIdMatch[1] : 'active-host-monthly';
+          
+          await processSubscriptionPayment(userId, planId, order.id, order.id);
+          toast.success("Payment successful! Your subscription is now active.");
+          onSuccess();
+          return;
+        } catch (subscriptionError: any) {
+          console.error('Error processing subscription:', subscriptionError);
+          // Still create transaction record even if subscription processing fails
+        }
+      }
       
       // Create transaction record
       await createTransaction({

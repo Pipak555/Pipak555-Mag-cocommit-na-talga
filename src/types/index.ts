@@ -133,3 +133,31 @@ export interface ServiceFee {
   status: 'pending' | 'collected';
   createdAt: string;
 }
+
+export interface HostPlan {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  billingCycle: 'monthly' | 'yearly';
+  features: string[];
+  isActive: boolean;
+}
+
+export interface HostSubscription {
+  id: string;
+  userId: string;
+  planId: string;
+  planName: string;
+  amount: number;
+  billingCycle: 'monthly' | 'yearly';
+  status: 'active' | 'cancelled' | 'expired' | 'pending';
+  startDate: string;
+  endDate?: string;
+  nextBillingDate?: string;
+  paymentMethod: 'paypal';
+  paymentId?: string;
+  transactionId?: string;
+  createdAt: string;
+  updatedAt: string;
+}

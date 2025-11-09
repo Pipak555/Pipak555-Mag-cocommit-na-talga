@@ -76,7 +76,14 @@ service cloud.firestore {
         resource.data.receiverId == request.auth.uid
       );
       allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.senderId == request.auth.uid;
+      // Allow sender to update/delete their own messages, or receiver to mark messages as read
+      allow update: if isSignedIn() && (
+        resource.data.senderId == request.auth.uid ||
+        (resource.data.receiverId == request.auth.uid &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']) &&
+         request.resource.data.read == true)
+      );
+      allow delete: if isSignedIn() && resource.data.senderId == request.auth.uid;
     }
 
     // Top-level transactions collection
@@ -101,7 +108,23 @@ service cloud.firestore {
     match /users/{userId} {
       // Allow read for: own document, admins, or any authenticated user (for booking emails, etc.)
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && request.auth.uid == userId;
+      // Allow write for: own document, or payment processing (host updating guest wallet/points for booking payment)
+      allow write: if isSignedIn() && (
+        request.auth.uid == userId ||
+        // Allow payment processing: host can update guest's walletBalance, points, and coupons when processing booking payment
+        // This is needed for the payment service to deduct from guest wallet, credit host wallet, award points, and mark coupons as used
+        // Check that only payment-related fields are being updated (allow any combination of these fields)
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['walletBalance']) ||
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points']) ||
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coupons']) ||
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['walletBalance', 'points']) ||
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['walletBalance', 'coupons']) ||
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'coupons']) ||
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['walletBalance', 'points', 'coupons'])) &&
+        // Ensure walletBalance is a number if it's being updated
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['walletBalance']) || 
+         request.resource.data.walletBalance is number)
+      );
 
       // Conversations under a user
       match /conversations/{convId} {
@@ -236,8 +259,15 @@ service cloud.firestore {
         isAdmin()
       );
       
-      // Users can create their own transactions
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      // Users can create their own transactions, or hosts can create transactions for payment processing
+      allow create: if isSignedIn() && (
+        request.resource.data.userId == request.auth.uid ||
+        // Allow hosts to create transactions for guests when processing booking payments
+        // This is needed for the payment service to create payment, deposit, and reward transactions
+        (request.resource.data.bookingId != null &&
+         request.resource.data.type in ['payment', 'deposit', 'reward'] &&
+         request.resource.data.status == 'completed')
+      );
       
       // Only admins can update transactions (e.g., confirm, refund)
       allow update: if isAdmin();

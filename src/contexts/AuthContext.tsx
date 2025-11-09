@@ -150,15 +150,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signIn = async (email: string, password: string, role: 'host' | 'guest' | 'admin') => {
     try {
+      // Log attempt for debugging (only in development)
+      if (import.meta.env.DEV) {
+        console.log(`[Auth] Sign in attempt for role: ${role}, email: ${email}`);
+      }
+      
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      
+      if (import.meta.env.DEV) {
+        console.log(`[Auth] Firebase auth successful, fetching user doc for: ${userCredential.user.uid}`);
+      }
+      
       const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
       
       if (!userDoc.exists()) {
+        if (import.meta.env.DEV) {
+          console.error(`[Auth] User document not found for uid: ${userCredential.user.uid}`);
+        }
         await firebaseSignOut(auth);
         throw new Error('Your account was not found. Please sign up first or contact support if you believe this is an error.');
       }
 
       const userData = userDoc.data();
+      
+      if (import.meta.env.DEV) {
+        console.log(`[Auth] User data retrieved:`, { 
+          roles: userData.roles || userData.role, 
+          emailVerified: userData?.emailVerified 
+        });
+      }
       
       // Support both old (single role) and new (multiple roles) format
       const userRoles = userData.roles || (userData.role ? [userData.role] : []);
@@ -167,18 +187,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (role === 'admin') {
         // Admin must only be admin
         if (!userRoles.includes('admin')) {
+          if (import.meta.env.DEV) {
+            console.error(`[Auth] Admin access denied. User roles:`, userRoles);
+          }
           await firebaseSignOut(auth);
           throw new Error('Admin access denied. This account does not have admin privileges.');
         }
       } else {
         // Guest and host cannot be admin
         if (userRoles.includes('admin')) {
+          if (import.meta.env.DEV) {
+            console.error(`[Auth] Admin account trying to sign in as ${role}`);
+          }
           await firebaseSignOut(auth);
           throw new Error('Admin accounts cannot sign in as guest or host. Please use the admin login page.');
         }
         
         // Check if user has this role - if not, they need to sign up for it
         if (!userRoles.includes(role)) {
+          if (import.meta.env.DEV) {
+            console.error(`[Auth] User does not have ${role} role. User roles:`, userRoles);
+          }
           await firebaseSignOut(auth);
           const roleName = role === 'guest' ? 'guest' : 'host';
           throw new Error(`This account is not registered as a ${roleName}. Please sign up for a ${roleName} account first, or sign in with an account that has ${roleName} access.`);
@@ -197,13 +226,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Check if email is verified (ONLY check Firestore field - OTP verification)
       const isEmailVerified = userData?.emailVerified === true;
       
+      if (import.meta.env.DEV) {
+        console.log(`[Auth] Email verified status: ${isEmailVerified}`);
+      }
+      
       // Don't sign out - allow them to stay signed in but indicate they need verification
       // The login page will handle redirecting to verification page
       if (!isEmailVerified) {
         // Return a special error that login pages can catch and redirect
         throw new Error('EMAIL_NOT_VERIFIED');
       }
+      
+      if (import.meta.env.DEV) {
+        console.log(`[Auth] Sign in successful for role: ${role}`);
+      }
     } catch (error: any) {
+      // Log error for debugging (only in development)
+      if (import.meta.env.DEV) {
+        console.error(`[Auth] Sign in error:`, {
+          code: error.code,
+          message: error.message,
+          role: role,
+          email: email
+        });
+      }
+      
       // Handle Firebase Auth errors
       if (error.code && error.code.startsWith('auth/')) {
         throw new Error(getAuthErrorMessage(error));

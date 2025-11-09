@@ -53,14 +53,14 @@ export const AdvancedFilter = ({ onFilterChange, initialFilters }: AdvancedFilte
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Filter className="h-5 w-5" />
+      <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+        <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+          <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
           Search Filters
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid md:grid-cols-3 gap-4">
+      <CardContent className="space-y-4 px-4 sm:px-6 pb-4 sm:pb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
           <div>
             <Label htmlFor="location">Where</Label>
             <Input
@@ -112,25 +112,26 @@ export const AdvancedFilter = ({ onFilterChange, initialFilters }: AdvancedFilte
           </div>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <div>
-            <Label htmlFor="guests">Guests</Label>
+            <Label htmlFor="guests" className="text-sm sm:text-base">Guests</Label>
             <Input
               id="guests"
               type="number"
               min="1"
               value={filters.guests}
               onChange={(e) => setFilters({ ...filters, guests: Number(e.target.value) })}
+              className="h-11 sm:h-auto text-base sm:text-sm"
             />
           </div>
 
           <div>
-            <Label htmlFor="category">Category</Label>
+            <Label htmlFor="category" className="text-sm sm:text-base">Category</Label>
             <Select
               value={filters.category}
               onValueChange={(value) => setFilters({ ...filters, category: value })}
             >
-              <SelectTrigger>
+              <SelectTrigger className="h-11 sm:h-auto text-base sm:text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -146,13 +147,13 @@ export const AdvancedFilter = ({ onFilterChange, initialFilters }: AdvancedFilte
         <Button
           variant="ghost"
           onClick={() => setShowAdvanced(!showAdvanced)}
-          className="w-full"
+          className="w-full h-11 sm:h-auto text-sm sm:text-base touch-manipulation"
         >
           {showAdvanced ? "Hide" : "Show"} Advanced Filters
         </Button>
 
         {showAdvanced && (
-          <div className="grid md:grid-cols-2 gap-4 pt-4 border-t">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pt-4 border-t">
             <div>
               <Label htmlFor="minPrice">Min Price (₱)</Label>
               <Input
@@ -178,9 +179,9 @@ export const AdvancedFilter = ({ onFilterChange, initialFilters }: AdvancedFilte
           </div>
         )}
 
-        <div className="flex gap-2">
-          <Button onClick={handleApply} className="flex-1">Apply Filters</Button>
-          <Button onClick={handleReset} variant="outline">Reset</Button>
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+          <Button onClick={handleApply} className="flex-1 h-11 sm:h-auto text-sm sm:text-base touch-manipulation">Apply Filters</Button>
+          <Button onClick={handleReset} variant="outline" className="h-11 sm:h-auto text-sm sm:text-base touch-manipulation">Reset</Button>
         </div>
       </CardContent>
     </Card>

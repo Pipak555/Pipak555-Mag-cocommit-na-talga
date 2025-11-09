@@ -4,13 +4,23 @@ import { useAuth } from '@/contexts/AuthContext';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Shield, Users, Home, DollarSign, TrendingUp, FileText, Settings, AlertCircle } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Shield, Users, Home, DollarSign, TrendingUp, FileText, Settings, AlertCircle, Loader2, MessageSquare } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { toast } from 'sonner';
 import { formatPHP } from '@/lib/currency';
+import type { Transaction, Booking, Listing } from '@/types';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,6 +46,14 @@ const AdminDashboard = () => {
     serviceFees: 0,
   });
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
+  const [serviceFeeBreakdownOpen, setServiceFeeBreakdownOpen] = useState(false);
+  const [serviceFeeTransactions, setServiceFeeTransactions] = useState<Array<Transaction & { 
+    hostName?: string; 
+    hostEmail?: string;
+    listingTitle?: string;
+    bookingId?: string;
+  }>>([]);
+  const [loadingBreakdown, setLoadingBreakdown] = useState(false);
 
   useEffect(() => {
     if (!user || userRole !== 'admin') {
@@ -114,13 +132,11 @@ const AdminDashboard = () => {
         const activeBookings = bookings.filter(b => b.status === 'confirmed' || b.status === 'completed');
         const cancelledBookings = bookings.filter(b => b.status === 'cancelled');
         const totalRevenue = activeBookings.reduce((sum, b) => sum + (b.totalPrice || 0), 0);
-        const serviceFees = totalRevenue * 0.1; // 10% commission
         
         setStats(prev => ({
           ...prev,
           totalBookings: snapshot.size,
           cancelledBookings: cancelledBookings.length,
-          serviceFees,
         }));
       },
       (error) => {
@@ -128,6 +144,32 @@ const AdminDashboard = () => {
         toast.error(`Failed to load bookings: ${error.message}`);
       }
     );
+
+    // Load actual service fees from transactions
+    const loadServiceFees = async () => {
+      try {
+        const serviceFeeQuery = query(
+          collection(db, 'transactions'),
+          where('userId', '==', 'platform'),
+          where('paymentMethod', '==', 'service_fee')
+        );
+        const snapshot = await getDocs(serviceFeeQuery);
+        const totalServiceFees = snapshot.docs.reduce((sum, doc) => {
+          const data = doc.data();
+          return sum + (data.amount || 0);
+        }, 0);
+        
+        setStats(prev => ({
+          ...prev,
+          serviceFees: totalServiceFees,
+        }));
+      } catch (error: any) {
+        console.error('Error loading service fees:', error);
+        // Don't show error toast, just log it
+      }
+    };
+
+    loadServiceFees();
 
     return () => {
       // Only unsubscribe if the functions were created
@@ -140,6 +182,93 @@ const AdminDashboard = () => {
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
+  };
+
+  const handleViewServiceFeeBreakdown = async () => {
+    setServiceFeeBreakdownOpen(true);
+    setLoadingBreakdown(true);
+    
+    try {
+      // Fetch all service fee transactions
+      const serviceFeeQuery = query(
+        collection(db, 'transactions'),
+        where('userId', '==', 'platform'),
+        where('paymentMethod', '==', 'service_fee')
+      );
+      const snapshot = await getDocs(serviceFeeQuery);
+      
+      // Fetch host and listing info for each transaction
+      const transactionsWithDetails = await Promise.all(
+        snapshot.docs.map(async (docSnapshot) => {
+          const data = docSnapshot.data() as Transaction;
+          const transaction: Transaction & { 
+            hostName?: string; 
+            hostEmail?: string;
+            listingTitle?: string;
+            bookingId?: string;
+          } = {
+            id: docSnapshot.id,
+            ...data,
+          };
+
+          // Fetch host information
+          if (data.hostId) {
+            try {
+              const hostDoc = await getDoc(doc(db, 'users', data.hostId));
+              if (hostDoc.exists()) {
+                const hostData = hostDoc.data();
+                transaction.hostName = hostData.fullName || 'N/A';
+                transaction.hostEmail = hostData.email || 'N/A';
+              }
+            } catch (error) {
+              console.error('Error fetching host info:', error);
+            }
+          }
+
+          // Fetch booking and listing information
+          if (data.bookingId) {
+            try {
+              const bookingDoc = await getDoc(doc(db, 'bookings', data.bookingId));
+              if (bookingDoc.exists()) {
+                const bookingData = bookingDoc.data() as Booking;
+                transaction.bookingId = data.bookingId;
+                
+                // Fetch listing title
+                if (bookingData.listingId) {
+                  try {
+                    const listingDoc = await getDoc(doc(db, 'listing', bookingData.listingId));
+                    if (listingDoc.exists()) {
+                      const listingData = listingDoc.data() as Listing;
+                      transaction.listingTitle = listingData.title || 'N/A';
+                    }
+                  } catch (error) {
+                    console.error('Error fetching listing info:', error);
+                  }
+                }
+              }
+            } catch (error) {
+              console.error('Error fetching booking info:', error);
+            }
+          }
+
+          return transaction;
+        })
+      );
+
+      // Sort by date (newest first)
+      transactionsWithDetails.sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+        return dateB - dateA;
+      });
+
+      setServiceFeeTransactions(transactionsWithDetails);
+    } catch (error: any) {
+      console.error('Error loading service fee breakdown:', error);
+      toast.error(`Failed to load service fee breakdown: ${error.message || 'Unknown error'}`);
+    } finally {
+      setLoadingBreakdown(false);
+    }
   };
 
   return (
@@ -188,12 +317,16 @@ const AdminDashboard = () => {
             </CardContent>
           </Card>
 
-          <Card className="shadow-soft">
+          <Card 
+            className="shadow-soft cursor-pointer hover:shadow-medium transition-shadow"
+            onClick={() => navigate('/admin/active-listings')}
+          >
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">Active Listings</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.activeListings}</div>
+              <p className="text-xs text-muted-foreground mt-1">Click to manage</p>
             </CardContent>
           </Card>
 
@@ -206,13 +339,16 @@ const AdminDashboard = () => {
             </CardContent>
           </Card>
 
-          <Card className="shadow-soft">
+          <Card 
+            className="shadow-soft cursor-pointer hover:shadow-medium transition-shadow"
+            onClick={handleViewServiceFeeBreakdown}
+          >
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">Service Fees</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-accent">{formatPHP(stats.serviceFees)}</div>
-              <p className="text-xs text-muted-foreground mt-1">10% commission</p>
+              <p className="text-xs text-muted-foreground mt-1">10% commission • Click to view breakdown</p>
             </CardContent>
           </Card>
         </div>
@@ -278,6 +414,16 @@ const AdminDashboard = () => {
               </CardDescription>
             </CardHeader>
           </Card>
+
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/admin/messages')}>
+            <CardHeader>
+              <MessageSquare className="w-8 h-8 text-primary mb-2" />
+              <CardTitle>Messages</CardTitle>
+              <CardDescription>
+                View and respond to messages
+              </CardDescription>
+            </CardHeader>
+          </Card>
         </div>
 
         {/* Recent Activity */}
@@ -294,6 +440,112 @@ const AdminDashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Service Fee Breakdown Dialog */}
+      <Dialog open={serviceFeeBreakdownOpen} onOpenChange={setServiceFeeBreakdownOpen}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5" />
+              Service Fee Breakdown
+            </DialogTitle>
+            <DialogDescription>
+              Detailed breakdown of all service fees collected (10% commission)
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingBreakdown ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="ml-3 text-muted-foreground">Loading breakdown...</p>
+            </div>
+          ) : serviceFeeTransactions.length === 0 ? (
+            <div className="text-center py-12">
+              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+              <p className="text-muted-foreground">No service fees collected yet</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Summary */}
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Total Service Fees</p>
+                      <p className="text-2xl font-bold text-accent">
+                        {formatPHP(
+                          serviceFeeTransactions.reduce((sum, t) => sum + (t.amount || 0), 0)
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Total Transactions</p>
+                      <p className="text-2xl font-bold">{serviceFeeTransactions.length}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Transactions Table */}
+              <div className="border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Booking ID</TableHead>
+                      <TableHead>Listing</TableHead>
+                      <TableHead>Host Name</TableHead>
+                      <TableHead>Host Email</TableHead>
+                      <TableHead className="text-right">Service Fee</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {serviceFeeTransactions.map((transaction) => (
+                      <TableRow key={transaction.id}>
+                        <TableCell>
+                          {transaction.createdAt
+                            ? new Date(transaction.createdAt).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : 'N/A'}
+                        </TableCell>
+                        <TableCell>
+                          <code className="text-xs bg-muted px-2 py-1 rounded">
+                            {transaction.bookingId?.slice(0, 8) || 'N/A'}
+                          </code>
+                        </TableCell>
+                        <TableCell className="max-w-[200px] truncate">
+                          {transaction.listingTitle || 'N/A'}
+                        </TableCell>
+                        <TableCell>{transaction.hostName || 'N/A'}</TableCell>
+                        <TableCell>
+                          {transaction.hostEmail ? (
+                            <a
+                              href={`mailto:${transaction.hostEmail}`}
+                              className="text-primary hover:underline"
+                            >
+                              {transaction.hostEmail}
+                            </a>
+                          ) : (
+                            'N/A'
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold text-accent">
+                          {formatPHP(transaction.amount || 0)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Logout Confirmation Dialog */}
       <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>

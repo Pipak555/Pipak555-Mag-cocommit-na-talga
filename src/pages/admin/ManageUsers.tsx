@@ -3,11 +3,22 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { sendMessage } from "@/lib/firestore";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, AlertCircle, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { ArrowLeft, AlertCircle, Loader2, MessageSquare, Send } from "lucide-react";
 import { toast } from "sonner";
 import type { UserProfile } from "@/types";
 import { formatPHP } from "@/lib/currency";
@@ -18,6 +29,10 @@ const ManageUsers = () => {
   const [users, setUsers] = useState<Array<UserProfile & { id: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [messageDialogOpen, setMessageDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<(UserProfile & { id: string }) | null>(null);
+  const [messageContent, setMessageContent] = useState('');
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     if (!user || userRole !== 'admin') {
@@ -50,6 +65,39 @@ const ManageUsers = () => {
       toast.error(errorMessage);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenMessageDialog = (targetUser: UserProfile & { id: string }) => {
+    setSelectedUser(targetUser);
+    setMessageContent('');
+    setMessageDialogOpen(true);
+  };
+
+  const handleSendMessage = async () => {
+    if (!user || !selectedUser || !messageContent.trim()) {
+      toast.error('Please enter a message');
+      return;
+    }
+
+    setSending(true);
+    try {
+      await sendMessage({
+        senderId: user.uid,
+        receiverId: selectedUser.id,
+        content: messageContent.trim(),
+        read: false,
+      });
+      
+      toast.success(`Message sent to ${selectedUser.fullName || selectedUser.email}`);
+      setMessageDialogOpen(false);
+      setMessageContent('');
+      setSelectedUser(null);
+    } catch (error: any) {
+      console.error('Error sending message:', error);
+      toast.error(`Failed to send message: ${error.message || 'Unknown error'}`);
+    } finally {
+      setSending(false);
     }
   };
 
@@ -104,22 +152,34 @@ const ManageUsers = () => {
                   <TableHead>Points</TableHead>
                   <TableHead>Wallet Balance</TableHead>
                   <TableHead>Joined</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {users.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.fullName || 'N/A'}</TableCell>
-                    <TableCell>{user.email}</TableCell>
+                {users.map((userItem) => (
+                  <TableRow key={userItem.id}>
+                    <TableCell className="font-medium">{userItem.fullName || 'N/A'}</TableCell>
+                    <TableCell>{userItem.email}</TableCell>
                     <TableCell>
-                      <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
-                        {user.role}
+                      <Badge variant={userItem.role === 'admin' ? 'default' : 'secondary'}>
+                        {userItem.role}
                       </Badge>
                     </TableCell>
-                    <TableCell>{user.points || 0}</TableCell>
-                    <TableCell>{formatPHP(user.walletBalance || 0)}</TableCell>
+                    <TableCell>{userItem.points || 0}</TableCell>
+                    <TableCell>{formatPHP(userItem.walletBalance || 0)}</TableCell>
                     <TableCell>
-                      {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
+                      {userItem.createdAt ? new Date(userItem.createdAt).toLocaleDateString() : 'N/A'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenMessageDialog(userItem)}
+                        className="gap-2"
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                        Message
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -127,6 +187,82 @@ const ManageUsers = () => {
             </Table>
           </Card>
         )}
+
+        {/* Message Dialog */}
+        <Dialog open={messageDialogOpen} onOpenChange={setMessageDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5" />
+                Send Message
+              </DialogTitle>
+              <DialogDescription>
+                Send a message to {selectedUser?.fullName || selectedUser?.email || 'this user'}
+              </DialogDescription>
+            </DialogHeader>
+
+            {selectedUser && (
+              <div className="space-y-4">
+                <div className="bg-muted/50 p-4 rounded-lg">
+                  <p className="text-sm text-muted-foreground mb-1">Recipient:</p>
+                  <p className="font-semibold">{selectedUser.fullName || 'N/A'}</p>
+                  <p className="text-sm text-muted-foreground">{selectedUser.email}</p>
+                  <Badge variant="secondary" className="mt-2">
+                    {selectedUser.role}
+                  </Badge>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="message-content" className="text-base font-semibold">
+                    Message <span className="text-destructive">*</span>
+                  </Label>
+                  <Textarea
+                    id="message-content"
+                    placeholder="Type your message here..."
+                    value={messageContent}
+                    onChange={(e) => setMessageContent(e.target.value)}
+                    className="min-h-[150px]"
+                    required
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    This message will be sent through the messaging system and the user will receive a notification.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setMessageDialogOpen(false);
+                  setMessageContent('');
+                  setSelectedUser(null);
+                }}
+                disabled={sending}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSendMessage}
+                disabled={sending || !messageContent.trim()}
+                className="gap-2"
+              >
+                {sending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4" />
+                    Send Message
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

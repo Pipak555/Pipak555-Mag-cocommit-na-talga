@@ -37,8 +37,8 @@
     <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
     
     <!-- Performance hints -->
-    <link rel="preload" as="script" href="/src/main.tsx" />
-    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/inter-var.woff2" />
+    <!-- Removed preload for main.tsx - Vite handles module loading automatically -->
+    <!-- Removed font preload - font is loaded via CSS, preload can cause warnings if not used immediately -->
     
     <!-- Resource hints for Firebase -->
     <link rel="dns-prefetch" href="https://firebase.googleapis.com" />

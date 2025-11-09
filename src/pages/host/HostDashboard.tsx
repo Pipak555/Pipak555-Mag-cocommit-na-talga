@@ -2,18 +2,21 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { SubscriptionGuard } from '@/components/host/SubscriptionGuard';
+import { hasActiveSubscription, getUserSubscription } from '@/lib/billingService';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { VideoBackground } from '@/components/ui/video-background';
-import { Plus, Home, Calendar, MessageSquare, DollarSign, Settings, Award, CalendarDays } from 'lucide-react';
+import { Plus, Home, Calendar, MessageSquare, DollarSign, Settings, Award, CalendarDays, CreditCard, AlertCircle } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { getBookings } from '@/lib/firestore';
-import type { Booking } from '@/types';
+import type { Booking, HostSubscription } from '@/types';
 import { formatPHP } from '@/lib/currency';
+import { toast } from 'sonner';
 import heroImage from '@/assets/hero-home.jpg';
 import {
   AlertDialog,
@@ -134,6 +137,8 @@ const HostDashboard = () => {
     totalEarnings: 0,
   });
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
+  const [hasSubscription, setHasSubscription] = useState<boolean | null>(null);
+  const [subscription, setSubscription] = useState<HostSubscription | null>(null);
 
   useEffect(() => {
     if (!user || !hasRole('host')) {
@@ -141,6 +146,22 @@ const HostDashboard = () => {
       return;
     }
 
+    // Check subscription status
+    const checkSubscription = async () => {
+      try {
+        const active = await hasActiveSubscription(user.uid);
+        setHasSubscription(active);
+        if (active) {
+          const sub = await getUserSubscription(user.uid);
+          setSubscription(sub);
+        }
+      } catch (error) {
+        console.error('Error checking subscription:', error);
+        setHasSubscription(false);
+      }
+    };
+
+    checkSubscription();
     // Load real-time data
     loadDashboardData();
 
@@ -212,30 +233,83 @@ const HostDashboard = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-soft">
-        <div className="container mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
+        <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <Logo size="sm" />
-            <div className="p-2 rounded-lg bg-primary/10">
+            <div className="hidden sm:block p-2 rounded-lg bg-primary/10">
               <Home className="w-5 h-5 text-primary" />
             </div>
-            <div>
-              <h1 className="text-lg font-bold">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-base sm:text-lg font-bold truncate">
                 Welcome, {userProfile?.fullName || 'Host'}!
               </h1>
-              <p className="text-xs text-muted-foreground">Manage your properties</p>
+              <p className="text-xs text-muted-foreground hidden sm:block">Manage your properties</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             <NotificationBell />
             <ThemeToggle />
-            <Button variant="outline" onClick={() => setLogoutDialogOpen(true)}>Sign Out</Button>
+            <Button variant="outline" onClick={() => setLogoutDialogOpen(true)} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation">
+              <span className="hidden sm:inline">Sign Out</span>
+              <span className="sm:hidden">Out</span>
+            </Button>
           </div>
         </div>
       </header>
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Subscription Status Banner */}
+        {hasSubscription === false && (
+          <Card className="mb-6 border-yellow-500/50 bg-yellow-500/10">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="font-semibold mb-1">Subscription Required</h3>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    You need an active subscription to create and manage listings. Subscribe now to unlock all features.
+                  </p>
+                  <Button 
+                    size="sm"
+                    onClick={() => navigate('/host/register')}
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Subscribe Now
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {hasSubscription === true && subscription && (
+          <Card className="mb-6 border-green-500/50 bg-green-500/10">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <CreditCard className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  <div>
+                    <h3 className="font-semibold">Active Subscription</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {subscription.planName} ({subscription.billingCycle}) - {formatPHP(subscription.amount)}/{subscription.billingCycle}
+                    </p>
+                    {subscription.endDate && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Expires: {new Date(subscription.endDate).toLocaleDateString()}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <Badge variant="outline" className="bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/50">
+                  Active
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-6 sm:mb-8">
           <Card 
             className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer hover:scale-105 active:scale-100"
             onClick={() => navigate('/host/listings')}
@@ -311,7 +385,14 @@ const HostDashboard = () => {
             <Button 
               size="lg" 
               className="h-12 px-8 text-lg bg-primary hover:bg-primary/90 shadow-2xl hover:shadow-2xl hover:scale-105 transition-all"
-              onClick={() => navigate('/host/create-listing')}
+              onClick={() => {
+                if (!hasSubscription) {
+                  toast.error('Subscription required to create listings');
+                  navigate('/host/register');
+                } else {
+                  navigate('/host/create-listing');
+                }
+              }}
             >
               Create New Listing
             </Button>
@@ -319,12 +400,26 @@ const HostDashboard = () => {
         </div>
 
         {/* Main Actions */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/host/create-listing')}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6 sm:mb-8">
+          <Card 
+            className={`shadow-medium hover:shadow-hover transition-smooth cursor-pointer ${
+              !hasSubscription ? 'opacity-60' : ''
+            }`} 
+            onClick={() => {
+              if (!hasSubscription) {
+                toast.error('Subscription required to create listings');
+                navigate('/host/register');
+              } else {
+                navigate('/host/create-listing');
+              }
+            }}
+          >
             <CardHeader>
               <Plus className="w-8 h-8 text-primary mb-2" />
               <CardTitle>Create New Listing</CardTitle>
-              <CardDescription>Add a new property, experience, or service</CardDescription>
+              <CardDescription>
+                {!hasSubscription ? 'Subscribe to create listings' : 'Add a new property, experience, or service'}
+              </CardDescription>
             </CardHeader>
           </Card>
 

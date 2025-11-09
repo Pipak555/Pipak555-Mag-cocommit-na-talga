@@ -124,27 +124,28 @@ const Wallet = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-screen bg-background p-4 sm:p-6">
       <div className="max-w-6xl mx-auto">
-        <Button variant="ghost" onClick={() => navigate('/guest/dashboard')} className="mb-6">
+        <Button variant="ghost" onClick={() => navigate('/guest/dashboard')} className="mb-4 sm:mb-6 h-10 sm:h-auto">
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Dashboard
+          <span className="hidden sm:inline">Back to Dashboard</span>
+          <span className="sm:hidden">Back</span>
         </Button>
 
-        <h1 className="text-3xl font-bold mb-6">E-Wallet</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6">E-Wallet</h1>
 
         {/* PayPal Account Verification Section */}
-        <Card className="mb-6 border-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5" />
+        <Card className="mb-4 sm:mb-6 border-2">
+          <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <CreditCard className="h-4 w-4 sm:h-5 sm:w-5" />
               PayPal Account Verification
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-xs sm:text-sm">
               Link your PayPal account by logging in with your PayPal credentials. This verifies you have a real PayPal account.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 sm:px-6 pb-4 sm:pb-6">
             {user ? (
               <PayPalIdentity
                 userId={user.uid}
@@ -169,18 +170,18 @@ const Wallet = () => {
           </CardContent>
         </Card>
 
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <WalletIcon className="h-5 w-5" />
+        <Card className="mb-4 sm:mb-6">
+          <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <WalletIcon className="h-4 w-4 sm:h-5 sm:w-5" />
               Current Balance
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-4xl font-bold text-primary mb-6">{formatPHP(balance)}</p>
+          <CardContent className="px-4 sm:px-6 pb-4 sm:pb-6">
+            <p className="text-3xl sm:text-4xl font-bold text-primary mb-4 sm:mb-6">{formatPHP(balance)}</p>
             
             <div className="space-y-4">
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <Input
                   type="number"
                   placeholder="Amount"
@@ -189,6 +190,7 @@ const Wallet = () => {
                   min="1"
                   step="0.01"
                   disabled={!paypalEmail}
+                  className="h-11 sm:h-auto text-base sm:text-sm flex-1"
                 />
               </div>
               {!paypalEmail ? (
@@ -214,19 +216,19 @@ const Wallet = () => {
           </CardContent>
         </Card>
 
-        <div className="grid md:grid-cols-2 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
           <CouponManager coupons={coupons} onApplyCoupon={handleApplyCoupon} />
           <Card>
-            <CardHeader>
-              <CardTitle>Transaction History</CardTitle>
+            <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+              <CardTitle className="text-base sm:text-lg">Transaction History</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-4 sm:px-6 pb-4 sm:pb-6">
               {transactions.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">No transactions yet</p>
+                <p className="text-center text-muted-foreground py-6 sm:py-8 text-sm sm:text-base">No transactions yet</p>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-2 sm:space-y-3">
                   {transactions.map((tx) => (
-                    <div key={tx.id} className="flex items-center justify-between p-3 border rounded">
+                    <div key={tx.id} className="flex items-center justify-between p-2.5 sm:p-3 border rounded touch-manipulation">
                       <div className="flex items-center gap-3">
                         {tx.type === 'deposit' || tx.type === 'reward' ? (
                           <TrendingUp className="h-5 w-5 text-green-500" />

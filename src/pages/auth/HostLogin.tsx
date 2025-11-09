@@ -207,11 +207,12 @@ const HostLogin = () => {
       </div>
       
       <header className="relative z-10 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
-        <div className="container mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" onClick={() => navigate('/')}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Home
+        <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
+            <Button variant="ghost" onClick={() => navigate('/')} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation">
+              <ArrowLeft className="h-4 w-4 mr-1.5 sm:mr-2" />
+              <span className="hidden sm:inline">Back to Home</span>
+              <span className="sm:hidden">Back</span>
             </Button>
             <Logo size="sm" />
           </div>
@@ -219,28 +220,28 @@ const HostLogin = () => {
         </div>
       </header>
       
-      <div className="relative z-10 flex-1 flex items-center justify-center p-6">
+      <div className="relative z-10 flex-1 flex items-center justify-center p-4 sm:p-6">
         <Card className="w-full max-w-md shadow-2xl border-2 border-secondary/20 bg-card/95 backdrop-blur-md relative overflow-hidden">
           {/* Decorative gradient overlay */}
           <div className="absolute inset-0 bg-gradient-to-br from-secondary/5 via-transparent to-primary/5 pointer-events-none" />
           
-          <CardHeader className="space-y-4 text-center pb-8 relative z-10">
-            <div className="w-20 h-20 mx-auto rounded-3xl bg-gradient-to-br from-secondary via-secondary/80 to-primary/60 flex items-center justify-center shadow-lg ring-4 ring-secondary/20 animate-in fade-in zoom-in duration-500">
-              <Building2 className="w-10 h-10 text-white" />
+          <CardHeader className="space-y-3 sm:space-y-4 text-center pb-6 sm:pb-8 px-4 sm:px-6 pt-4 sm:pt-6 relative z-10">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-3xl bg-gradient-to-br from-secondary via-secondary/80 to-primary/60 flex items-center justify-center shadow-lg ring-4 ring-secondary/20 animate-in fade-in zoom-in duration-500">
+              <Building2 className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
             </div>
             <div className="space-y-2">
-              <CardTitle className="text-4xl font-bold bg-gradient-to-r from-secondary to-primary bg-clip-text text-transparent">
+              <CardTitle className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-secondary to-primary bg-clip-text text-transparent">
                 Host Portal
               </CardTitle>
-              <CardDescription className="text-base mt-2 font-medium text-foreground/80 dark:text-muted-foreground">
+              <CardDescription className="text-sm sm:text-base mt-2 font-medium text-foreground/80 dark:text-muted-foreground">
                 Start hosting and earning today
               </CardDescription>
             </div>
           </CardHeader>
           
-          <CardContent className="relative z-10">
+          <CardContent className="relative z-10 px-4 sm:px-6 pb-4 sm:pb-6">
             <Tabs defaultValue={shouldShowSignup ? "signup" : "signin"} onValueChange={(value) => setActiveTab(value as 'signin' | 'signup')} className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-8 bg-muted/50 p-1 rounded-xl relative overflow-hidden">
+              <TabsList className="grid w-full grid-cols-2 mb-6 sm:mb-8 bg-muted/50 p-1 rounded-xl relative overflow-hidden">
                 <div 
                   className="absolute inset-y-1 bg-gradient-to-r from-secondary to-secondary/80 rounded-lg transition-all duration-300 ease-in-out"
                   style={{
@@ -249,30 +250,30 @@ const HostLogin = () => {
                     width: 'calc(50% - 4px)',
                   }}
                 />
-                <TabsTrigger value="signin" className="text-base font-semibold text-foreground/90 dark:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-300 ease-in-out relative z-10">
+                <TabsTrigger value="signin" className="text-sm sm:text-base font-semibold text-foreground/90 dark:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-300 ease-in-out relative z-10 h-10 sm:h-auto touch-manipulation">
                   Sign In
                 </TabsTrigger>
-                <TabsTrigger value="signup" className="text-base font-semibold text-foreground/90 dark:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-300 ease-in-out relative z-10">
+                <TabsTrigger value="signup" className="text-sm sm:text-base font-semibold text-foreground/90 dark:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-300 ease-in-out relative z-10 h-10 sm:h-auto touch-manipulation">
                   Sign Up
                 </TabsTrigger>
               </TabsList>
               
               <TabsContent value="signin">
                 <Form {...loginForm}>
-                  <form onSubmit={loginForm.handleSubmit(handleSignIn)} className="space-y-6">
+                  <form onSubmit={loginForm.handleSubmit(handleSignIn)} className="space-y-4 sm:space-y-6">
                     <FormField
                       control={loginForm.control}
                       name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-base font-semibold">Email</FormLabel>
+                          <FormLabel className="text-sm sm:text-base font-semibold">Email</FormLabel>
                           <FormControl>
                             <div className="relative group">
-                              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary group-focus-within:text-secondary transition-colors" />
+                              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-secondary group-focus-within:text-secondary transition-colors" />
                               <Input
                                 type="email"
                                 placeholder="host@example.com"
-                                className="pl-10 h-12 border-2 transition-all"
+                                className="pl-10 h-11 sm:h-12 border-2 transition-all text-base sm:text-sm"
                                 {...field}
                               />
                             </div>
@@ -287,22 +288,22 @@ const HostLogin = () => {
                       name="password"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-base font-semibold">Password</FormLabel>
+                          <FormLabel className="text-sm sm:text-base font-semibold">Password</FormLabel>
                           <FormControl>
                             <div className="relative group">
-                              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary group-focus-within:text-secondary transition-colors" />
+                              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-secondary group-focus-within:text-secondary transition-colors" />
                               <Input
                                 type={showPassword ? "text" : "password"}
                                 placeholder="••••••••"
-                                className="pl-10 pr-10 h-12 border-2 transition-all"
+                                className="pl-10 pr-10 h-11 sm:h-12 border-2 transition-all text-base sm:text-sm"
                                 {...field}
                               />
                               <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-secondary transition-colors"
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-secondary transition-colors h-8 w-8 sm:h-auto sm:w-auto flex items-center justify-center touch-manipulation"
                               >
-                                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                                {showPassword ? <EyeOff className="h-4 w-4 sm:h-5 sm:w-5" /> : <Eye className="h-4 w-4 sm:h-5 sm:w-5" />}
                               </button>
                             </div>
                           </FormControl>
@@ -324,7 +325,7 @@ const HostLogin = () => {
                     
                     <Button 
                       type="submit" 
-                      className="w-full h-12 text-base font-semibold bg-gradient-to-r from-secondary to-secondary/90 hover:from-secondary/90 hover:to-secondary text-white shadow-lg hover:shadow-xl transition-all duration-300" 
+                      className="w-full h-11 sm:h-12 text-sm sm:text-base font-semibold bg-gradient-to-r from-secondary to-secondary/90 hover:from-secondary/90 hover:to-secondary text-white shadow-lg hover:shadow-xl transition-all duration-300 touch-manipulation" 
                       disabled={loading}
                     >
                       {loading ? 'Signing in...' : 'Sign In'}
@@ -342,7 +343,7 @@ const HostLogin = () => {
                     <Button
                       type="button"
                       variant="outline"
-                      className="w-full h-12 text-base font-semibold border-2 hover:bg-muted/50 hover:border-secondary/50 transition-all duration-300"
+                      className="w-full h-11 sm:h-12 text-sm sm:text-base font-semibold border-2 hover:bg-muted/50 hover:border-secondary/50 transition-all duration-300 touch-manipulation"
                       onClick={handleGoogleSignIn}
                       disabled={googleLoading || loading}
                     >
@@ -374,20 +375,20 @@ const HostLogin = () => {
                   </Button>
                 </div>
                 <Form {...signUpForm}>
-                  <form onSubmit={signUpForm.handleSubmit(handleSignUp)} className="space-y-6">
+                  <form onSubmit={signUpForm.handleSubmit(handleSignUp)} className="space-y-4 sm:space-y-6">
                     <FormField
                       control={signUpForm.control}
                       name="fullName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-base font-semibold">Full Name</FormLabel>
+                          <FormLabel className="text-sm sm:text-base font-semibold">Full Name</FormLabel>
                           <FormControl>
                             <div className="relative group">
-                              <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary group-focus-within:text-secondary transition-colors" />
+                              <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-secondary group-focus-within:text-secondary transition-colors" />
                               <Input
                                 type="text"
                                 placeholder="Jane Smith"
-                                className="pl-10 h-12 border-2 transition-all"
+                                className="pl-10 h-11 sm:h-12 border-2 transition-all text-base sm:text-sm"
                                 {...field}
                               />
                             </div>
@@ -402,14 +403,14 @@ const HostLogin = () => {
                       name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-base font-semibold">Email</FormLabel>
+                          <FormLabel className="text-sm sm:text-base font-semibold">Email</FormLabel>
                           <FormControl>
                             <div className="relative group">
-                              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary group-focus-within:text-secondary transition-colors" />
+                              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-secondary group-focus-within:text-secondary transition-colors" />
                               <Input
                                 type="email"
                                 placeholder="host@example.com"
-                                className="pl-10 h-12 border-2 transition-all"
+                                className="pl-10 h-11 sm:h-12 border-2 transition-all text-base sm:text-sm"
                                 {...field}
                               />
                             </div>
@@ -424,22 +425,22 @@ const HostLogin = () => {
                       name="password"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-base font-semibold">Password</FormLabel>
+                          <FormLabel className="text-sm sm:text-base font-semibold">Password</FormLabel>
                           <FormControl>
                             <div className="relative group">
-                              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary group-focus-within:text-secondary transition-colors" />
+                              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-secondary group-focus-within:text-secondary transition-colors" />
                               <Input
                                 type={showPassword ? "text" : "password"}
                                 placeholder="••••••••"
-                                className="pl-10 pr-10 h-12 border-2 transition-all"
+                                className="pl-10 pr-10 h-11 sm:h-12 border-2 transition-all text-base sm:text-sm"
                                 {...field}
                               />
                               <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-secondary transition-colors"
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-secondary transition-colors h-8 w-8 sm:h-auto sm:w-auto flex items-center justify-center touch-manipulation"
                               >
-                                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                                {showPassword ? <EyeOff className="h-4 w-4 sm:h-5 sm:w-5" /> : <Eye className="h-4 w-4 sm:h-5 sm:w-5" />}
                               </button>
                             </div>
                           </FormControl>
@@ -454,22 +455,22 @@ const HostLogin = () => {
                       name="confirmPassword"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-base font-semibold">Confirm Password</FormLabel>
+                          <FormLabel className="text-sm sm:text-base font-semibold">Confirm Password</FormLabel>
                           <FormControl>
                             <div className="relative group">
-                              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary group-focus-within:text-secondary transition-colors" />
+                              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-secondary group-focus-within:text-secondary transition-colors" />
                               <Input
                                 type={showConfirmPassword ? "text" : "password"}
                                 placeholder="••••••••"
-                                className="pl-10 pr-10 h-12 border-2 transition-all"
+                                className="pl-10 pr-10 h-11 sm:h-12 border-2 transition-all text-base sm:text-sm"
                                 {...field}
                               />
                               <button
                                 type="button"
                                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-secondary transition-colors"
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-secondary transition-colors h-8 w-8 sm:h-auto sm:w-auto flex items-center justify-center touch-manipulation"
                               >
-                                {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                                {showConfirmPassword ? <EyeOff className="h-4 w-4 sm:h-5 sm:w-5" /> : <Eye className="h-4 w-4 sm:h-5 sm:w-5" />}
                               </button>
                             </div>
                           </FormControl>
@@ -480,7 +481,7 @@ const HostLogin = () => {
                     
                     <Button 
                       type="submit" 
-                      className="w-full h-12 text-base font-semibold bg-gradient-to-r from-secondary to-secondary/90 hover:from-secondary/90 hover:to-secondary text-white shadow-lg hover:shadow-xl transition-all duration-300" 
+                      className="w-full h-11 sm:h-12 text-sm sm:text-base font-semibold bg-gradient-to-r from-secondary to-secondary/90 hover:from-secondary/90 hover:to-secondary text-white shadow-lg hover:shadow-xl transition-all duration-300 touch-manipulation" 
                       disabled={loading}
                     >
                       {loading ? 'Creating account...' : 'Create Account'}
@@ -498,7 +499,7 @@ const HostLogin = () => {
                     <Button
                       type="button"
                       variant="outline"
-                      className="w-full h-12 text-base font-semibold border-2 hover:bg-muted/50 hover:border-secondary/50 transition-all duration-300"
+                      className="w-full h-11 sm:h-12 text-sm sm:text-base font-semibold border-2 hover:bg-muted/50 hover:border-secondary/50 transition-all duration-300 touch-manipulation"
                       onClick={handleGoogleAutofill}
                       disabled={googleLoading || loading}
                     >
@@ -516,7 +517,10 @@ const HostLogin = () => {
               </TabsContent>
             </Tabs>
             
-            <div className="mt-8 text-center text-sm text-foreground/70 dark:text-muted-foreground">
+            <div className="mt-8 text-center text-sm text-foreground/70 dark:text-muted-foreground space-y-2">
+              <p>
+                New to hosting? <Link to="/host/register" className="text-secondary hover:text-secondary/80 hover:underline font-semibold transition-colors">Get Started</Link>
+              </p>
               <p>
                 Not a host? <Link to="/guest/login" className="text-secondary hover:text-secondary/80 hover:underline font-semibold transition-colors">Browse as Guest</Link>
               </p>

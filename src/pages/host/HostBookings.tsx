@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { getBookings, updateBooking } from "@/lib/firestore";
+import { getBookings, updateBooking, getUserProfile } from "@/lib/firestore";
 import { processBookingPayment, processBookingRefund } from "@/lib/paymentService";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Calendar, RefreshCw, X } from "lucide-react";
+import { ArrowLeft, Calendar, RefreshCw, X, User, Mail, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import {
@@ -35,6 +35,7 @@ const HostBookings = () => {
   const [declineDialogOpen, setDeclineDialogOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [bookingToUpdate, setBookingToUpdate] = useState<{ id: string; action: 'confirmed' | 'cancelled' } | null>(null);
+  const [guestInfoMap, setGuestInfoMap] = useState<Record<string, { fullName?: string; email?: string }>>({});
 
   useEffect(() => {
     if (!user) return;
@@ -104,6 +105,9 @@ const HostBookings = () => {
         
         setBookings(filteredBookings);
         setLoading(false);
+        
+        // Load guest information for all bookings
+        loadGuestInfo(filteredBookings);
         
         if (filteredBookings.length === 0 && bookingsData.length > 0) {
           console.warn('⚠️ Found bookings but none match hostId:', {
@@ -228,10 +232,34 @@ const HostBookings = () => {
       const data = await getBookings({ hostId: user.uid });
       setBookings(data);
       console.log('📊 Bookings loaded (fallback):', data.length, 'bookings');
+      loadGuestInfo(data);
     } catch (error: any) {
       console.error('❌ Error in fallback load:', error);
       toast.error(`Failed to load bookings: ${error.message || 'Unknown error'}`);
     }
+  };
+
+  const loadGuestInfo = async (bookingsList: Booking[]) => {
+    const guestIds = [...new Set(bookingsList.map(b => b.guestId).filter(Boolean))];
+    const infoMap: Record<string, { fullName?: string; email?: string }> = {};
+    
+    await Promise.all(
+      guestIds.map(async (guestId) => {
+        try {
+          const profile = await getUserProfile(guestId);
+          if (profile) {
+            infoMap[guestId] = {
+              fullName: profile.fullName,
+              email: profile.email
+            };
+          }
+        } catch (error) {
+          console.error(`Error loading guest info for ${guestId}:`, error);
+        }
+      })
+    );
+    
+    setGuestInfoMap(infoMap);
   };
 
   const handleUpdateStatus = (id: string, status: 'confirmed' | 'cancelled') => {
@@ -471,8 +499,43 @@ const HostBookings = () => {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div className="grid grid-cols-3 gap-4 flex-1">
+                  <div className="space-y-4">
+                    {/* Guest Information */}
+                    {booking.guestId && guestInfoMap[booking.guestId] && (
+                      <div className="bg-muted/50 p-3 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3 flex-1">
+                            <User className="h-4 w-4 text-muted-foreground" />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">
+                                {guestInfoMap[booking.guestId].fullName || 'Guest'}
+                              </p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <Mail className="h-3 w-3 text-muted-foreground" />
+                                <a 
+                                  href={`mailto:${guestInfoMap[booking.guestId].email}`}
+                                  className="text-xs text-primary hover:underline"
+                                >
+                                  {guestInfoMap[booking.guestId].email}
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(`/host/messages?userId=${booking.guestId}`)}
+                            className="flex items-center gap-2"
+                          >
+                            <MessageSquare className="h-4 w-4" />
+                            Message
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Booking Details */}
+                    <div className="grid grid-cols-3 gap-4">
                       <div>
                         <p className="text-sm text-muted-foreground">Check-in</p>
                         <p className="font-medium">{new Date(booking.checkIn).toLocaleDateString()}</p>
@@ -489,10 +552,11 @@ const HostBookings = () => {
                     
                     {/* Action buttons for pending bookings */}
                     {booking.status === 'pending' && (
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 pt-2">
                         <Button 
                           size="sm"
                           onClick={() => handleUpdateStatus(booking.id, 'confirmed')}
+                          className="flex-1"
                         >
                           Confirm
                         </Button>
@@ -500,6 +564,7 @@ const HostBookings = () => {
                           size="sm"
                           variant="destructive"
                           onClick={() => handleUpdateStatus(booking.id, 'cancelled')}
+                          className="flex-1"
                         >
                           Decline
                         </Button>
@@ -508,7 +573,7 @@ const HostBookings = () => {
                     
                     {/* Cancel button for confirmed upcoming bookings */}
                     {booking.status === 'confirmed' && new Date(booking.checkIn) >= new Date() && (
-                      <div className="pt-4 border-t">
+                      <div className="pt-2 border-t">
                         <Button
                           variant="destructive"
                           size="sm"

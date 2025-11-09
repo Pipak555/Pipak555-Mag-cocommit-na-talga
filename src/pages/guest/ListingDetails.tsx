@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { getListing, createBooking, getListingRating } from "@/lib/firestore";
+import { getListing, createBooking, getListingRating, getBookings } from "@/lib/firestore";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, MapPin, Users, Heart, Bookmark, User, Ticket, X } from "lucide-react";
+import { ArrowLeft, MapPin, Users, Heart, Bookmark, User, Ticket, X, ChevronLeft, ChevronRight, Calendar as CalendarIcon, ZoomIn } from "lucide-react";
 import { toast } from "sonner";
 import { ReviewList } from "@/components/reviews/ReviewList";
 import { SocialShare } from "@/components/shared/SocialShare";
@@ -34,10 +35,15 @@ const ListingDetails = () => {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponCode, setCouponCode] = useState("");
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxImageIndex, setLightboxImageIndex] = useState(0);
+  const [confirmedBookings, setConfirmedBookings] = useState<any[]>([]);
 
   useEffect(() => {
     if (id) {
       loadListing();
+      setCurrentImageIndex(0); // Reset image index when listing changes
     }
     if (user) {
       loadFavorites();
@@ -45,6 +51,30 @@ const ListingDetails = () => {
       loadCoupons();
     }
   }, [id, user]);
+
+  // Keyboard navigation for lightbox
+  useEffect(() => {
+    if (!lightboxOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!listing?.images) return;
+      
+      if (e.key === 'ArrowLeft') {
+        setLightboxImageIndex((prev) => 
+          prev === 0 ? listing.images.length - 1 : prev - 1
+        );
+      } else if (e.key === 'ArrowRight') {
+        setLightboxImageIndex((prev) => 
+          prev === listing.images.length - 1 ? 0 : prev + 1
+        );
+      } else if (e.key === 'Escape') {
+        setLightboxOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lightboxOpen, listing?.images]);
 
   const loadListing = async () => {
     if (!id) return;
@@ -76,6 +106,9 @@ const ListingDetails = () => {
         // Load host information
         await loadHostInfo(data.hostId);
       }
+      
+      // Load confirmed bookings for this listing
+      await loadConfirmedBookings();
     }
   };
   
@@ -121,6 +154,66 @@ const ListingDetails = () => {
       const userData = userDoc.data();
       setCoupons(userData.coupons || []);
     }
+  };
+
+  const loadConfirmedBookings = async () => {
+    if (!id) return;
+    try {
+      // Fetch all confirmed bookings for this listing
+      const allBookings = await getBookings({ status: 'confirmed' });
+      const listingBookings = allBookings.filter(booking => booking.listingId === id);
+      setConfirmedBookings(listingBookings);
+    } catch (error) {
+      console.error('Error loading confirmed bookings:', error);
+      setConfirmedBookings([]);
+    }
+  };
+
+  // Check if a date is booked (confirmed by host)
+  const isDateBooked = (date: Date): boolean => {
+    if (!confirmedBookings.length) return false;
+    
+    const dateStr = date.toISOString().split('T')[0];
+    const dateTime = date.getTime();
+    
+    return confirmedBookings.some(booking => {
+      const checkIn = new Date(booking.checkIn);
+      const checkOut = new Date(booking.checkOut);
+      checkIn.setHours(0, 0, 0, 0);
+      checkOut.setHours(0, 0, 0, 0);
+      
+      return dateTime >= checkIn.getTime() && dateTime <= checkOut.getTime();
+    });
+  };
+
+  // Check if a date is in the listing's available dates
+  const isDateAvailable = (date: Date): boolean => {
+    if (!listing?.availableDates || listing.availableDates.length === 0) {
+      // If no available dates specified, all dates are available (except booked ones)
+      return true;
+    }
+    
+    const dateStr = date.toISOString().split('T')[0];
+    return listing.availableDates.includes(dateStr);
+  };
+
+  // Check if a date should be disabled
+  const isDateDisabled = (date: Date): boolean => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dateOnly = new Date(date);
+    dateOnly.setHours(0, 0, 0, 0);
+    
+    // Disable past dates
+    if (dateOnly < today) return true;
+    
+    // Disable if not in available dates
+    if (!isDateAvailable(dateOnly)) return true;
+    
+    // Disable if booked
+    if (isDateBooked(dateOnly)) return true;
+    
+    return false;
   };
 
   const handleFavorite = async () => {
@@ -219,7 +312,7 @@ const ListingDetails = () => {
       const basePrice = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)) * listing.price;
       const finalPrice = calculateTotal();
       
-      const bookingData = {
+      const bookingData: any = {
         listingId: listing.id,
         guestId: user.uid,
         hostId: listing.hostId,
@@ -228,10 +321,14 @@ const ListingDetails = () => {
         guests,
         totalPrice: finalPrice,
         originalPrice: basePrice,
-        couponCode: appliedCoupon?.code,
         discountAmount: appliedCoupon ? basePrice - finalPrice : 0,
         status: 'pending' as const, // Booking is pending host approval
       };
+
+      // Only include couponCode if a coupon was applied
+      if (appliedCoupon?.code) {
+        bookingData.couponCode = appliedCoupon.code;
+      }
 
       console.log('📝 Creating booking with data:', {
         ...bookingData,
@@ -313,52 +410,147 @@ const ListingDetails = () => {
   if (!listing) return <LoadingScreen />;
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-6xl mx-auto">
-        <Button variant="ghost" onClick={() => navigate('/guest/browse')} className="mb-4">
+    <div className="min-h-screen bg-background p-4 sm:p-6">
+      <div className="max-w-7xl mx-auto">
+        <Button variant="ghost" onClick={() => navigate('/guest/browse')} className="mb-4 h-10 sm:h-auto">
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Browse
+          <span className="hidden sm:inline">Back to Browse</span>
+          <span className="sm:hidden">Back</span>
         </Button>
 
-        <div className="grid md:grid-cols-2 gap-8">
-          <div>
-            <img 
-              src={listing.images[0] || '/placeholder.svg'} 
-              alt={listing.title}
-              className="w-full h-96 object-cover rounded-lg mb-4"
-            />
-            <div className="grid grid-cols-3 gap-2">
-              {listing.images.slice(1, 4).map((img, i) => (
-                <img key={i} src={img} alt="" className="w-full h-24 object-cover rounded" />
-              ))}
+        <div className="grid lg:grid-cols-12 gap-4 sm:gap-6 lg:gap-8">
+          <div className="lg:col-span-7 space-y-3">
+            {/* Main Image Carousel/Slider */}
+            <div className="relative w-full h-[300px] sm:h-[400px] md:h-[500px] rounded-lg overflow-hidden group bg-muted cursor-pointer touch-manipulation" onClick={() => {
+              setLightboxImageIndex(currentImageIndex);
+              setLightboxOpen(true);
+            }}>
+              {listing.images && listing.images.length > 0 ? (
+                <>
+                  {/* Slider Container */}
+                  <div 
+                    className="flex transition-transform duration-500 ease-in-out h-full"
+                    style={{ transform: `translateX(-${currentImageIndex * 100}%)` }}
+                  >
+                    {listing.images.map((img, index) => (
+                      <div 
+                        key={index}
+                        className="min-w-full h-full flex-shrink-0 relative"
+                      >
+                        <img 
+                          src={img || '/placeholder.svg'} 
+                          alt={`${listing.title} - Image ${index + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {listing.images.length > 1 && (
+                    <>
+                      {/* Previous Button */}
+                      <Button
+                        variant="secondary"
+                        size="icon"
+                        className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 opacity-80 hover:opacity-100 transition-opacity bg-black/70 hover:bg-black/90 text-white border-none z-10 shadow-lg backdrop-blur-sm h-9 w-9 sm:h-10 sm:w-10 touch-manipulation"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentImageIndex((prev) => 
+                            prev === 0 ? listing.images.length - 1 : prev - 1
+                          );
+                        }}
+                        aria-label="Previous image"
+                      >
+                        <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
+                      </Button>
+                      {/* Next Button */}
+                      <Button
+                        variant="secondary"
+                        size="icon"
+                        className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 opacity-80 hover:opacity-100 transition-opacity bg-black/70 hover:bg-black/90 text-white border-none z-10 shadow-lg backdrop-blur-sm h-9 w-9 sm:h-10 sm:w-10 touch-manipulation"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentImageIndex((prev) => 
+                            prev === listing.images.length - 1 ? 0 : prev + 1
+                          );
+                        }}
+                        aria-label="Next image"
+                      >
+                        <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
+                      </Button>
+                      {/* Click to zoom hint */}
+                      <div className="absolute top-4 right-4 bg-black/70 text-white px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-sm z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <ZoomIn className="h-3 w-3 inline mr-1" />
+                        Click to zoom
+                      </div>
+                      {/* Image Counter */}
+                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/70 text-white px-4 py-1.5 rounded-full text-sm font-medium backdrop-blur-sm z-10">
+                        {currentImageIndex + 1} / {listing.images.length}
+                      </div>
+                    </>
+                  )}
+                </>
+              ) : (
+                <img 
+                  src="/placeholder.svg" 
+                  alt={listing.title}
+                  className="w-full h-full object-cover"
+                />
+              )}
             </div>
+            
+            {/* Horizontal Thumbnail Slider */}
+            {listing.images && listing.images.length > 1 && (
+              <div className="relative">
+                <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2 snap-x snap-mandatory touch-pan-x">
+                  {listing.images.map((img, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setCurrentImageIndex(i)}
+                      className={`relative flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden border-2 transition-all snap-start touch-manipulation ${
+                        currentImageIndex === i 
+                          ? 'border-primary ring-2 ring-primary/50 scale-105' 
+                          : 'border-transparent hover:border-border opacity-70 hover:opacity-100 active:opacity-100'
+                      }`}
+                    >
+                      <img 
+                        src={img} 
+                        alt={`Thumbnail ${i + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
           </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <Badge>{listing.category}</Badge>
-              <div className="flex items-center gap-2">
+          <div className="lg:col-span-5 flex flex-col">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-3 sm:mb-2 gap-2 sm:gap-0">
+              <Badge className="text-xs sm:text-sm">{listing.category}</Badge>
+              <div className="flex items-center gap-2 flex-wrap">
                 {user && listing && (
                   <>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={handleWishlist}
-                      className="flex items-center gap-2"
+                      className="flex items-center gap-1.5 sm:gap-2 h-9 sm:h-auto text-xs sm:text-sm touch-manipulation"
                       title={wishlist.includes(listing.id) ? "Remove from wishlist" : "Add to wishlist"}
                     >
-                      <Bookmark className={`h-4 w-4 ${wishlist.includes(listing.id) ? "fill-blue-500 text-blue-500" : ""}`} />
-                      {wishlist.includes(listing.id) ? "In Wishlist" : "Wishlist"}
+                      <Bookmark className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${wishlist.includes(listing.id) ? "fill-blue-500 text-blue-500" : ""}`} />
+                      <span className="hidden sm:inline">{wishlist.includes(listing.id) ? "In Wishlist" : "Wishlist"}</span>
                     </Button>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={handleFavorite}
-                      className="flex items-center gap-2"
+                      className="flex items-center gap-1.5 sm:gap-2 h-9 sm:h-auto text-xs sm:text-sm touch-manipulation"
                       title={favorites.includes(listing.id) ? "Remove from favorites" : "Add to favorites"}
                     >
-                      <Heart className={`h-4 w-4 ${favorites.includes(listing.id) ? "fill-red-500 text-red-500" : ""}`} />
-                      {favorites.includes(listing.id) ? "Favorited" : "Favorite"}
+                      <Heart className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${favorites.includes(listing.id) ? "fill-red-500 text-red-500" : ""}`} />
+                      <span className="hidden sm:inline">{favorites.includes(listing.id) ? "Favorited" : "Favorite"}</span>
                     </Button>
                   </>
                 )}
@@ -373,7 +565,7 @@ const ListingDetails = () => {
                 )}
               </div>
             </div>
-            <h1 className="text-3xl font-bold mb-2">{listing.title}</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold mb-2">{listing.title}</h1>
             <div className="flex items-center text-muted-foreground mb-4">
               <MapPin className="h-4 w-4 mr-1" />
               <span>{listing.location}</span>
@@ -418,36 +610,149 @@ const ListingDetails = () => {
               </div>
             )}
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>{formatPHP(listing.price)}</span>
-                  <span className="text-sm font-normal text-muted-foreground">per night</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Check-in</label>
-                  <Calendar
-                    mode="single"
-                    selected={checkIn}
-                    onSelect={setCheckIn}
-                    disabled={(date) => date < new Date()}
-                    className="rounded-md border"
-                  />
-                </div>
-                
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Check-out</label>
-                  <Calendar
-                    mode="single"
-                    selected={checkOut}
-                    onSelect={setCheckOut}
-                    disabled={(date) => !checkIn || date <= checkIn}
-                    className="rounded-md border"
-                  />
-                </div>
+          </div>
+        </div>
 
+        {/* Calendars - Combined container */}
+        <Card className="mt-6 sm:mt-8 shadow-lg">
+          <CardHeader className="pb-4 sm:pb-6 px-4 sm:px-6">
+            <CardTitle className="text-lg sm:text-xl font-bold flex items-center gap-2">
+              <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+              Select Dates
+            </CardTitle>
+            <CardDescription className="text-xs sm:text-sm text-muted-foreground mt-1">
+              Choose your check-in and check-out dates
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="px-4 sm:px-6 pb-4 sm:pb-6">
+            <div className="grid lg:grid-cols-2 gap-6 sm:gap-8 lg:gap-12">
+              <div className="flex flex-col">
+                {/* Check-in Calendar */}
+                <div className="flex flex-col">
+                  <div className="mb-4 pb-3 border-b">
+                    <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-primary"></div>
+                      Check-in
+                    </h3>
+                    {checkIn && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {checkIn.toLocaleDateString('en-US', { 
+                          weekday: 'long', 
+                          year: 'numeric', 
+                          month: 'long', 
+                          day: 'numeric' 
+                        })}
+                      </p>
+                    )}
+                  </div>
+                  <div className="w-full">
+                    <div className="w-full border rounded-md shadow-sm bg-card p-4">
+                      <Calendar
+                        mode="single"
+                        selected={checkIn}
+                        onSelect={setCheckIn}
+                        disabled={isDateDisabled}
+                        modifiers={{
+                          booked: (date) => isDateBooked(date),
+                        }}
+                        modifiersClassNames={{
+                          booked: "bg-orange-500/20 text-orange-600 dark:text-orange-400",
+                        }}
+                        className="w-full max-w-none [&_.rdp-day_booked]:bg-orange-500/20 [&_.rdp-day_booked]:text-orange-600 dark:[&_.rdp-day_booked]:text-orange-400 [&_.rdp-day_booked]:relative [&_.rdp-day_booked]:after:content-['booked'] [&_.rdp-day_booked]:after:absolute [&_.rdp-day_booked]:after:bottom-0 [&_.rdp-day_booked]:after:left-1/2 [&_.rdp-day_booked]:after:-translate-x-1/2 [&_.rdp-day_booked]:after:text-[7px] [&_.rdp-day_booked]:after:leading-tight [&_.rdp-day_booked]:after:opacity-80 [&_.rdp-day_booked]:after:whitespace-nowrap [&_.rdp-day_booked]:after:pointer-events-none"
+                        classNames={{
+                          months: "w-full",
+                          month: "w-full space-y-3",
+                          caption: "w-full mb-4",
+                          caption_label: "w-full text-center text-base font-semibold",
+                          nav: "w-full justify-between px-1",
+                          nav_button: "h-8 w-8",
+                          table: "w-full border-collapse",
+                          head_row: "w-full flex justify-between mb-2",
+                          head_cell: "flex-1 text-center text-sm font-medium text-muted-foreground",
+                          row: "w-full flex justify-between my-1",
+                          cell: "flex-1 text-center h-10",
+                          day: "w-full h-full flex items-center justify-center text-sm font-medium rounded-md hover:bg-accent transition-colors",
+                          day_disabled: "bg-orange-500/20 text-orange-600 dark:text-orange-400 opacity-100 cursor-not-allowed relative after:content-['booked'] after:absolute after:bottom-0 after:left-1/2 after:-translate-x-1/2 after:text-[7px] after:leading-tight after:opacity-80 after:whitespace-nowrap after:pointer-events-none",
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col lg:border-l lg:pl-12 lg:border-border/50">
+                {/* Check-out Calendar */}
+                <div className="flex flex-col">
+                  <div className="mb-4 pb-3 border-b">
+                    <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-accent"></div>
+                      Check-out
+                    </h3>
+                    {checkOut && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {checkOut.toLocaleDateString('en-US', { 
+                          weekday: 'long', 
+                          year: 'numeric', 
+                          month: 'long', 
+                          day: 'numeric' 
+                        })}
+                      </p>
+                    )}
+                  </div>
+                  <div className="w-full">
+                    <div className="w-full border rounded-md shadow-sm bg-card p-4">
+                      <Calendar
+                        mode="single"
+                        selected={checkOut}
+                        onSelect={setCheckOut}
+                        disabled={(date) => {
+                          if (!checkIn) return true;
+                          const checkInDate = new Date(checkIn);
+                          checkInDate.setHours(0, 0, 0, 0);
+                          const dateOnly = new Date(date);
+                          dateOnly.setHours(0, 0, 0, 0);
+                          return dateOnly <= checkInDate || isDateDisabled(date);
+                        }}
+                        modifiers={{
+                          booked: (date) => isDateBooked(date),
+                        }}
+                        modifiersClassNames={{
+                          booked: "bg-orange-500/20 text-orange-600 dark:text-orange-400",
+                        }}
+                        className="w-full max-w-none [&_.rdp-day_booked]:bg-orange-500/20 [&_.rdp-day_booked]:text-orange-600 dark:[&_.rdp-day_booked]:text-orange-400 [&_.rdp-day_booked]:relative [&_.rdp-day_booked]:after:content-['booked'] [&_.rdp-day_booked]:after:absolute [&_.rdp-day_booked]:after:bottom-0 [&_.rdp-day_booked]:after:left-1/2 [&_.rdp-day_booked]:after:-translate-x-1/2 [&_.rdp-day_booked]:after:text-[7px] [&_.rdp-day_booked]:after:leading-tight [&_.rdp-day_booked]:after:opacity-80 [&_.rdp-day_booked]:after:whitespace-nowrap [&_.rdp-day_booked]:after:pointer-events-none"
+                        classNames={{
+                          months: "w-full",
+                          month: "w-full space-y-3",
+                          caption: "w-full mb-4",
+                          caption_label: "w-full text-center text-base font-semibold",
+                          nav: "w-full justify-between px-1",
+                          nav_button: "h-8 w-8",
+                          table: "w-full border-collapse",
+                          head_row: "w-full flex justify-between mb-2",
+                          head_cell: "flex-1 text-center text-sm font-medium text-muted-foreground",
+                          row: "w-full flex justify-between my-1",
+                          cell: "flex-1 text-center h-10",
+                          day: "w-full h-full flex items-center justify-center text-sm font-medium rounded-md hover:bg-accent transition-colors",
+                          day_disabled: "bg-orange-500/20 text-orange-600 dark:text-orange-400 opacity-100 cursor-not-allowed relative after:content-['booked'] after:absolute after:bottom-0 after:left-1/2 after:-translate-x-1/2 after:text-[7px] after:leading-tight after:opacity-80 after:whitespace-nowrap after:pointer-events-none",
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Booking Card */}
+        <Card className="mt-6 sm:mt-8 shadow-lg sticky top-4 lg:top-8">
+                <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6">
+                  <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 sm:gap-0">
+                    <span className="text-2xl sm:text-3xl">{formatPHP(listing.price)}</span>
+                    <span className="text-xs sm:text-sm font-normal text-muted-foreground">per night</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4 px-4 sm:px-6 pb-4 sm:pb-6">
                 {/* Coupon Application */}
                 <div className="pt-4 border-t">
                   {!appliedCoupon ? (
@@ -514,7 +819,7 @@ const ListingDetails = () => {
                 )}
 
                 <Button 
-                  className="w-full" 
+                  className="w-full h-12 sm:h-auto text-base sm:text-sm touch-manipulation" 
                   onClick={handleBooking}
                   disabled={!checkIn || !checkOut || loading}
                 >
@@ -522,8 +827,104 @@ const ListingDetails = () => {
                 </Button>
               </CardContent>
             </Card>
-          </div>
-        </div>
+
+        {/* Lightbox/Modal for Full-Size Image Viewing */}
+        <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
+          <DialogContent className="max-w-[98vw] max-h-[98vh] w-auto h-auto p-0 bg-black/95 border-none m-1">
+            <DialogTitle className="sr-only">View Full Size Image</DialogTitle>
+            <DialogDescription className="sr-only">
+              Viewing image {lightboxImageIndex + 1} of {listing?.images?.length || 0} for {listing?.title}
+            </DialogDescription>
+            <div className="relative w-full h-full flex items-center justify-center min-h-[400px]">
+              {listing?.images && listing.images.length > 0 && (
+                <>
+                  {/* Close Button */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute top-2 right-2 z-50 bg-black/70 hover:bg-black/90 text-white border-none h-8 w-8 sm:h-10 sm:w-10"
+                    onClick={() => setLightboxOpen(false)}
+                  >
+                    <X className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </Button>
+
+                  {/* Image Counter */}
+                  <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-black/70 text-white px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium backdrop-blur-sm z-50">
+                    {lightboxImageIndex + 1} / {listing.images.length}
+                  </div>
+
+                  {/* Main Image */}
+                  <div className="w-full h-full flex items-center justify-center p-2 sm:p-4 pt-12 pb-20 sm:pb-24">
+                    <img 
+                      src={listing.images[lightboxImageIndex] || '/placeholder.svg'} 
+                      alt={`${listing.title} - Image ${lightboxImageIndex + 1}`}
+                      className="max-w-full max-h-[calc(98vh-160px)] object-contain"
+                    />
+                  </div>
+
+                  {/* Navigation Buttons */}
+                  {listing.images.length > 1 && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-50 bg-black/70 hover:bg-black/90 text-white border-none h-8 w-8 sm:h-12 sm:w-12"
+                        onClick={() => setLightboxImageIndex((prev) => 
+                          prev === 0 ? listing.images.length - 1 : prev - 1
+                        )}
+                      >
+                        <ChevronLeft className="h-4 w-4 sm:h-6 sm:w-6" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-50 bg-black/70 hover:bg-black/90 text-white border-none h-8 w-8 sm:h-12 sm:w-12"
+                        onClick={() => setLightboxImageIndex((prev) => 
+                          prev === listing.images.length - 1 ? 0 : prev + 1
+                        )}
+                      >
+                        <ChevronRight className="h-4 w-4 sm:h-6 sm:w-6" />
+                      </Button>
+                    </>
+                  )}
+
+                  {/* Thumbnail Strip at Bottom for Navigation */}
+                  {listing.images.length > 1 && (
+                    <div className="absolute bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-sm rounded-lg p-2 sm:p-3 z-50 max-w-[calc(98vw-32px)]">
+                      <div className="flex gap-2 sm:gap-3 overflow-x-auto scrollbar-hide px-1">
+                        {listing.images.map((img, i) => (
+                          <button
+                            key={i}
+                            onClick={() => setLightboxImageIndex(i)}
+                            className={`relative flex-shrink-0 w-12 h-12 sm:w-16 sm:h-16 rounded transition-all ${
+                              lightboxImageIndex === i 
+                                ? 'scale-110 shadow-lg shadow-primary/50' 
+                                : 'opacity-70 hover:opacity-100'
+                            }`}
+                          >
+                            <div className={`absolute inset-0 rounded overflow-hidden border-2 ${
+                              lightboxImageIndex === i 
+                                ? 'border-primary ring-2 ring-primary/50 ring-offset-2 ring-offset-black/70' 
+                                : 'border-transparent hover:border-white/50'
+                            }`}>
+                              <img 
+                                src={img} 
+                                alt={`Thumbnail ${i + 1}`}
+                                className={`w-full h-full object-cover transition-opacity ${
+                                  lightboxImageIndex === i ? 'opacity-100' : 'opacity-70'
+                                }`}
+                              />
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Reviews Section */}
         <div className="mt-12">

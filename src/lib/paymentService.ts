@@ -9,10 +9,10 @@ import {
 } from './notifications';
 
 /**
- * Service fee rate (15% of booking total)
+ * Service fee rate (10% of booking total)
  * This fee is deducted from the host's payment and kept by the platform
  */
-const SERVICE_FEE_RATE = 0.15; // 15% service fee
+const SERVICE_FEE_RATE = 0.1; // 10% service fee
 
 /**
  * Process payment when booking is confirmed
@@ -22,7 +22,7 @@ const SERVICE_FEE_RATE = 0.15; // 15% service fee
  * 2. Checks guest's wallet balance
  * 3. If wallet has sufficient balance, deducts payment from guest's wallet
  * 4. If wallet is insufficient, checks for PayPal payment transaction
- * 5. Calculates service fee (15%)
+ * 5. Calculates service fee (10%)
  * 6. Credits host's wallet with net amount (after service fee)
  * 7. Creates transaction records for audit trail
  * 8. Sends notifications to guest
@@ -134,7 +134,7 @@ export const processBookingPayment = async (booking: Booking, paymentMethod: 'wa
       userId: booking.hostId,
       type: 'deposit',
       amount: netToHost,
-      description: `Earnings from booking #${bookingId.slice(0, 8)} (after 15% service fee)`,
+      description: `Earnings from booking #${bookingId.slice(0, 8)} (after 10% service fee)`,
       status: 'completed',
       bookingId: bookingId,
       serviceFee: serviceFee,

@@ -217,17 +217,18 @@ const BrowseListings = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
         <Button
           variant="ghost"
           onClick={() => navigate('/guest/dashboard')}
-          className="mb-6"
+          className="mb-4 sm:mb-6 h-10 sm:h-auto"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Dashboard
+          <span className="hidden sm:inline">Back to Dashboard</span>
+          <span className="sm:hidden">Back</span>
         </Button>
 
-        <h1 className="text-3xl md:text-4xl font-bold mb-6">Browse Listings</h1>
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4 sm:mb-6">Browse Listings</h1>
 
         {/* Search Bar with Autocomplete */}
         <Card className="mb-6 shadow-md">
@@ -243,14 +244,14 @@ const BrowseListings = () => {
         </Card>
 
         {/* Category Chips/Tabs */}
-        <div className="mb-6 flex flex-wrap gap-2">
+        <div className="mb-4 sm:mb-6 flex flex-wrap gap-2">
           {['all','home','experience','service'].map((cat) => (
             <button
               key={cat}
-              className={`px-4 py-2 rounded-full text-sm font-medium border-2 transition-all ${
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-medium border-2 transition-all touch-manipulation ${
                 (filters.category === cat)
                   ? 'bg-primary text-primary-foreground border-primary shadow-md'
-                  : 'bg-background border-border text-foreground hover:bg-muted hover:border-primary/50'
+                  : 'bg-background border-border text-foreground hover:bg-muted hover:border-primary/50 active:bg-muted'
               }`}
               onClick={() => setFilters({ ...filters, category: cat as any })}
             >
@@ -267,7 +268,7 @@ const BrowseListings = () => {
         </div>
 
         {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
             {[...Array(8)].map((_, i) => (
               <ListingSkeleton key={i} />
             ))}
@@ -278,13 +279,13 @@ const BrowseListings = () => {
             title="No listings found"
             description="Try adjusting your filters or browse a different category to find what you're looking for."
             action={
-              <Button onClick={() => setFilters({ ...filters, category: 'all', location: '', guests: 1 })}>
+              <Button onClick={() => setFilters({ ...filters, category: 'all', location: '', guests: 1 })} className="h-11">
                 Clear Filters
               </Button>
             }
           />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 items-stretch">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6 items-stretch">
             {filteredListings.map((listing) => (
               <ListingCard
                 key={listing.id}
