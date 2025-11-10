@@ -293,5 +293,33 @@ service cloud.firestore {
       // Allow list/query for user's notifications
       allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
+
+    // Subscriptions collection - for host billing/subscription system
+    match /subscriptions/{subscriptionId} {
+      // Users can read their own subscriptions, admins can read all
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Users can create their own subscriptions (when paying)
+      allow create: if isSignedIn() && 
+        request.resource.data.userId == request.auth.uid;
+      
+      // Users can update their own subscriptions (renew, cancel), admins can update any
+      allow update: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Users can delete their own subscriptions, admins can delete any
+      allow delete: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Allow list/query for user's subscriptions
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
   }
 }
