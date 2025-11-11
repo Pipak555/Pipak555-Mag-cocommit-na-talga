@@ -142,7 +142,11 @@ const Landing = () => {
                 <p className="text-sm sm:text-base text-muted-foreground mb-4 sm:mb-6 min-h-[48px]">
                   Find and book amazing places to stay and experiences to enjoy
                 </p>
-                <Button asChild className="w-full shadow-soft hover:shadow-medium transition-all h-11 sm:h-auto">
+                <Button 
+                  asChild 
+                  variant="outline" 
+                  className="w-full shadow-soft hover:shadow-medium transition-all h-11 sm:h-auto hover:bg-primary hover:text-primary-foreground hover:border-primary"
+                >
                   <Link to="/guest/login">Guest Portal</Link>
                 </Button>
               </div>
@@ -160,11 +164,19 @@ const Landing = () => {
                   List your properties and start earning with our platform
                 </p>
                 <div className="space-y-2">
-                  <Button asChild className="w-full shadow-soft hover:shadow-medium transition-all h-11 sm:h-auto">
-                    <Link to="/host/register">Get Started</Link>
+                  <Button 
+                    asChild 
+                    variant="outline" 
+                    className="w-full shadow-soft hover:shadow-medium transition-all h-11 sm:h-auto hover:bg-secondary hover:text-secondary-foreground hover:border-secondary"
+                  >
+                    <Link to="/host/login">Host Portal</Link>
                   </Button>
-                  <Button asChild variant="outline" className="w-full h-11 sm:h-auto">
-                    <Link to="/host/login">Host Login</Link>
+                  <Button 
+                    asChild 
+                    variant="secondary"
+                    className="w-full shadow-soft hover:shadow-medium transition-all h-11 sm:h-auto"
+                  >
+                    <Link to="/host/register">Get Started</Link>
                   </Button>
                 </div>
               </div>
@@ -181,7 +193,11 @@ const Landing = () => {
                 <p className="text-sm sm:text-base text-muted-foreground mb-4 sm:mb-6 min-h-[48px]">
                   Manage platform operations, policies, and user activities
                 </p>
-                <Button asChild className="w-full shadow-soft hover:shadow-medium transition-all h-11 sm:h-auto" variant="outline">
+                <Button 
+                  asChild 
+                  variant="outline" 
+                  className="w-full shadow-soft hover:shadow-medium transition-all h-11 sm:h-auto hover:bg-accent hover:text-accent-foreground hover:border-accent"
+                >
                   <Link to="/admin/login">Admin Portal</Link>
                 </Button>
               </div>

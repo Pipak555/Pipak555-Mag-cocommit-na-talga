@@ -10,12 +10,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { ArrowLeft, User, Bell, Shield, Calendar, Ticket, Mail, Smartphone } from "lucide-react";
+import { ArrowLeft, User, Bell, CreditCard, Calendar, Ticket, Mail, Smartphone, Info, AlertTriangle, Loader2, Award } from "lucide-react";
+import { HostPointsDisplay } from "@/components/rewards/HostPointsDisplay";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getBookings } from "@/lib/firestore";
 import { CouponManager } from "@/components/coupons/CouponManager";
-import type { UserProfile, Booking, Coupon, NotificationPreferences } from "@/types";
+import { getUserSubscription, hasActiveSubscription, getPlanById, cancelSubscription } from "@/lib/billingService";
+import type { UserProfile, Booking, Coupon, NotificationPreferences, HostSubscription } from "@/types";
 import { formatPHP } from "@/lib/currency";
 import LoadingScreen from "@/components/ui/loading-screen";
 import {
@@ -39,6 +41,10 @@ const HostAccountSettings = () => {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'profile');
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [subscription, setSubscription] = useState<HostSubscription | null>(null);
+  const [hasSubscription, setHasSubscription] = useState<boolean | null>(null);
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>({
     email: {
       bookingConfirmations: true,
@@ -76,12 +82,28 @@ const HostAccountSettings = () => {
   useEffect(() => {
     if (user && hasRole('host')) {
       loadBookings();
+      loadSubscription();
       // Load notification preferences
       if (profile?.notifications) {
         setNotificationPrefs(profile.notifications);
       }
     }
   }, [user, userRole, profile]);
+
+  const loadSubscription = async () => {
+    if (!user) return;
+    try {
+      const active = await hasActiveSubscription(user.uid);
+      setHasSubscription(active);
+      if (active) {
+        const sub = await getUserSubscription(user.uid);
+        setSubscription(sub);
+      }
+    } catch (error) {
+      console.error('Error loading subscription:', error);
+      setHasSubscription(false);
+    }
+  };
 
   const loadProfile = async () => {
     if (!user) return;
@@ -155,6 +177,29 @@ const HostAccountSettings = () => {
     navigate('/');
   };
 
+  const handleCancelSubscription = async () => {
+    if (!subscription || !user) {
+      toast.error('Subscription information not available');
+      return;
+    }
+
+    setCancelling(true);
+    try {
+      await cancelSubscription(subscription.id);
+      toast.success('Subscription cancelled successfully. Your plan will remain active until the end of the billing period.');
+      
+      // Reload subscription to reflect cancelled status
+      await loadSubscription();
+      
+      setCancelDialogOpen(false);
+    } catch (error: any) {
+      console.error('Error cancelling subscription:', error);
+      toast.error(error.message || 'Failed to cancel subscription. Please try again or contact support.');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   if (!profile) return <LoadingScreen />;
 
   return (
@@ -173,7 +218,7 @@ const HostAccountSettings = () => {
         <h1 className="text-3xl font-bold mb-6">Account Settings</h1>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="profile">
               <User className="h-4 w-4 mr-2" />
               Profile
@@ -186,13 +231,17 @@ const HostAccountSettings = () => {
               <Ticket className="h-4 w-4 mr-2" />
               Coupons
             </TabsTrigger>
+            <TabsTrigger value="rewards">
+              <Award className="h-4 w-4 mr-2" />
+              Rewards
+            </TabsTrigger>
             <TabsTrigger value="notifications">
               <Bell className="h-4 w-4 mr-2" />
               Notifications
             </TabsTrigger>
-            <TabsTrigger value="security">
-              <Shield className="h-4 w-4 mr-2" />
-              Security
+            <TabsTrigger value="subscription">
+              <CreditCard className="h-4 w-4 mr-2" />
+              Subscription
             </TabsTrigger>
           </TabsList>
 
@@ -301,6 +350,20 @@ const HostAccountSettings = () => {
                 />
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="rewards">
+            <HostPointsDisplay 
+              points={profile?.hostPoints || 0}
+              userId={user?.uid || ''}
+              onRedeem={(discountAmount) => {
+                // Refresh profile to update points
+                if (user) {
+                  refreshUserProfile();
+                }
+                toast.info(`You've earned ${formatPHP(discountAmount)} discount! Use it on your next subscription purchase.`);
+              }}
+            />
           </TabsContent>
 
           <TabsContent value="notifications">
@@ -499,14 +562,223 @@ const HostAccountSettings = () => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="security">
+          <TabsContent value="subscription">
             <Card>
               <CardHeader>
-                <CardTitle>Security Settings</CardTitle>
-                <CardDescription>Manage your account security</CardDescription>
+                <CardTitle>Subscription Management</CardTitle>
+                <CardDescription>View and manage your host subscription</CardDescription>
               </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">Security settings coming soon</p>
+              <CardContent className="space-y-6">
+                {hasSubscription === null ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                    <p className="text-muted-foreground">Loading subscription...</p>
+                  </div>
+                ) : hasSubscription === false || !subscription ? (
+                  <div className="text-center py-8 space-y-4">
+                    <CreditCard className="h-16 w-16 text-muted-foreground mx-auto opacity-50" />
+                    <div>
+                      <h3 className="text-lg font-semibold mb-2">No Active Subscription</h3>
+                      <p className="text-muted-foreground mb-4">
+                        You need an active subscription to create and manage listings.
+                      </p>
+                      <Button onClick={() => navigate('/host/register')}>
+                        <CreditCard className="h-4 w-4 mr-2" />
+                        Subscribe Now
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Current Subscription */}
+                    <div className="border rounded-lg p-6 bg-green-500/10 border-green-500/50">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center">
+                            <CreditCard className="h-6 w-6 text-green-600 dark:text-green-400" />
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-semibold">{subscription.planName}</h3>
+                            <p className="text-sm text-muted-foreground capitalize">
+                              {subscription.billingCycle} billing
+                            </p>
+                          </div>
+                        </div>
+                        <Badge 
+                          variant="outline" 
+                          className={
+                            subscription.status === 'cancelled'
+                              ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/50'
+                              : 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/50'
+                          }
+                        >
+                          {subscription.status === 'cancelled' ? 'Cancelled (Active Until End)' : 'Active'}
+                        </Badge>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Amount</p>
+                          <p className="text-lg font-semibold">
+                            {formatPHP(subscription.amount)}/{subscription.billingCycle}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Payment Method</p>
+                          <p className="text-lg font-semibold capitalize">
+                            {subscription.paymentMethod}
+                          </p>
+                        </div>
+                        {subscription.startDate && (
+                          <div>
+                            <p className="text-sm text-muted-foreground">Start Date</p>
+                            <p className="text-lg font-semibold">
+                              {new Date(subscription.startDate).toLocaleDateString()}
+                            </p>
+                          </div>
+                        )}
+                        {subscription.endDate && (
+                          <div>
+                            <p className="text-sm text-muted-foreground">Expires</p>
+                            <p className="text-lg font-semibold">
+                              {new Date(subscription.endDate).toLocaleDateString()}
+                            </p>
+                          </div>
+                        )}
+                        {subscription.nextBillingDate && (
+                          <div>
+                            <p className="text-sm text-muted-foreground">Next Billing</p>
+                            <p className="text-lg font-semibold">
+                              {new Date(subscription.nextBillingDate).toLocaleDateString()}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Plan Features */}
+                      {(() => {
+                        const plan = getPlanById(subscription.planId);
+                        if (plan && plan.features) {
+                          return (
+                            <div className="mt-6 pt-6 border-t">
+                              <h4 className="font-semibold mb-3">Plan Features</h4>
+                              <ul className="space-y-2">
+                                {plan.features.map((feature, index) => (
+                                  <li key={index} className="flex items-center gap-2 text-sm">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-green-600 dark:bg-green-400"></div>
+                                    {feature}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+
+                    {/* Cancellation Status Notice */}
+                    {subscription.status === 'cancelled' && (
+                      <div className="bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/30 dark:to-orange-900/30 border-2 border-yellow-300 dark:border-yellow-700 rounded-lg p-4 mb-4">
+                        <div className="flex items-start gap-3">
+                          <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <h4 className="font-semibold text-yellow-900 dark:text-yellow-100 mb-1">
+                              Subscription Cancelled
+                            </h4>
+                            <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                              Your subscription has been cancelled. You'll continue to have full access to all features until{' '}
+                              <strong>
+                                {subscription.endDate 
+                                  ? new Date(subscription.endDate).toLocaleDateString('en-US', { 
+                                      weekday: 'long', 
+                                      year: 'numeric', 
+                                      month: 'long', 
+                                      day: 'numeric' 
+                                    })
+                                  : 'the end of your billing period'}
+                              </strong>.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Cancellation Policy Notice */}
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 border-2 border-blue-300 dark:border-blue-700 rounded-lg p-5 shadow-md">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 mt-0.5">
+                          <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
+                            <Info className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="text-base font-bold text-blue-900 dark:text-blue-100 mb-3">
+                            Cancellation & Refund Policy
+                          </h4>
+                          <div className="space-y-2.5 text-sm text-blue-800 dark:text-blue-200">
+                            <div className="flex items-start gap-2">
+                              <span className="font-bold text-blue-600 dark:text-blue-400">•</span>
+                              <span>
+                                <strong className="font-bold">Non-Refundable:</strong> Subscriptions are non-refundable. 
+                                Once payment is processed, refunds will not be available under any circumstances.
+                              </span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="font-bold text-blue-600 dark:text-blue-400">•</span>
+                              <span>
+                                <strong className="font-bold">Active Until End Date:</strong> If you cancel your subscription, 
+                                your plan will remain <strong>fully active</strong> until{' '}
+                                <strong className="font-bold text-blue-900 dark:text-blue-100">
+                                  {subscription.endDate ? new Date(subscription.endDate).toLocaleDateString('en-US', { 
+                                    weekday: 'long', 
+                                    year: 'numeric', 
+                                    month: 'long', 
+                                    day: 'numeric' 
+                                  }) : 'the end of your billing period'}
+                                </strong>.
+                              </span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="font-bold text-blue-600 dark:text-blue-400">•</span>
+                              <span>
+                                <strong className="font-bold">Full Access:</strong> You'll continue to have access to all features, 
+                                can create and manage listings, and receive bookings until your subscription expires.
+                              </span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="font-bold text-blue-600 dark:text-blue-400">•</span>
+                              <span>
+                                <strong className="font-bold">After Expiration:</strong> Once your subscription ends, 
+                                you'll need to resubscribe to continue using host features and managing your listings.
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Button 
+                        variant="outline" 
+                        onClick={() => navigate('/host/register')}
+                        className="flex-1"
+                      >
+                        <CreditCard className="h-4 w-4 mr-2" />
+                        Change Plan
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        onClick={() => setCancelDialogOpen(true)}
+                        disabled={subscription.status === 'cancelled'}
+                        className="flex-1"
+                      >
+                        {subscription.status === 'cancelled' ? 'Already Cancelled' : 'Cancel Subscription'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -526,6 +798,126 @@ const HostAccountSettings = () => {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleLogout} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Sign Out
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Cancel Subscription Confirmation Dialog */}
+      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <AlertDialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/50 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
+              </div>
+              <AlertDialogTitle className="text-xl">Cancel Subscription</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription className="text-base pt-2">
+              Are you sure you want to cancel your subscription?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          
+          <div className="my-6 space-y-4">
+            {/* Policy Warning Box */}
+            <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-200 dark:border-red-800 rounded-lg p-4">
+              <h4 className="font-bold text-red-900 dark:text-red-100 mb-3 flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                Important: Non-Refundable Subscription Policy
+              </h4>
+              <div className="space-y-2.5 text-sm text-red-800 dark:text-red-200">
+                <div className="flex items-start gap-2">
+                  <span className="font-bold mt-0.5">•</span>
+                  <span>
+                    <strong className="font-bold">NON-REFUNDABLE:</strong> This subscription is non-refundable. 
+                    Once payment is processed, refunds will not be available under any circumstances.
+                  </span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="font-bold mt-0.5">•</span>
+                  <span>
+                    <strong className="font-bold">Active Until End Date:</strong> If you cancel, your plan will remain{' '}
+                    <strong className="font-bold">fully active</strong> until{' '}
+                    <strong className="font-bold text-red-900 dark:text-red-100">
+                      {subscription?.endDate 
+                        ? new Date(subscription.endDate).toLocaleDateString('en-US', { 
+                            weekday: 'long', 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric' 
+                          })
+                        : 'the end of your billing period'}
+                    </strong>.
+                  </span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="font-bold mt-0.5">•</span>
+                  <span>
+                    <strong className="font-bold">Full Access:</strong> You'll continue to have access to all features, 
+                    can create and manage listings, and receive bookings until your subscription expires.
+                  </span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="font-bold mt-0.5">•</span>
+                  <span>
+                    <strong className="font-bold">After Expiration:</strong> Once your subscription ends, 
+                    you'll lose access to host features and will need to resubscribe to continue.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Current Subscription Info */}
+            {subscription && (
+              <div className="bg-muted/50 border border-border rounded-lg p-4">
+                <h5 className="font-semibold mb-2">Current Subscription Details:</h5>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Plan:</span>
+                    <p className="font-medium">{subscription.planName}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Billing Cycle:</span>
+                    <p className="font-medium capitalize">{subscription.billingCycle}</p>
+                  </div>
+                  {subscription.endDate && (
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Expires:</span>
+                      <p className="font-medium">
+                        {new Date(subscription.endDate).toLocaleDateString('en-US', { 
+                          weekday: 'long', 
+                          year: 'numeric', 
+                          month: 'long', 
+                          day: 'numeric' 
+                        })}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel 
+              className="w-full sm:w-auto"
+              disabled={cancelling}
+            >
+              Keep Subscription
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleCancelSubscription}
+              disabled={cancelling}
+              className="w-full sm:w-auto bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+            >
+              {cancelling ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Cancelling...
+                </>
+              ) : (
+                'Yes, Cancel Subscription'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

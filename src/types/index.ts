@@ -65,7 +65,7 @@ export interface Transaction {
   type: 'deposit' | 'withdrawal' | 'payment' | 'refund' | 'reward';
   amount: number;
   description: string;
-  status?: 'pending' | 'completed' | 'failed' | 'refunded';
+  status?: 'pending' | 'completed' | 'failed' | 'refunded' | 'pending_transfer';
   paymentMethod?: string;
   paymentId?: string;
   bookingId?: string; // Link to booking
@@ -77,8 +77,17 @@ export interface Transaction {
   cancelledBy?: 'guest' | 'host' | 'admin'; // Who cancelled
   originalTransactionId?: string; // For refunds
   refundedAt?: string; // When refund was processed
+  adminPayPalEmail?: string; // Admin PayPal account for service fees
+  originalPaymentMethod?: 'paypal' | 'wallet'; // Original payment method for service fee tracking
   refundReason?: string; // Reason for refund
   confirmedAt?: string; // When transaction was confirmed
+  // Payout tracking (for PayPal payouts)
+  payoutId?: string; // PayPal payout batch ID
+  payoutStatus?: 'pending' | 'processing' | 'completed' | 'failed'; // Payout status
+  payoutBatchId?: string; // PayPal batch ID
+  payoutProcessedAt?: string; // When payout was processed
+  payoutMethod?: 'paypal'; // Payout method
+  payoutError?: string; // Error message if payout failed
   createdAt: string;
 }
 
@@ -105,7 +114,8 @@ export interface UserProfile {
   role: 'host' | 'guest' | 'admin'; // Primary role (for backward compatibility)
   roles?: ('host' | 'guest' | 'admin')[]; // Array of all roles user has
   createdAt: string;
-  points: number;
+  points: number; // Guest points
+  hostPoints?: number; // Host points (separate from guest points)
   walletBalance: number;
   favorites: string[]; // Liked listings
   wishlist: string[]; // Future planned listings (separate from favorites)
@@ -122,6 +132,27 @@ export interface Coupon {
   usedAt?: string; // When coupon was used
   usedForBookingId?: string; // Booking ID where coupon was used
   minSpend?: number;
+  eventId?: string; // ID of the event that distributed this coupon
+}
+
+export interface PlatformEvent {
+  id: string;
+  title: string;
+  description: string;
+  type: 'coupon' | 'announcement' | 'promotion' | 'maintenance' | 'update';
+  targetRoles: ('host' | 'guest' | 'admin')[]; // Which roles should receive this event
+  targetUserIds?: string[]; // Specific user IDs (optional, for targeted events)
+  couponCode?: string; // If type is 'coupon', the coupon code to distribute
+  couponDiscount?: number; // Discount amount for coupon
+  couponValidUntil?: string; // When coupon expires
+  couponMinSpend?: number; // Minimum purchase for coupon
+  actionUrl?: string; // URL to redirect when event is clicked
+  createdBy: string; // Admin user ID who created the event
+  createdAt: string;
+  status: 'active' | 'expired' | 'cancelled';
+  expiresAt?: string; // When the event expires
+  notificationSent: boolean; // Whether notifications have been sent
+  notificationSentAt?: string; // When notifications were sent
 }
 
 export interface ServiceFee {
@@ -158,6 +189,16 @@ export interface HostSubscription {
   paymentMethod: 'paypal';
   paymentId?: string;
   transactionId?: string;
+  cancelledAt?: string;
+  // Pending plan change (when user changes plan before current one expires)
+  pendingPlanId?: string;
+  pendingPlanName?: string;
+  pendingAmount?: number;
+  pendingBillingCycle?: 'monthly' | 'yearly';
+  pendingStartDate?: string;
+  pendingEndDate?: string;
+  pendingPaymentId?: string;
+  pendingTransactionId?: string;
   createdAt: string;
   updatedAt: string;
 }

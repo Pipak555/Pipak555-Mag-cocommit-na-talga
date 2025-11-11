@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getListings, updateListing, getUserProfile } from "@/lib/firestore";
+import { getListings, updateListing, getUserProfile, getListing } from "@/lib/firestore";
+import { notifyListingApproved } from "@/lib/notifications";
 import { ListingCard } from "@/components/listings/ListingCard";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Mail, User, MapPin, DollarSign, Users, Home, Bed, Bath, X, ChevronLeft, ChevronRight, ZoomIn } from "lucide-react";
@@ -105,7 +106,37 @@ const ReviewListings = () => {
   const confirmApprove = async () => {
     if (!listingToReview) return;
     try {
+      // Get listing details before updating
+      const listing = await getListing(listingToReview);
+      if (!listing) {
+        toast.error('Listing not found');
+        return;
+      }
+
+      // Update listing status
       await updateListing(listingToReview, { status: 'approved' });
+      
+      // Award host points for listing approval
+      if (listing.hostId) {
+        try {
+          const { awardHostPointsForListingApproval } = await import('@/lib/hostPointsService');
+          await awardHostPointsForListingApproval(listing.hostId, listingToReview);
+        } catch (pointsError) {
+          console.error('Error awarding host points for listing approval:', pointsError);
+          // Don't fail the approval if points award fails
+        }
+      }
+      
+      // Send notification to host
+      if (listing.hostId) {
+        try {
+          await notifyListingApproved(listing.hostId, listingToReview, listing.title);
+        } catch (notificationError) {
+          console.error('Error sending listing approval notification:', notificationError);
+          // Don't fail the approval if notification fails
+        }
+      }
+      
       toast.success("Listing approved");
       loadPendingListings();
       setListingToReview(null);

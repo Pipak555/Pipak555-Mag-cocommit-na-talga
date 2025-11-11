@@ -175,6 +175,20 @@ export const notifyBookingConfirmed = async (
   listingTitle: string
 ): Promise<void> => {
   try {
+    // Get user profile to determine role and correct bookings URL
+    const { getUserProfile } = await import('./firestore');
+    const userProfile = await getUserProfile(userId);
+    const userRole = userProfile?.role || 'guest';
+    
+    // Determine the correct bookings URL based on user role
+    let actionUrl = '/guest/bookings';
+    if (userRole === 'host') {
+      actionUrl = '/host/bookings';
+    }
+    
+    // Add bookingId query parameter to potentially highlight the specific booking
+    actionUrl += `?bookingId=${bookingId}`;
+    
     await createNotification({
       userId,
       type: 'booking',
@@ -184,7 +198,7 @@ export const notifyBookingConfirmed = async (
       relatedType: 'booking',
       read: false,
       priority: 'high',
-      actionUrl: `/guest/bookings`
+      actionUrl
     });
   } catch (error) {
     console.error('Error creating booking confirmation notification:', error);
@@ -218,7 +232,7 @@ export const notifyBookingCancelled = async (
 };
 
 /**
- * Create notification for new message
+ * Create notification for new message (for receiver)
  */
 export const notifyNewMessage = async (
   userId: string,
@@ -232,13 +246,16 @@ export const notifyNewMessage = async (
     const userProfile = await getUserProfile(userId);
     const userRole = userProfile?.role || 'guest';
     
-    // Determine the correct messages URL based on user role
+    // Determine the correct messages URL based on user role with senderId query parameter
     let actionUrl = '/guest/messages';
     if (userRole === 'host') {
       actionUrl = '/host/messages';
     } else if (userRole === 'admin') {
       actionUrl = '/admin/messages';
     }
+    
+    // Add userId query parameter to open the specific conversation
+    actionUrl += `?userId=${senderId}`;
     
     await createNotification({
       userId,
@@ -253,6 +270,35 @@ export const notifyNewMessage = async (
     });
   } catch (error) {
     console.error('Error creating new message notification:', error);
+  }
+};
+
+/**
+ * Create notification for listing approval (for host)
+ */
+export const notifyListingApproved = async (
+  hostId: string,
+  listingId: string,
+  listingTitle: string
+): Promise<void> => {
+  try {
+    // Link to the listing details page (guests can view, but hosts can see their own listings too)
+    // For hosts, we'll link to the guest listing page so they can see how it appears to guests
+    const actionUrl = `/guest/listing/${listingId}`;
+    
+    await createNotification({
+      userId: hostId,
+      type: 'system',
+      title: 'Listing Approved!',
+      message: `Your listing "${listingTitle}" has been approved and is now live.`,
+      relatedId: listingId,
+      relatedType: 'listing',
+      read: false,
+      priority: 'high',
+      actionUrl
+    });
+  } catch (error) {
+    console.error('Error creating listing approval notification:', error);
   }
 };
 

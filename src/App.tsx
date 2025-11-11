@@ -41,6 +41,7 @@ const HostAccountSettings = lazy(() => import("./pages/host/HostAccountSettings"
 const GuestAccountSettings = lazy(() => import("./pages/guest/GuestAccountSettings"));
 const HostRegister = lazy(() => import("./pages/host/HostRegister"));
 const HostPayment = lazy(() => import("./pages/host/HostPayment"));
+const HostPaymentSuccess = lazy(() => import("./pages/host/HostPaymentSuccess"));
 const Favorites = lazy(() => import("./pages/guest/Favorites"));
 const Wishlist = lazy(() => import("./pages/guest/Wishlist"));
 const HostMessages = lazy(() => import("./pages/host/Messages"));
@@ -49,6 +50,8 @@ const AdminMessages = lazy(() => import("./pages/admin/Messages"));
 const HostCalendar = lazy(() => import("./pages/host/Calendar"));
 const Analytics = lazy(() => import("./pages/admin/Analytics"));
 const ManagePayments = lazy(() => import("./pages/admin/ManagePayments"));
+const AdminPayPalSettings = lazy(() => import("./pages/admin/AdminPayPalSettings"));
+const CreateEvent = lazy(() => import("./pages/admin/CreateEvent"));
 const Reports = lazy(() => import("./pages/admin/Reports"));
 const Policies = lazy(() => import("./pages/admin/Policies"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -75,7 +78,7 @@ const AppRoutes = () => {
             <Route path="/host/policies" element={<LazyRoute component={HostPolicyAcceptance} />} />
             <Route path="/host/register" element={<LazyRoute component={HostRegister} />} />
             <Route path="/host/payment" element={<LazyRoute component={HostPayment} />} />
-            <Route path="/host/payment/success" element={<LazyRoute component={HostPayment} />} />
+            <Route path="/host/payment/success" element={<LazyRoute component={HostPaymentSuccess} />} />
             <Route path="/login" element={<Navigate to="/guest/login" replace />} />
             <Route path="/host/login" element={<LazyRoute component={HostLogin} />} />
             <Route path="/guest/login" element={<LazyRoute component={GuestLogin} />} />
@@ -110,7 +113,9 @@ const AppRoutes = () => {
             <Route path="/admin/active-listings" element={<LazyRoute component={ActiveListings} />} />
             <Route path="/admin/messages" element={<LazyRoute component={AdminMessages} />} />
             <Route path="/admin/payments" element={<LazyRoute component={ManagePayments} />} />
-            <Route path="/admin/analytics" element={<LazyRoute component={Analytics} />} />
+              <Route path="/admin/paypal-settings" element={<LazyRoute component={AdminPayPalSettings} />} />
+              <Route path="/admin/create-event" element={<LazyRoute component={CreateEvent} />} />
+              <Route path="/admin/analytics" element={<LazyRoute component={Analytics} />} />
             <Route path="/admin/reports" element={<LazyRoute component={Reports} />} />
             <Route path="/admin/policies" element={<LazyRoute component={Policies} />} />
             <Route path="/settings" element={<LazyRoute component={AccountSettings} />} />

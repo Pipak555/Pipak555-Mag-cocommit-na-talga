@@ -46,7 +46,15 @@ export const AdvancedFilter = ({ onFilterChange, initialFilters }: AdvancedFilte
   };
 
   const handleReset = () => {
-    const resetFilters = { location: '', guests: 1, category: 'all' };
+    const resetFilters = { 
+      location: '', 
+      guests: 1, 
+      category: 'all',
+      checkIn: undefined,
+      checkOut: undefined,
+      minPrice: undefined,
+      maxPrice: undefined
+    };
     setFilters(resetFilters);
     onFilterChange(resetFilters);
   };

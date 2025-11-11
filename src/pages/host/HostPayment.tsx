@@ -6,25 +6,29 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { PayPalButton } from '@/components/payments/PayPalButton';
-import { getPlanById, processSubscriptionPayment } from '@/lib/billingService';
+import { getPlanById, getUserSubscription } from '@/lib/billingService';
 import { formatPHP } from '@/lib/currency';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Check, ArrowLeft, CreditCard, X, Home } from 'lucide-react';
+import { Check, ArrowLeft, CreditCard, X, Home, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { HostPlan } from '@/types';
 
 const HostPayment = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const [plan, setPlan] = useState<HostPlan | null>(null);
   const [loading, setLoading] = useState(true);
+  const [paymentCompleted, setPaymentCompleted] = useState(false);
+  const [checkingPayment, setCheckingPayment] = useState(true);
 
   const planId = searchParams.get('planId') || 'active-host-monthly';
+  const isSuccessPage = location.pathname === '/host/payment/success';
 
   useEffect(() => {
     if (!user) {
@@ -41,8 +45,29 @@ const HostPayment = () => {
     }
 
     setPlan(selectedPlan);
-    setLoading(false);
-  }, [planId, user, navigate]);
+
+    // Check if payment was already completed
+    const checkPaymentStatus = async () => {
+      try {
+        const subscription = await getUserSubscription(user.uid);
+        if (subscription && subscription.status === 'active' && subscription.planId === planId) {
+          setPaymentCompleted(true);
+          // If on payment page but payment is complete, redirect to success
+          if (!isSuccessPage) {
+            navigate(`/host/payment/success?planId=${planId}`, { replace: true });
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('Error checking payment status:', error);
+      } finally {
+        setCheckingPayment(false);
+        setLoading(false);
+      }
+    };
+
+    checkPaymentStatus();
+  }, [planId, user, navigate, isSuccessPage]);
 
   const handlePaymentSuccess = async () => {
     if (!user || !plan) return;
@@ -50,12 +75,12 @@ const HostPayment = () => {
     try {
       // The PayPal button will handle the payment processing
       // This callback is called after successful payment
-      toast.success('Payment successful! Your subscription is now active.');
+      setPaymentCompleted(true);
       
-      // Redirect to host dashboard
+      // Redirect to success page
       setTimeout(() => {
-        navigate('/host/dashboard');
-      }, 1500);
+        navigate(`/host/payment/success?planId=${plan.id}`, { replace: true });
+      }, 500);
     } catch (error: any) {
       console.error('Error processing payment:', error);
       toast.error('Payment processed but there was an error activating your subscription. Please contact support.');
@@ -65,20 +90,44 @@ const HostPayment = () => {
   // Note: PayPalButton now handles subscription processing internally
   // This function is called after successful payment
 
-  if (loading || !plan) {
+  if (loading || checkingPayment || !plan) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4 text-muted-foreground">Loading payment page...</p>
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="mt-4 text-muted-foreground">
+            {checkingPayment ? 'Checking payment status...' : 'Loading payment page...'}
+          </p>
         </div>
+      </div>
+    );
+  }
+
+  // If payment is already completed, show success message
+  if (paymentCompleted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="max-w-2xl w-full">
+          <CardContent className="p-8 text-center">
+            <div className="w-20 h-20 bg-green-100 dark:bg-green-900/20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Check className="h-12 w-12 text-green-600 dark:text-green-400" />
+            </div>
+            <h1 className="text-3xl font-bold mb-4">Payment Already Completed</h1>
+            <p className="text-muted-foreground mb-8">
+              Your subscription is already active. Redirecting to dashboard...
+            </p>
+            <Button onClick={() => navigate('/host/dashboard')}>
+              Go to Dashboard
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   const handleExit = () => {
     if (window.confirm('Are you sure you want to exit? Your payment progress will not be saved.')) {
-      navigate('/host/register');
+      navigate('/host/settings');
     }
   };
 
@@ -98,11 +147,11 @@ const HostPayment = () => {
           <div className="flex gap-2">
             <Button
               variant="ghost"
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/host/dashboard')}
               className="gap-2"
             >
               <Home className="h-4 w-4" />
-              Home
+              Dashboard
             </Button>
             <Button
               variant="ghost"
@@ -152,13 +201,21 @@ const HostPayment = () => {
                 {/* Step 3: Payment */}
                 <div className="flex items-start gap-3">
                   <div className="mt-1">
-                    <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
-                      <CreditCard className="h-4 w-4 text-primary-foreground" />
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                      paymentCompleted ? 'bg-green-600' : 'bg-primary'
+                    }`}>
+                      {paymentCompleted ? (
+                        <Check className="h-4 w-4 text-white" />
+                      ) : (
+                        <CreditCard className="h-4 w-4 text-primary-foreground" />
+                      )}
                     </div>
                   </div>
                   <div className="flex-1">
                     <div className="font-medium">3. Payment</div>
-                    <div className="text-sm text-muted-foreground">Connect PayPal & pay.</div>
+                    <div className="text-sm text-muted-foreground">
+                      {paymentCompleted ? 'Payment completed!' : 'Complete your payment.'}
+                    </div>
                   </div>
                 </div>
 
@@ -166,9 +223,16 @@ const HostPayment = () => {
                 <div className="pt-4">
                   <div className="text-sm text-muted-foreground mb-2">Progress</div>
                   <div className="w-full bg-muted rounded-full h-2">
-                    <div className="bg-primary h-2 rounded-full" style={{ width: '100%' }}></div>
+                    <div 
+                      className={`h-2 rounded-full transition-all ${
+                        paymentCompleted ? 'bg-green-600' : 'bg-primary'
+                      }`}
+                      style={{ width: paymentCompleted ? '100%' : '66%' }}
+                    ></div>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-1 text-right">100%</div>
+                  <div className="text-xs text-muted-foreground mt-1 text-right">
+                    {paymentCompleted ? '100%' : '66%'}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -225,13 +289,18 @@ const HostPayment = () => {
                           Secure payment with PayPal.
                         </p>
                       </div>
-                      <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
-                        <Check className="h-4 w-4 text-primary-foreground" />
+                      <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
+                        <CreditCard className="h-4 w-4 text-muted-foreground" />
                       </div>
                     </div>
                     <p className="text-sm text-muted-foreground mb-4">
-                      You'll login to PayPal and can pay with your PayPal balance, bank account, or credit card.
+                      Click the button below to complete your payment. You'll be redirected to PayPal to securely complete the transaction.
                     </p>
+                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 mb-4">
+                      <p className="text-xs text-yellow-800 dark:text-yellow-200">
+                        <strong>Note:</strong> You don't need to link your PayPal account beforehand. You'll log in to PayPal during checkout.
+                      </p>
+                    </div>
 
                     {/* PayPal Button */}
                     {user && (
@@ -247,7 +316,7 @@ const HostPayment = () => {
                             userId={user.uid}
                             description={`Host subscription: ${plan.name} (${plan.billingCycle}) - planId=${plan.id}`}
                             onSuccess={handlePaymentSuccess}
-                            redirectUrl={`${window.location.origin}/host/payment/success?planId=${plan.id}`}
+                            redirectUrl={`${window.location.origin}/host/payment/success?planId=${plan.id}&userId=${user.uid}`}
                           />
 
                           <div className="mt-4 text-center">

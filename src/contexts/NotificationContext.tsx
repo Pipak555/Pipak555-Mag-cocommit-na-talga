@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import {
   subscribeToNotifications,
@@ -7,6 +7,11 @@ import {
   getUnreadNotificationCount,
   deleteNotification
 } from '@/lib/notifications';
+import { 
+  requestNotificationPermission, 
+  sendBrowserNotification, 
+  playNotificationSound 
+} from '@/lib/browserNotifications';
 import type { Notification } from '@/types/notification';
 import { toast } from 'sonner';
 
@@ -14,10 +19,15 @@ interface NotificationContextType {
   notifications: Notification[];
   unreadCount: number;
   loading: boolean;
+  browserNotificationsEnabled: boolean;
+  soundEnabled: boolean;
   markAsRead: (notificationId: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
   removeNotification: (notificationId: string) => Promise<void>;
+  removeMultipleNotifications: (notificationIds: string[]) => Promise<void>;
   refreshNotifications: () => Promise<void>;
+  toggleBrowserNotifications: () => Promise<void>;
+  toggleSound: () => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -35,6 +45,9 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const previousNotificationsRef = useRef<Notification[]>([]);
+  const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
 
   // Refresh unread count
   const refreshUnreadCount = useCallback(async () => {
@@ -51,6 +64,15 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user]);
 
+  // Request browser notification permission on mount
+  useEffect(() => {
+    if (user) {
+      requestNotificationPermission().then(granted => {
+        setBrowserNotificationsEnabled(granted);
+      });
+    }
+  }, [user]);
+
   // Subscribe to notifications
   useEffect(() => {
     if (!user) {
@@ -62,6 +84,43 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
 
     setLoading(true);
     const unsubscribe = subscribeToNotifications(user.uid, (updatedNotifications) => {
+      const previousNotifications = previousNotificationsRef.current;
+      
+      // Detect new notifications
+      if (previousNotifications.length > 0) {
+        const newNotifications = updatedNotifications.filter(
+          newNotif => !previousNotifications.some(prevNotif => prevNotif.id === newNotif.id)
+        );
+
+        // Only show notifications for unread items
+        const unreadNewNotifications = newNotifications.filter(n => !n.read);
+
+        unreadNewNotifications.forEach(notification => {
+          // Play sound if enabled
+          if (soundEnabled) {
+            const soundType = notification.type === 'message' ? 'message' : 
+                            notification.priority === 'high' ? 'alert' : 'default';
+            playNotificationSound(soundType);
+          }
+
+          // Send browser notification if enabled and page is not focused
+          if (browserNotificationsEnabled && document.hidden) {
+            sendBrowserNotification(notification.title, {
+              body: notification.message,
+              tag: notification.id,
+              icon: '/favicon.ico',
+              badge: '/favicon.ico',
+              onClick: () => {
+                if (notification.actionUrl) {
+                  window.location.href = notification.actionUrl;
+                }
+              },
+            });
+          }
+        });
+      }
+
+      previousNotificationsRef.current = updatedNotifications;
       setNotifications(updatedNotifications);
       const unread = updatedNotifications.filter(n => !n.read).length;
       setUnreadCount(unread);
@@ -71,7 +130,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       unsubscribe();
     };
-  }, [user]);
+  }, [user, browserNotificationsEnabled, soundEnabled]);
 
   // Refresh notifications manually
   const refreshNotifications = useCallback(async () => {
@@ -112,17 +171,67 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   const removeNotification = useCallback(async (notificationId: string) => {
     try {
       await deleteNotification(notificationId);
-      setNotifications(prev => prev.filter(n => n.id !== notificationId));
-      // Update unread count if needed
-      const notification = notifications.find(n => n.id === notificationId);
-      if (notification && !notification.read) {
-        setUnreadCount(prev => Math.max(0, prev - 1));
-      }
+      setNotifications(prev => {
+        const notification = prev.find(n => n.id === notificationId);
+        if (notification && !notification.read) {
+          setUnreadCount(count => Math.max(0, count - 1));
+        }
+        return prev.filter(n => n.id !== notificationId);
+      });
     } catch (error) {
       console.error('Error removing notification:', error);
       toast.error('Failed to remove notification');
     }
-  }, [notifications]);
+  }, []);
+
+  // Remove multiple notifications
+  const removeMultipleNotifications = useCallback(async (notificationIds: string[]) => {
+    try {
+      await Promise.all(notificationIds.map(id => deleteNotification(id)));
+      setNotifications(prev => {
+        const removed = prev.filter(n => notificationIds.includes(n.id));
+        const unreadRemoved = removed.filter(n => !n.read).length;
+        if (unreadRemoved > 0) {
+          setUnreadCount(count => Math.max(0, count - unreadRemoved));
+        }
+        return prev.filter(n => !notificationIds.includes(n.id));
+      });
+      toast.success(`${notificationIds.length} notification${notificationIds.length > 1 ? 's' : ''} removed`);
+    } catch (error) {
+      console.error('Error removing notifications:', error);
+      toast.error('Failed to remove notifications');
+    }
+  }, []);
+
+  // Toggle browser notifications
+  const toggleBrowserNotifications = useCallback(async () => {
+    if (browserNotificationsEnabled) {
+      setBrowserNotificationsEnabled(false);
+      toast.info('Browser notifications disabled');
+    } else {
+      const granted = await requestNotificationPermission();
+      if (granted) {
+        setBrowserNotificationsEnabled(true);
+        toast.success('Browser notifications enabled');
+      } else {
+        toast.error('Please enable notifications in your browser settings');
+      }
+    }
+  }, [browserNotificationsEnabled]);
+
+  // Toggle sound
+  const toggleSound = useCallback(() => {
+    setSoundEnabled(prev => {
+      const newValue = !prev;
+      if (newValue) {
+        playNotificationSound('default');
+        toast.success('Notification sound enabled');
+      } else {
+        toast.info('Notification sound disabled');
+      }
+      return newValue;
+    });
+  }, []);
 
   return (
     <NotificationContext.Provider
@@ -130,10 +239,15 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
         notifications,
         unreadCount,
         loading,
+        browserNotificationsEnabled,
+        soundEnabled,
         markAsRead,
         markAllAsRead,
         removeNotification,
-        refreshNotifications
+        removeMultipleNotifications,
+        refreshNotifications,
+        toggleBrowserNotifications,
+        toggleSound
       }}
     >
       {children}

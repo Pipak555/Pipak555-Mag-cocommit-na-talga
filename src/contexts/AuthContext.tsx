@@ -384,6 +384,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           emailVerifiedAt: new Date().toISOString(),
         };
         
+        // Initialize host points if user is signing up as host
+        if (role === 'host') {
+          userData.hostPoints = 0;
+        }
+        
         // Add profile photo if available
         if (user.photoURL) {
           userData.photoURL = user.photoURL;
@@ -424,6 +429,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         favorites: [],
         wishlist: []
       };
+      
+      // Initialize host points if user is signing up as host
+      if (role === 'host') {
+        userData.hostPoints = 0;
+      }
       
       // Add policy acceptance data for hosts
       if (role === 'host' && policyData) {

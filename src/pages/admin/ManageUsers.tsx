@@ -161,9 +161,44 @@ const ManageUsers = () => {
                     <TableCell className="font-medium">{userItem.fullName || 'N/A'}</TableCell>
                     <TableCell>{userItem.email}</TableCell>
                     <TableCell>
-                      <Badge variant={userItem.role === 'admin' ? 'default' : 'secondary'}>
-                        {userItem.role}
-                      </Badge>
+                      <div className="flex flex-wrap gap-1">
+                        {(() => {
+                          // Get all roles - check roles array first, fallback to role field
+                          const allRoles = userItem.roles && Array.isArray(userItem.roles) && userItem.roles.length > 0
+                            ? userItem.roles
+                            : userItem.role
+                              ? [userItem.role]
+                              : [];
+                          
+                          // Remove duplicates and sort (admin first, then host, then guest)
+                          const uniqueRoles = Array.from(new Set(allRoles)).sort((a, b) => {
+                            const order = { admin: 0, host: 1, guest: 2 };
+                            return (order[a as keyof typeof order] ?? 99) - (order[b as keyof typeof order] ?? 99);
+                          });
+                          
+                          return uniqueRoles.map((role) => (
+                            <Badge
+                              key={role}
+                              variant={
+                                role === 'admin' 
+                                  ? 'default' 
+                                  : role === 'host'
+                                  ? 'secondary'
+                                  : 'outline'
+                              }
+                              className={
+                                role === 'admin'
+                                  ? 'bg-orange-500 hover:bg-orange-600'
+                                  : role === 'host'
+                                  ? 'bg-blue-500 hover:bg-blue-600'
+                                  : 'bg-cyan-500 hover:bg-cyan-600'
+                              }
+                            >
+                              {role}
+                            </Badge>
+                          ));
+                        })()}
+                      </div>
                     </TableCell>
                     <TableCell>{userItem.points || 0}</TableCell>
                     <TableCell>{formatPHP(userItem.walletBalance || 0)}</TableCell>
@@ -207,9 +242,44 @@ const ManageUsers = () => {
                   <p className="text-sm text-muted-foreground mb-1">Recipient:</p>
                   <p className="font-semibold">{selectedUser.fullName || 'N/A'}</p>
                   <p className="text-sm text-muted-foreground">{selectedUser.email}</p>
-                  <Badge variant="secondary" className="mt-2">
-                    {selectedUser.role}
-                  </Badge>
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {(() => {
+                      // Get all roles - check roles array first, fallback to role field
+                      const allRoles = selectedUser.roles && Array.isArray(selectedUser.roles) && selectedUser.roles.length > 0
+                        ? selectedUser.roles
+                        : selectedUser.role
+                          ? [selectedUser.role]
+                          : [];
+                      
+                      // Remove duplicates and sort
+                      const uniqueRoles = Array.from(new Set(allRoles)).sort((a, b) => {
+                        const order = { admin: 0, host: 1, guest: 2 };
+                        return (order[a as keyof typeof order] ?? 99) - (order[b as keyof typeof order] ?? 99);
+                      });
+                      
+                      return uniqueRoles.map((role) => (
+                        <Badge
+                          key={role}
+                          variant={
+                            role === 'admin' 
+                              ? 'default' 
+                              : role === 'host'
+                              ? 'secondary'
+                              : 'outline'
+                          }
+                          className={
+                            role === 'admin'
+                              ? 'bg-orange-500 hover:bg-orange-600'
+                              : role === 'host'
+                              ? 'bg-blue-500 hover:bg-blue-600'
+                              : 'bg-cyan-500 hover:bg-cyan-600'
+                          }
+                        >
+                          {role}
+                        </Badge>
+                      ));
+                    })()}
+                  </div>
                 </div>
 
                 <div className="space-y-2">

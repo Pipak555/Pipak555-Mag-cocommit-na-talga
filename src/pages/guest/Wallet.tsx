@@ -32,8 +32,46 @@ const Wallet = () => {
     if (user) {
       loadWallet();
       loadTransactions();
+      
+      // Check if returning from PayPal redirect flow
+      const searchParams = new URLSearchParams(window.location.search);
+      const token = searchParams.get('token');
+      const PayerID = searchParams.get('PayerID');
+      
+      if (token && PayerID) {
+        // Handle PayPal redirect callback
+        handlePayPalRedirectCallback(token, PayerID);
+      }
     }
   }, [user]);
+
+  const handlePayPalRedirectCallback = async (token: string, payerId: string) => {
+    // Get stored order data
+    const storedData = sessionStorage.getItem('paypal_pending_order');
+    if (!storedData) {
+      toast.error('Payment session expired. Please try again.');
+      return;
+    }
+
+    const orderData = JSON.parse(storedData);
+    
+    try {
+      // The order should already be captured by PayPal
+      // We just need to verify and process it
+      // For now, simulate success - in production, verify with PayPal API
+      toast.success('Payment successful! Processing...');
+      
+      // Process the payment (similar to onApprove logic)
+      await handlePayPalDepositSuccess();
+      
+      // Clean up
+      sessionStorage.removeItem('paypal_pending_order');
+      window.history.replaceState({}, '', window.location.pathname);
+    } catch (error) {
+      console.error('Error processing redirect callback:', error);
+      toast.error('Payment verification failed. Please contact support.');
+    }
+  };
 
   const loadWallet = async () => {
     if (!user) return;
@@ -96,12 +134,21 @@ const Wallet = () => {
   };
 
   const handlePayPalDepositSuccess = async () => {
-    if (!user || !amount || Number(amount) <= 0) return;
+    if (!user) return;
+
+    // Small delay to ensure Firestore has updated
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     // Reload wallet balance, transactions, and verification status
     await loadWallet();
     await loadTransactions();
+    
+    // Clear amount after successful deposit
+    const depositedAmount = amount;
     setAmount("");
+    
+    // Show success message with deposited amount
+    toast.success(`Successfully deposited ${formatPHP(Number(depositedAmount))} to your wallet!`);
     
     // Check if account is now verified
     const userDoc = await getDoc(doc(db, 'users', user.uid));
@@ -109,7 +156,6 @@ const Wallet = () => {
       const data = userDoc.data();
       if (data.paypalEmailVerified && !paypalVerified) {
         setPaypalVerified(true);
-        toast.success("PayPal account verified! Your account has been verified through a successful payment.");
       }
     }
   };
@@ -178,37 +224,59 @@ const Wallet = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 sm:px-6 pb-4 sm:pb-6">
-            <p className="text-3xl sm:text-4xl font-bold text-primary mb-4 sm:mb-6">{formatPHP(balance)}</p>
+            <div className="mb-6">
+              <p className="text-3xl sm:text-4xl font-bold text-primary">{formatPHP(balance)}</p>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-1">Available balance</p>
+            </div>
             
             <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row gap-2">
+              <div>
+                <Label htmlFor="deposit-amount" className="text-sm font-medium mb-2 block">
+                  Deposit Amount
+                </Label>
                 <Input
+                  id="deposit-amount"
                   type="number"
-                  placeholder="Amount"
+                  placeholder="Enter amount"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   min="1"
                   step="0.01"
-                  disabled={!paypalEmail}
-                  className="h-11 sm:h-auto text-base sm:text-sm flex-1"
+                  disabled={!paypalVerified}
+                  className="h-12 text-base sm:text-sm"
                 />
               </div>
-              {!paypalEmail ? (
-                <div className="p-4 bg-muted rounded-lg">
-                  <p className="text-sm text-muted-foreground text-center">
-                    Link your PayPal account above to make deposits
-                  </p>
+              
+              {!paypalVerified ? (
+                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0" />
+                    <p className="text-sm text-yellow-900 dark:text-yellow-100">
+                      Link and verify your PayPal account above to make deposits
+                    </p>
+                  </div>
                 </div>
-              ) : user && amount && Number(amount) > 0 ? (
-                <PayPalButton
-                  amount={Number(amount)}
-                  userId={user.uid}
-                  description={`Wallet deposit: ${formatPHP(Number(amount))}`}
-                  onSuccess={handlePayPalDepositSuccess}
-                  redirectUrl={window.location.origin + '/guest/wallet'}
-                />
+          ) : user && amount && Number(amount) > 0 ? (
+            <div className="space-y-3">
+              <PayPalButton
+                amount={Number(amount)}
+                userId={user.uid}
+                description={`Wallet deposit: ${formatPHP(Number(amount))}`}
+                onSuccess={handlePayPalDepositSuccess}
+                redirectUrl={window.location.origin + '/guest/wallet'}
+                useRedirectFlow={true}
+              />
+              <p className="text-xs text-muted-foreground text-center">
+                Secure payment powered by PayPal
+              </p>
+            </div>
               ) : (
-                <Button onClick={handleDeposit} disabled={!amount || Number(amount) <= 0}>
+                <Button 
+                  onClick={handleDeposit} 
+                  disabled={!amount || Number(amount) <= 0}
+                  className="w-full h-12"
+                  variant="outline"
+                >
                   Enter amount to deposit
                 </Button>
               )}

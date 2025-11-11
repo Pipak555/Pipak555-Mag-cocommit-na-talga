@@ -149,15 +149,21 @@ const HostDashboard = () => {
     // Check subscription status
     const checkSubscription = async () => {
       try {
-        const active = await hasActiveSubscription(user.uid);
-        setHasSubscription(active);
-        if (active) {
-          const sub = await getUserSubscription(user.uid);
+        // Get subscription first (includes cancelled but not expired)
+        const sub = await getUserSubscription(user.uid);
+        if (sub) {
           setSubscription(sub);
+          // Check if subscription hasn't expired (regardless of cancelled status)
+          const hasActive = sub.endDate ? new Date(sub.endDate) > new Date() : sub.status === 'active';
+          setHasSubscription(hasActive);
+        } else {
+          setHasSubscription(false);
+          setSubscription(null);
         }
       } catch (error) {
         console.error('Error checking subscription:', error);
         setHasSubscription(false);
+        setSubscription(null);
       }
     };
 
@@ -258,7 +264,7 @@ const HostDashboard = () => {
       </header>
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Subscription Status Banner */}
+        {/* Subscription Status Banner - Only show if no subscription */}
         {hasSubscription === false && (
           <Card className="mb-6 border-yellow-500/50 bg-yellow-500/10">
             <CardContent className="pt-6">
@@ -282,34 +288,8 @@ const HostDashboard = () => {
           </Card>
         )}
 
-        {hasSubscription === true && subscription && (
-          <Card className="mb-6 border-green-500/50 bg-green-500/10">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <CreditCard className="h-5 w-5 text-green-600 dark:text-green-400" />
-                  <div>
-                    <h3 className="font-semibold">Active Subscription</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {subscription.planName} ({subscription.billingCycle}) - {formatPHP(subscription.amount)}/{subscription.billingCycle}
-                    </p>
-                    {subscription.endDate && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Expires: {new Date(subscription.endDate).toLocaleDateString()}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <Badge variant="outline" className="bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/50">
-                  Active
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-6 sm:mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6 sm:mb-8">
           <Card 
             className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer hover:scale-105 active:scale-100"
             onClick={() => navigate('/host/listings')}
@@ -357,6 +337,24 @@ const HostDashboard = () => {
             <CardContent>
               <div className="text-3xl font-bold bg-gradient-to-br from-secondary to-secondary/80 bg-clip-text text-transparent">
                 {formatPHP(stats.totalEarnings)}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer"
+            onClick={() => navigate('/host/settings?tab=rewards')}
+          >
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-yellow-500 via-yellow-400 to-yellow-300" />
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                <Award className="h-4 w-4" />
+                Host Points
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold bg-gradient-to-br from-yellow-500 to-yellow-600 bg-clip-text text-transparent">
+                {userProfile?.hostPoints || 0}
               </div>
             </CardContent>
           </Card>
@@ -463,11 +461,11 @@ const HostDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/host/settings')}>
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/host/settings?tab=subscription')}>
             <CardHeader>
               <Settings className="w-8 h-8 text-muted-foreground mb-2" />
               <CardTitle>Settings</CardTitle>
-              <CardDescription>Manage your account preferences</CardDescription>
+              <CardDescription>Manage your account and subscription</CardDescription>
             </CardHeader>
           </Card>
         </div>

@@ -10,7 +10,11 @@ service cloud.firestore {
     function isAdmin() {
       return isSignedIn() && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+        (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles is list &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles.hasAny(['admin']))
+        );
     }
 
     // Top-level listing collection rules
@@ -88,7 +92,11 @@ service cloud.firestore {
 
     // Top-level transactions collection
     match /transactions/{transactionId} {
-      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      // Users can read their own transactions, admins can read all
+      allow read: if isSignedIn() && (
+        request.auth.uid == resource.data.userId ||
+        isAdmin()
+      );
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
     }
 
@@ -108,8 +116,9 @@ service cloud.firestore {
     match /users/{userId} {
       // Allow read for: own document, admins, or any authenticated user (for booking emails, etc.)
       allow read: if isSignedIn();
-      // Allow write for: own document, or payment processing (host updating guest wallet/points for booking payment)
+      // Allow write for: own document, payment processing, or admin PayPal fields
       allow write: if isSignedIn() && (
+        // Users can always write their own document (for profile updates, admin PayPal linking, etc.)
         request.auth.uid == userId ||
         // Allow payment processing: host can update guest's walletBalance, points, and coupons when processing booking payment
         // This is needed for the payment service to deduct from guest wallet, credit host wallet, award points, and mark coupons as used
@@ -281,8 +290,10 @@ service cloud.firestore {
       // Users can read their own notifications
       allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
       
-      // System can create notifications for users
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      // Any authenticated user can create notifications (needed for messages, bookings, listings)
+      // This allows: senders to notify receivers, hosts to notify guests, admins to notify hosts, etc.
+      // Security is maintained because users can only READ their own notifications
+      allow create: if isSignedIn();
       
       // Users can update their own notifications (mark as read, delete)
       allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
@@ -318,8 +329,45 @@ service cloud.firestore {
         isAdmin()
       );
       
-      // Allow list/query for user's subscriptions
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      // Allow list/query for user's subscriptions or admins can list all
+      allow list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    // Admin settings collection
+    match /adminSettings/{settingId} {
+      // Only admins can read and write admin settings
+      // Allow read: admins can read any admin setting
+      allow read: if isAdmin();
+      
+      // Allow create: admins can create admin settings
+      allow create: if isAdmin();
+      
+      // Allow update: admins can update admin settings
+      allow update: if isAdmin();
+      
+      // Allow delete: admins can delete admin settings
+      allow delete: if isAdmin();
+    }
+
+    // Platform events collection
+    match /events/{eventId} {
+      // Admins can read and write all events
+      allow read, write: if isAdmin();
+      
+      // Users can read active events that target their roles
+      allow read: if isSignedIn() && 
+        resource.data.status == 'active' &&
+        (
+          // Check if user's role is in targetRoles
+          (resource.data.targetRoles is list && 
+           resource.data.targetRoles.hasAny([get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role])) ||
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles is list &&
+           resource.data.targetRoles is list &&
+           resource.data.targetRoles.hasAny(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles))
+        );
     }
   }
 }

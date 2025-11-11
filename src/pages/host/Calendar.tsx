@@ -407,29 +407,39 @@ const HostCalendar = () => {
         {/* Legend */}
         <Card className="mb-6">
           <CardContent className="pt-6">
-            <div className="flex flex-wrap items-center gap-6">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded border-2 border-primary bg-primary/10 flex items-center justify-center">
+            <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+              {/* Today */}
+              <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-primary/5 border border-primary/20 hover:bg-primary/10 transition-colors">
+                <div className="w-5 h-5 rounded-md border-2 border-primary bg-primary/10 flex items-center justify-center shadow-sm">
                   <CalendarIcon className="h-3 w-3 text-primary" />
                 </div>
-                <span className="text-sm font-medium">Today</span>
+                <span className="text-sm font-semibold text-primary">Today</span>
               </div>
-              <div className="h-4 w-px bg-border"></div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded bg-blue-500"></div>
-                <span className="text-sm">Upcoming</span>
+              
+              <div className="h-6 w-px bg-border hidden sm:block"></div>
+              
+              {/* Upcoming */}
+              <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-blue-500/5 border border-blue-500/20 hover:bg-blue-500/10 transition-colors">
+                <div className="w-4 h-4 rounded-md bg-blue-500 shadow-sm ring-2 ring-blue-500/20"></div>
+                <span className="text-sm font-medium">Upcoming</span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded bg-green-500"></div>
-                <span className="text-sm">Successful</span>
+              
+              {/* Successful */}
+              <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-green-500/5 border border-green-500/20 hover:bg-green-500/10 transition-colors">
+                <div className="w-4 h-4 rounded-md bg-green-500 shadow-sm ring-2 ring-green-500/20"></div>
+                <span className="text-sm font-medium">Successful</span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded bg-orange-500"></div>
-                <span className="text-sm">Pending</span>
+              
+              {/* Pending */}
+              <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-orange-500/5 border border-orange-500/20 hover:bg-orange-500/10 transition-colors">
+                <div className="w-4 h-4 rounded-md bg-orange-500 shadow-sm ring-2 ring-orange-500/20"></div>
+                <span className="text-sm font-medium">Pending</span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded bg-gray-400"></div>
-                <span className="text-sm">Cancelled</span>
+              
+              {/* Cancelled */}
+              <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-gray-500/5 border border-gray-500/20 hover:bg-gray-500/10 transition-colors">
+                <div className="w-4 h-4 rounded-md bg-gray-400 dark:bg-gray-500 shadow-sm ring-2 ring-gray-400/20 dark:ring-gray-500/20"></div>
+                <span className="text-sm font-medium">Cancelled</span>
               </div>
             </div>
           </CardContent>
@@ -466,27 +476,64 @@ const HostCalendar = () => {
                     >
                       {date && (
                         <>
-                          <div className={`text-sm font-medium mb-2 flex items-center gap-1 ${isToday ? 'text-primary font-bold' : ''}`}>
-                            {date.getDate()}
+                          <div className={`text-sm font-medium mb-2 flex items-center gap-1.5 ${isToday ? 'text-primary font-bold' : ''}`}>
+                            <span className={isToday ? 'text-base' : ''}>{date.getDate()}</span>
                             {isToday && (
-                              <span className="text-xs bg-primary text-primary-foreground px-1.5 py-0.5 rounded font-normal">
+                              <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-md font-medium shadow-sm">
                                 Today
                               </span>
                             )}
                           </div>
-                          <div className="space-y-1">
-                            {dayBookings.slice(0, 3).map((booking, i) => (
-                              <div
-                                key={i}
-                                className={`text-xs p-1 rounded text-white truncate cursor-pointer hover:opacity-80 ${getStatusColor(booking)}`}
-                                onClick={() => handleBookingClick(booking)}
-                                title={booking.listingTitle}
-                              >
-                                {booking.listingTitle}
-                              </div>
-                            ))}
+                          <div className="space-y-1.5">
+                            {dayBookings.slice(0, 3).map((booking, i) => {
+                              const today = new Date();
+                              today.setHours(0, 0, 0, 0);
+                              const checkOut = new Date(booking.checkOut);
+                              checkOut.setHours(0, 0, 0, 0);
+                              
+                              // Determine status
+                              const isSuccessful = booking.status === 'completed' || (checkOut < today && booking.status === 'confirmed');
+                              const isUpcoming = booking.status === 'confirmed' && checkOut >= today;
+                              const isPending = booking.status === 'pending';
+                              const isCancelled = booking.status === 'cancelled';
+                              
+                              return (
+                                <div
+                                  key={i}
+                                  className={`
+                                    text-xs px-2.5 py-1.5 rounded-md cursor-pointer 
+                                    transition-all duration-200 hover:scale-[1.02] hover:shadow-md active:scale-[0.98]
+                                    truncate font-medium shadow-sm
+                                    ${
+                                      isSuccessful
+                                        ? 'bg-gradient-to-r from-green-500 to-green-600 text-white hover:from-green-600 hover:to-green-700 border border-green-400/30' 
+                                        : isUpcoming
+                                        ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 border border-blue-400/30'
+                                        : isPending
+                                        ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white hover:from-orange-600 hover:to-orange-700 border border-orange-400/30'
+                                        : isCancelled
+                                        ? 'bg-gradient-to-r from-gray-400 to-gray-500 dark:from-gray-500 dark:to-gray-600 text-white hover:from-gray-500 hover:to-gray-600 dark:hover:from-gray-600 dark:hover:to-gray-700 border border-gray-300/30 dark:border-gray-400/30'
+                                        : 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 border border-blue-400/30'
+                                    }
+                                  `}
+                                  onClick={() => handleBookingClick(booking)}
+                                  title={`${booking.listingTitle} - ${getStatusLabel(booking)}`}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                      isSuccessful ? 'bg-green-200 ring-2 ring-green-300/50' 
+                                      : isUpcoming ? 'bg-blue-200 ring-2 ring-blue-300/50'
+                                      : isPending ? 'bg-orange-200 ring-2 ring-orange-300/50'
+                                      : isCancelled ? 'bg-gray-200 ring-2 ring-gray-300/50'
+                                      : 'bg-blue-200 ring-2 ring-blue-300/50'
+                                    }`}></div>
+                                    <span className="truncate flex-1 leading-tight">{booking.listingTitle}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
                             {dayBookings.length > 3 && (
-                              <div className="text-xs text-muted-foreground">
+                              <div className="text-xs text-muted-foreground font-medium px-2.5 py-1.5 bg-muted/60 dark:bg-muted/40 rounded-md text-center border border-border/50 hover:bg-muted/80 transition-colors">
                                 +{dayBookings.length - 3} more
                               </div>
                             )}

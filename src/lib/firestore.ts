@@ -365,6 +365,25 @@ export const createReview = async (data: Omit<Review, 'id' | 'createdAt'>) => {
     ...data,
     createdAt: new Date().toISOString(),
   });
+  
+  // Award host points for high rating (5-star reviews)
+  try {
+    // Get listing to find hostId
+    const listingDoc = await getDoc(doc(db, 'listing', data.listingId));
+    if (listingDoc.exists()) {
+      const listing = listingDoc.data();
+      const hostId = listing.hostId;
+      
+      if (hostId && data.rating === 5) {
+        const { awardHostPointsForRating } = await import('./hostPointsService');
+        await awardHostPointsForRating(hostId, data.rating, data.bookingId);
+      }
+    }
+  } catch (error) {
+    console.error('Error awarding host points for review:', error);
+    // Don't fail review creation if points award fails
+  }
+  
   return docRef.id;
 };
 
@@ -450,7 +469,7 @@ export const sendMessage = async (data: Omit<Message, 'id' | 'createdAt'>) => {
     createdAt: new Date().toISOString(),
   });
   
-  // Send notification to receiver
+  // Send notification to receiver only
   try {
     const { notifyNewMessage } = await import('./notifications');
     const { getUserProfile } = await import('./firestore');
@@ -459,6 +478,7 @@ export const sendMessage = async (data: Omit<Message, 'id' | 'createdAt'>) => {
     const senderProfile = await getUserProfile(data.senderId);
     const senderName = senderProfile?.fullName || senderProfile?.email || 'Someone';
     
+    // Send notification to receiver (new message received)
     await notifyNewMessage(data.receiverId, data.senderId, senderName, docRef.id);
   } catch (error) {
     console.error('Error sending message notification:', error);

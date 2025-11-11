@@ -37,11 +37,19 @@ const PayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified }: Pay
   const isSandbox = paypalEnv !== 'production';
   const baseUrl = window.location.origin;
   
-  // Normalize localhost to 127.0.0.1 for PayPal compatibility
+  // Build redirect URI - use the current origin
+  // IMPORTANT: This exact URI must be added to PayPal app's allowed redirect URIs
   let redirectUri = `${baseUrl}/paypal-callback`;
-  if (redirectUri.includes('localhost')) {
+  
+  // For localhost, try both localhost and 127.0.0.1
+  // PayPal sandbox sometimes prefers one over the other
+  if (baseUrl.includes('localhost')) {
+    // Try 127.0.0.1 first as it's more reliable with PayPal
     redirectUri = redirectUri.replace('localhost', '127.0.0.1');
   }
+  
+  // Note: If using IP address (like 10.56.170.176), PayPal sandbox may not accept it
+  // In that case, try using localhost/127.0.0.1 instead
 
   const handleOAuthCallback = useCallback(async (authCode: string) => {
     setVerifying(true);
@@ -99,9 +107,75 @@ const PayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified }: Pay
     const code = searchParams.get('code');
     const state = searchParams.get('state');
     const error = searchParams.get('error');
+    const errorDescription = searchParams.get('error_description') || '';
+
+    // Log all URL parameters for debugging
+    if (import.meta.env.DEV) {
+      console.log('🔍 PayPal OAuth Callback Debug:', {
+        code: code ? 'Present' : 'Missing',
+        state,
+        error,
+        errorDescription,
+        fullUrl: window.location.href,
+        allParams: Object.fromEntries(new URLSearchParams(window.location.search))
+      });
+    }
 
     if (error) {
-      toast.error('PayPal login was cancelled or failed. Please try again.');
+      // Check if it's a redirect URI error
+      if (errorDescription.includes('redirect_uri') || errorDescription.includes('invalid') || error === 'invalid_client') {
+        const isIPAddress = /^\d+\.\d+\.\d+\.\d+/.test(baseUrl.replace(/^https?:\/\//, '').split(':')[0]);
+        
+        // Try to extract the redirect URI from the error description or URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const fullErrorUrl = window.location.href;
+        
+        // Extract redirect URI from error description if available
+        let paypalReceivedUri = redirectUri;
+        if (errorDescription) {
+          const uriMatch = errorDescription.match(/redirect_uri[=:]\s*([^\s&]+)/i);
+          if (uriMatch) {
+            paypalReceivedUri = decodeURIComponent(uriMatch[1]);
+          }
+        }
+        
+        toast.error(
+          `PayPal configuration error: Redirect URI not registered.`,
+          { 
+            duration: 12000,
+            description: `PayPal received: "${paypalReceivedUri}". Add this EXACT URI to PayPal Return URLs.`
+          }
+        );
+        if (import.meta.env.DEV) {
+          console.error('❌ PayPal Redirect URI Error');
+          console.error('Error Code:', error);
+          console.error('Error Description:', errorDescription);
+          console.error('Full Error URL:', fullErrorUrl);
+          console.error('═══════════════════════════════════════');
+          console.error('🔴 REDIRECT URI THAT PAYPAL RECEIVED:');
+          console.error('   ' + paypalReceivedUri);
+          console.error('═══════════════════════════════════════');
+          console.error('Current redirect URI we sent:', redirectUri);
+          console.error('Base URL:', baseUrl);
+          console.error('Full URL params:', Object.fromEntries(urlParams));
+          if (isIPAddress) {
+            console.warn('⚠️ You are using an IP address. PayPal sandbox may not accept IP addresses.');
+            console.warn('💡 Try using localhost instead: http://127.0.0.1:8080/paypal-callback');
+          }
+          console.error('📋 COPY THIS EXACT URI TO PAYPAL:');
+          console.error('   ' + paypalReceivedUri);
+          console.error('Go to: https://developer.paypal.com/dashboard/applications/sandbox');
+          console.error('Then: Your App → Log in with PayPal → Advanced Settings → Return URL → Add');
+        }
+      } else if (error === 'access_denied') {
+        toast.info('PayPal login was cancelled.');
+      } else {
+        toast.error(`PayPal login failed: ${errorDescription || error}. Please try again.`);
+        if (import.meta.env.DEV) {
+          console.error('PayPal OAuth Error:', { error, errorDescription, fullUrl: window.location.href });
+        }
+      }
+      
       // Clean up URL
       navigate(window.location.pathname, { replace: true });
       return;
@@ -109,8 +183,17 @@ const PayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified }: Pay
 
     if (code && state === `paypal-verify-${userId}`) {
       handleOAuthCallback(code);
+    } else if (code) {
+      // Code present but state doesn't match - log for debugging
+      if (import.meta.env.DEV) {
+        console.warn('⚠️ PayPal OAuth code received but state mismatch:', {
+          expectedState: `paypal-verify-${userId}`,
+          receivedState: state,
+          code: code ? 'Present' : 'Missing'
+        });
+      }
     }
-  }, [searchParams, userId, navigate, handleOAuthCallback]);
+  }, [searchParams, userId, navigate, handleOAuthCallback, redirectUri]);
 
   const handleLinkPayPal = () => {
     if (!clientId) {
@@ -146,6 +229,7 @@ const PayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified }: Pay
       console.warn('⚠️ IMPORTANT: Make sure this EXACT redirect URI is in PayPal:', redirectUri);
       console.warn('⚠️ Current URL:', window.location.href);
       console.warn('⚠️ Redirect URI being sent:', redirectUri);
+      console.warn('📝 To fix: Go to PayPal Developer Dashboard → Your App → Add Redirect URI:', redirectUri);
     }
 
     // Redirect to PayPal login

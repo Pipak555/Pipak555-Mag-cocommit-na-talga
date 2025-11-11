@@ -233,4 +233,63 @@ All colors MUST be HSL.
       font-size: 16px !important;
     }
   }
+
+  /* PayPal Button Styling */
+  .paypal-button-wrapper {
+    width: 100%;
+    min-height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    overflow: hidden;
+  }
+
+  .paypal-button-wrapper > div {
+    width: 100% !important;
+  }
+
+  /* Ensure PayPal buttons are full width and properly styled */
+  .paypal-button-wrapper iframe {
+    width: 100% !important;
+    min-height: 50px;
+    border-radius: 0.5rem;
+  }
+
+  /* Improve PayPal popup/modal appearance */
+  /* Note: PayPal popup is mostly controlled by PayPal, but we can try to influence it */
+  body.paypal-modal-open {
+    overflow: hidden;
+  }
+
+  /* PayPal popup iframe styling - try to improve positioning */
+  /* PayPal renders popup in an iframe, so we have limited control */
+  iframe[src*="paypal.com"][src*="checkoutnow"] {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    z-index: 9999 !important;
+    border-radius: 0.75rem !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3) !important;
+  }
+
+  /* PayPal popup container */
+  div[id*="paypal"][id*="container"],
+  div[class*="paypal"][class*="modal"],
+  div[class*="paypal"][class*="popup"] {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    z-index: 9999 !important;
+  }
+
+  /* PayPal overlay/backdrop */
+  div[id*="paypal"][id*="overlay"],
+  div[class*="paypal"][class*="overlay"],
+  div[class*="paypal"][class*="backdrop"] {
+    background-color: rgba(0, 0, 0, 0.7) !important;
+    backdrop-filter: blur(4px) !important;
+  }
 }

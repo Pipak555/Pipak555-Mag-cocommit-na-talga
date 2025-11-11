@@ -130,6 +130,7 @@ export const processBookingPayment = async (booking: Booking, paymentMethod: 'wa
     });
 
     // Create earnings transaction for host
+    // Note: Payout will be automatically processed by Firebase Function trigger (autoProcessHostPayout)
     await createTransaction({
       userId: booking.hostId,
       type: 'deposit',
@@ -138,20 +139,52 @@ export const processBookingPayment = async (booking: Booking, paymentMethod: 'wa
       status: 'completed',
       bookingId: bookingId,
       serviceFee: serviceFee,
-      grossAmount: totalPrice
+      grossAmount: totalPrice,
+      payoutStatus: 'pending' // Will be updated by Firebase Function when payout is processed
     });
 
+    // Award host points for completed booking
+    try {
+      const { awardHostPointsForBooking } = await import('./hostPointsService');
+      await awardHostPointsForBooking(booking.hostId, bookingId, totalPrice);
+    } catch (pointsError) {
+      console.error('Error awarding host points:', pointsError);
+      // Don't fail payment if points award fails
+    }
+
+    // Get admin PayPal account info
+    let adminPayPalEmail: string | undefined;
+    try {
+      const adminSettingsDoc = await getDoc(doc(db, 'adminSettings', 'paypal'));
+      if (adminSettingsDoc.exists()) {
+        const adminSettings = adminSettingsDoc.data();
+        adminPayPalEmail = adminSettings.paypalEmail;
+      }
+    } catch (error) {
+      console.error('Error fetching admin PayPal settings:', error);
+    }
+
     // Create service fee transaction for platform
+    // All service fees go to admin's PayPal account
+    // For PayPal payments: Service fee is already in admin's PayPal (full payment goes there)
+    // For wallet payments: Service fee portion should be transferred to admin's PayPal
+    const serviceFeeDescription = adminPayPalEmail
+      ? `Service fee from booking #${bookingId.slice(0, 8)} → ${adminPayPalEmail}`
+      : `Service fee from booking #${bookingId.slice(0, 8)} (to admin PayPal account)`;
+
     await createTransaction({
       userId: 'platform', // Platform account
       type: 'deposit',
       amount: serviceFee,
-      description: `Service fee from booking #${bookingId.slice(0, 8)}`,
-      status: 'completed',
+      description: serviceFeeDescription,
+      status: 'completed', // Mark as completed - all service fees go to admin PayPal
       paymentMethod: 'service_fee',
       bookingId: bookingId,
       guestId: guestId,
-      hostId: booking.hostId
+      hostId: booking.hostId,
+      adminPayPalEmail: adminPayPalEmail, // Store admin PayPal email for reference
+      originalPaymentMethod: paymentMethod, // Track original payment method for reference
+      payoutStatus: 'pending' // Will be processed by Firebase Function for admin payout
     });
 
     // Only log in development

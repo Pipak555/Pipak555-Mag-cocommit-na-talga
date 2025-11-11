@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { getListings, toggleFavorite, toggleWishlist, getListingsRatings } from "@/lib/firestore";
+import { getListings, toggleFavorite, toggleWishlist, getListingsRatings, getBookings } from "@/lib/firestore";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { ListingCard } from "@/components/listings/ListingCard";
@@ -13,7 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowLeft, Search } from "lucide-react";
 import { toast } from "sonner";
-import type { Listing } from "@/types";
+import type { Listing, Booking } from "@/types";
+import { isListingAvailableForDates } from "@/lib/availabilityUtils";
 
 const BrowseListings = () => {
   const navigate = useNavigate();
@@ -24,6 +25,8 @@ const BrowseListings = () => {
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [confirmedBookings, setConfirmedBookings] = useState<Booking[]>([]);
+  const [loadingBookings, setLoadingBookings] = useState(false);
   // Initialize filters - check URL params first for category
   const getInitialCategory = () => {
     const params = new URLSearchParams(location.search);
@@ -48,6 +51,15 @@ const BrowseListings = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, filters.category]);
+
+  // Load confirmed bookings when date filters are applied
+  useEffect(() => {
+    if (filters.checkIn && filters.checkOut) {
+      loadConfirmedBookings();
+    } else {
+      setConfirmedBookings([]);
+    }
+  }, [filters.checkIn, filters.checkOut]);
 
   useEffect(() => {
     // Get search query and category from URL params if present
@@ -129,6 +141,25 @@ const BrowseListings = () => {
     }
   };
 
+  const loadConfirmedBookings = async () => {
+    if (!filters.checkIn || !filters.checkOut) {
+      setConfirmedBookings([]);
+      return;
+    }
+
+    setLoadingBookings(true);
+    try {
+      // Load all confirmed bookings to check availability
+      const bookings = await getBookings({ status: 'confirmed' });
+      setConfirmedBookings(bookings);
+    } catch (error) {
+      console.error('Error loading confirmed bookings:', error);
+      setConfirmedBookings([]);
+    } finally {
+      setLoadingBookings(false);
+    }
+  };
+
   const handleFavorite = useCallback(async (listingId: string) => {
     if (!user) {
       toast.error("Please login to add favorites");
@@ -207,9 +238,29 @@ const BrowseListings = () => {
         return false;
       }
       
+      // Date availability filter
+      if (filters.checkIn && filters.checkOut) {
+        // Get confirmed bookings for this specific listing
+        const listingBookings = confirmedBookings.filter(
+          booking => booking.listingId === listing.id
+        );
+        
+        // Check if listing is available for the entire date range
+        const isAvailable = isListingAvailableForDates(
+          listing,
+          filters.checkIn,
+          filters.checkOut,
+          listingBookings
+        );
+        
+        if (!isAvailable) {
+          return false;
+        }
+      }
+      
       return true;
     });
-  }, [listings, searchQuery, filters]);
+  }, [listings, searchQuery, filters, confirmedBookings]);
 
   const handleFilterChange = (newFilters: FilterValues) => {
     setFilters(newFilters);
@@ -267,7 +318,7 @@ const BrowseListings = () => {
           />
         </div>
 
-        {loading ? (
+        {loading || loadingBookings ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
             {[...Array(8)].map((_, i) => (
               <ListingSkeleton key={i} />
@@ -277,9 +328,16 @@ const BrowseListings = () => {
           <EmptyState
             icon={<Search className="h-10 w-10" />}
             title="No listings found"
-            description="Try adjusting your filters or browse a different category to find what you're looking for."
+            description={
+              filters.checkIn && filters.checkOut
+                ? "No listings available for the selected dates. Try adjusting your date range or other filters."
+                : "Try adjusting your filters or browse a different category to find what you're looking for."
+            }
             action={
-              <Button onClick={() => setFilters({ ...filters, category: 'all', location: '', guests: 1 })} className="h-11">
+              <Button 
+                onClick={() => setFilters({ ...filters, category: 'all', location: '', guests: 1, checkIn: undefined, checkOut: undefined })} 
+                className="h-11"
+              >
                 Clear Filters
               </Button>
             }

@@ -13,14 +13,15 @@ import {
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Shield, Users, Home, DollarSign, TrendingUp, FileText, Settings, AlertCircle, Loader2, MessageSquare } from 'lucide-react';
+import { Shield, Users, Home, DollarSign, TrendingUp, FileText, Settings, AlertCircle, Loader2, MessageSquare, CreditCard, Megaphone, Gift, Calendar } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
 import { collection, onSnapshot, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { toast } from 'sonner';
 import { formatPHP } from '@/lib/currency';
-import type { Transaction, Booking, Listing } from '@/types';
+import type { Transaction, Booking, Listing, PlatformEvent } from '@/types';
+import { getAllEvents } from '@/lib/eventService';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,17 +44,22 @@ const AdminDashboard = () => {
     activeListings: 0,
     totalBookings: 0,
     cancelledBookings: 0,
+    totalEarnings: 0,
+    subscriptionRevenue: 0,
     serviceFees: 0,
   });
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
-  const [serviceFeeBreakdownOpen, setServiceFeeBreakdownOpen] = useState(false);
-  const [serviceFeeTransactions, setServiceFeeTransactions] = useState<Array<Transaction & { 
+  const [earningsBreakdownOpen, setEarningsBreakdownOpen] = useState(false);
+  const [allEarningsTransactions, setAllEarningsTransactions] = useState<Array<Transaction & { 
     hostName?: string; 
     hostEmail?: string;
     listingTitle?: string;
     bookingId?: string;
+    earningsType?: 'subscription' | 'service_fee';
   }>>([]);
   const [loadingBreakdown, setLoadingBreakdown] = useState(false);
+  const [recentEvents, setRecentEvents] = useState<PlatformEvent[]>([]);
+  const [loadingEvents, setLoadingEvents] = useState(false);
 
   useEffect(() => {
     if (!user || userRole !== 'admin') {
@@ -87,12 +93,32 @@ const AdminDashboard = () => {
           id: u.id,
           email: (u as any).email || 'N/A',
           role: (u as any).role || 'unknown',
+          roles: (u as any).roles || [],
           fullName: (u as any).fullName || 'N/A'
         })));
         
-        const hosts = users.filter((u: any) => u.role === 'host').length;
-        const guests = users.filter((u: any) => u.role === 'guest').length;
-        const admins = users.filter((u: any) => u.role === 'admin').length;
+        // Count users by checking both roles array and role field
+        // A user can have multiple roles, so count each role separately
+        let hosts = 0;
+        let guests = 0;
+        let admins = 0;
+        
+        users.forEach((u: any) => {
+          // Get all roles - check roles array first, fallback to role field
+          const allRoles = (u.roles && Array.isArray(u.roles) && u.roles.length > 0)
+            ? u.roles
+            : u.role
+              ? [u.role]
+              : [];
+          
+          // Count each role (user can be counted in multiple categories)
+          const uniqueRoles = Array.from(new Set(allRoles));
+          uniqueRoles.forEach((role: string) => {
+            if (role === 'host') hosts++;
+            if (role === 'guest') guests++;
+            if (role === 'admin') admins++;
+          });
+        });
         
         console.log('📊 Count breakdown:', { hosts, guests, admins, total: users.length });
         
@@ -145,31 +171,65 @@ const AdminDashboard = () => {
       }
     );
 
-    // Load actual service fees from transactions
-    const loadServiceFees = async () => {
+    // Load total earnings (subscription revenue + service fees)
+    const loadTotalEarnings = async () => {
       try {
+        // Load service fees
         const serviceFeeQuery = query(
           collection(db, 'transactions'),
           where('userId', '==', 'platform'),
           where('paymentMethod', '==', 'service_fee')
         );
-        const snapshot = await getDocs(serviceFeeQuery);
-        const totalServiceFees = snapshot.docs.reduce((sum, doc) => {
+        const serviceFeeSnapshot = await getDocs(serviceFeeQuery);
+        const totalServiceFees = serviceFeeSnapshot.docs.reduce((sum, doc) => {
           const data = doc.data();
           return sum + (data.amount || 0);
         }, 0);
+
+        // Load subscription payments (transactions with subscription in description)
+        const allTransactionsSnapshot = await getDocs(collection(db, 'transactions'));
+        const subscriptionTransactions = allTransactionsSnapshot.docs
+          .map(doc => doc.data())
+          .filter((t: any) => 
+            (t.description?.toLowerCase().includes('host subscription') || 
+             t.description?.toLowerCase().includes('subscription')) &&
+            t.status === 'completed'
+          );
+        const subscriptionRevenue = subscriptionTransactions.reduce((sum: number, t: any) => {
+          return sum + (t.amount || 0);
+        }, 0);
+
+        const totalEarnings = totalServiceFees + subscriptionRevenue;
         
         setStats(prev => ({
           ...prev,
+          totalEarnings,
+          subscriptionRevenue,
           serviceFees: totalServiceFees,
         }));
       } catch (error: any) {
-        console.error('Error loading service fees:', error);
+        console.error('Error loading total earnings:', error);
         // Don't show error toast, just log it
       }
     };
 
-    loadServiceFees();
+    loadTotalEarnings();
+
+    // Load recent events
+    const loadEvents = async () => {
+      try {
+        setLoadingEvents(true);
+        const events = await getAllEvents();
+        // Get latest 10 events
+        setRecentEvents(events.slice(0, 10));
+      } catch (error: any) {
+        console.error('Error loading events:', error);
+      } finally {
+        setLoadingEvents(false);
+      }
+    };
+
+    loadEvents();
 
     return () => {
       // Only unsubscribe if the functions were created
@@ -184,31 +244,118 @@ const AdminDashboard = () => {
     navigate('/');
   };
 
-  const handleViewServiceFeeBreakdown = async () => {
-    setServiceFeeBreakdownOpen(true);
+  // Recent Activity Component
+  const RecentActivity = () => {
+    if (loadingEvents) {
+      return (
+        <div className="text-center py-8">
+          <Loader2 className="w-8 h-8 mx-auto mb-4 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading events...</p>
+        </div>
+      );
+    }
+
+    if (recentEvents.length === 0) {
+      return (
+        <div className="text-center py-8 text-muted-foreground">
+          <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
+          <p>No recent activity to display</p>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="mt-4"
+            onClick={() => navigate('/admin/create-event')}
+          >
+            <Megaphone className="h-4 w-4 mr-2" />
+            Create Your First Event
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        {recentEvents.map((event) => (
+          <div
+            key={event.id}
+            className="flex items-start gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+          >
+            <div className={`p-2 rounded-lg ${
+              event.type === 'coupon' ? 'bg-green-100 dark:bg-green-900/20' :
+              event.type === 'announcement' ? 'bg-blue-100 dark:bg-blue-900/20' :
+              'bg-purple-100 dark:bg-purple-900/20'
+            }`}>
+              {event.type === 'coupon' ? (
+                <Gift className="h-5 w-5 text-green-600 dark:text-green-400" />
+              ) : (
+                <Megaphone className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1">
+                  <h4 className="font-semibold text-sm mb-1">{event.title}</h4>
+                  <p className="text-sm text-muted-foreground line-clamp-2">{event.description}</p>
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <Badge variant="outline" className="text-xs">
+                      {event.type}
+                    </Badge>
+                    {event.type === 'coupon' && event.couponCode && (
+                      <Badge variant="secondary" className="text-xs font-mono">
+                        {event.couponCode}
+                      </Badge>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      {event.targetRoles.join(', ')}
+                    </span>
+                    {event.notificationSent && (
+                      <Badge variant="outline" className="text-xs bg-green-50 dark:bg-green-900/20">
+                        Sent
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground whitespace-nowrap">
+                  {new Date(event.createdAt).toLocaleDateString()}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const handleViewEarningsBreakdown = async () => {
+    setEarningsBreakdownOpen(true);
     setLoadingBreakdown(true);
     
     try {
-      // Fetch all service fee transactions
-      const serviceFeeQuery = query(
-        collection(db, 'transactions'),
-        where('userId', '==', 'platform'),
-        where('paymentMethod', '==', 'service_fee')
-      );
-      const snapshot = await getDocs(serviceFeeQuery);
+      // Fetch all transactions
+      const allTransactionsSnapshot = await getDocs(collection(db, 'transactions'));
+      
+      // Filter for earnings transactions (service fees and subscriptions)
+      const earningsTransactions = allTransactionsSnapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as Transaction))
+        .filter((t: Transaction) => 
+          (t.paymentMethod === 'service_fee' && t.userId === 'platform') ||
+          ((t.description?.toLowerCase().includes('host subscription') || 
+            t.description?.toLowerCase().includes('subscription')) &&
+           t.status === 'completed')
+        );
       
       // Fetch host and listing info for each transaction
       const transactionsWithDetails = await Promise.all(
-        snapshot.docs.map(async (docSnapshot) => {
-          const data = docSnapshot.data() as Transaction;
+        earningsTransactions.map(async (data) => {
           const transaction: Transaction & { 
             hostName?: string; 
             hostEmail?: string;
             listingTitle?: string;
             bookingId?: string;
+            earningsType?: 'subscription' | 'service_fee';
           } = {
-            id: docSnapshot.id,
             ...data,
+            earningsType: data.paymentMethod === 'service_fee' ? 'service_fee' : 'subscription',
           };
 
           // Fetch host information
@@ -225,8 +372,22 @@ const AdminDashboard = () => {
             }
           }
 
-          // Fetch booking and listing information
-          if (data.bookingId) {
+          // For subscription payments, try to get host from userId if hostId is not available
+          if (transaction.earningsType === 'subscription' && !transaction.hostId && data.userId && data.userId !== 'platform') {
+            try {
+              const hostDoc = await getDoc(doc(db, 'users', data.userId));
+              if (hostDoc.exists()) {
+                const hostData = hostDoc.data();
+                transaction.hostName = hostData.fullName || 'N/A';
+                transaction.hostEmail = hostData.email || 'N/A';
+              }
+            } catch (error) {
+              console.error('Error fetching subscription host info:', error);
+            }
+          }
+
+          // Fetch booking and listing information (only for service fees)
+          if (data.bookingId && transaction.earningsType === 'service_fee') {
             try {
               const bookingDoc = await getDoc(doc(db, 'bookings', data.bookingId));
               if (bookingDoc.exists()) {
@@ -262,10 +423,10 @@ const AdminDashboard = () => {
         return dateB - dateA;
       });
 
-      setServiceFeeTransactions(transactionsWithDetails);
+      setAllEarningsTransactions(transactionsWithDetails);
     } catch (error: any) {
-      console.error('Error loading service fee breakdown:', error);
-      toast.error(`Failed to load service fee breakdown: ${error.message || 'Unknown error'}`);
+      console.error('Error loading earnings breakdown:', error);
+      toast.error(`Failed to load earnings breakdown: ${error.message || 'Unknown error'}`);
     } finally {
       setLoadingBreakdown(false);
     }
@@ -341,14 +502,17 @@ const AdminDashboard = () => {
 
           <Card 
             className="shadow-soft cursor-pointer hover:shadow-medium transition-shadow"
-            onClick={handleViewServiceFeeBreakdown}
+            onClick={handleViewEarningsBreakdown}
           >
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Service Fees</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Earnings</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-accent">{formatPHP(stats.serviceFees)}</div>
-              <p className="text-xs text-muted-foreground mt-1">10% commission • Click to view breakdown</p>
+              <div className="text-2xl font-bold text-accent">{formatPHP(stats.totalEarnings)}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Subscriptions: {formatPHP(stats.subscriptionRevenue)} • Service Fees: {formatPHP(stats.serviceFees)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">Click to view breakdown</p>
             </CardContent>
           </Card>
         </div>
@@ -381,6 +545,16 @@ const AdminDashboard = () => {
               <CardTitle>Payment Management</CardTitle>
               <CardDescription>
                 Review and confirm payments
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/admin/paypal-settings')}>
+            <CardHeader>
+              <CreditCard className="w-8 h-8 text-primary mb-2" />
+              <CardTitle>PayPal Settings</CardTitle>
+              <CardDescription>
+                Configure PayPal account for subscriptions
               </CardDescription>
             </CardHeader>
           </Card>
@@ -429,28 +603,33 @@ const AdminDashboard = () => {
         {/* Recent Activity */}
         <Card className="shadow-medium">
           <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-            <CardDescription>Latest platform events</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Recent Activity</CardTitle>
+                <CardDescription>Latest platform events</CardDescription>
+              </div>
+              <Button onClick={() => navigate('/admin/create-event')} size="sm">
+                <Megaphone className="h-4 w-4 mr-2" />
+                Create Event
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-center py-8 text-muted-foreground">
-              <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>No recent activity to display</p>
-            </div>
+            <RecentActivity />
           </CardContent>
         </Card>
       </div>
 
-      {/* Service Fee Breakdown Dialog */}
-      <Dialog open={serviceFeeBreakdownOpen} onOpenChange={setServiceFeeBreakdownOpen}>
+      {/* Total Earnings Breakdown Dialog */}
+      <Dialog open={earningsBreakdownOpen} onOpenChange={setEarningsBreakdownOpen}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <DollarSign className="h-5 w-5" />
-              Service Fee Breakdown
+              Total Earnings Breakdown
             </DialogTitle>
             <DialogDescription>
-              Detailed breakdown of all service fees collected (10% commission)
+              Detailed breakdown of all platform earnings (subscription payments + service fees)
             </DialogDescription>
           </DialogHeader>
 
@@ -459,32 +638,56 @@ const AdminDashboard = () => {
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <p className="ml-3 text-muted-foreground">Loading breakdown...</p>
             </div>
-          ) : serviceFeeTransactions.length === 0 ? (
+          ) : allEarningsTransactions.length === 0 ? (
             <div className="text-center py-12">
               <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-              <p className="text-muted-foreground">No service fees collected yet</p>
+              <p className="text-muted-foreground">No earnings recorded yet</p>
             </div>
           ) : (
             <div className="space-y-4">
               {/* Summary */}
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Total Service Fees</p>
-                      <p className="text-2xl font-bold text-accent">
-                        {formatPHP(
-                          serviceFeeTransactions.reduce((sum, t) => sum + (t.amount || 0), 0)
-                        )}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Total Transactions</p>
-                      <p className="text-2xl font-bold">{serviceFeeTransactions.length}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <p className="text-sm text-muted-foreground">Total Earnings</p>
+                    <p className="text-2xl font-bold text-accent">
+                      {formatPHP(
+                        allEarningsTransactions.reduce((sum, t) => sum + (t.amount || 0), 0)
+                      )}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <p className="text-sm text-muted-foreground">Subscription Revenue</p>
+                    <p className="text-2xl font-bold text-primary">
+                      {formatPHP(
+                        allEarningsTransactions
+                          .filter(t => t.earningsType === 'subscription')
+                          .reduce((sum, t) => sum + (t.amount || 0), 0)
+                      )}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <p className="text-sm text-muted-foreground">Service Fees</p>
+                    <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                      {formatPHP(
+                        allEarningsTransactions
+                          .filter(t => t.earningsType === 'service_fee')
+                          .reduce((sum, t) => sum + (t.amount || 0), 0)
+                      )}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <p className="text-sm text-muted-foreground">Total Transactions</p>
+                    <p className="text-2xl font-bold">{allEarningsTransactions.length}</p>
+                  </CardContent>
+                </Card>
+              </div>
 
               {/* Transactions Table */}
               <div className="border rounded-lg">
@@ -492,15 +695,16 @@ const AdminDashboard = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Date</TableHead>
+                      <TableHead>Type</TableHead>
                       <TableHead>Booking ID</TableHead>
                       <TableHead>Listing</TableHead>
                       <TableHead>Host Name</TableHead>
                       <TableHead>Host Email</TableHead>
-                      <TableHead className="text-right">Service Fee</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {serviceFeeTransactions.map((transaction) => (
+                    {allEarningsTransactions.map((transaction) => (
                       <TableRow key={transaction.id}>
                         <TableCell>
                           {transaction.createdAt
@@ -514,24 +718,40 @@ const AdminDashboard = () => {
                             : 'N/A'}
                         </TableCell>
                         <TableCell>
-                          <code className="text-xs bg-muted px-2 py-1 rounded">
-                            {transaction.bookingId?.slice(0, 8) || 'N/A'}
-                          </code>
+                          <Badge 
+                            variant={transaction.earningsType === 'subscription' ? 'default' : 'secondary'}
+                            className={
+                              transaction.earningsType === 'subscription' 
+                                ? 'bg-primary' 
+                                : 'bg-green-500'
+                            }
+                          >
+                            {transaction.earningsType === 'subscription' ? 'Subscription' : 'Service Fee'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {transaction.bookingId ? (
+                            <code className="text-xs bg-muted px-2 py-1 rounded">
+                              {transaction.bookingId.slice(0, 8)}
+                            </code>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                         <TableCell className="max-w-[200px] truncate">
-                          {transaction.listingTitle || 'N/A'}
+                          {transaction.listingTitle || '—'}
                         </TableCell>
-                        <TableCell>{transaction.hostName || 'N/A'}</TableCell>
+                        <TableCell>{transaction.hostName || '—'}</TableCell>
                         <TableCell>
                           {transaction.hostEmail ? (
                             <a
                               href={`mailto:${transaction.hostEmail}`}
-                              className="text-primary hover:underline"
+                              className="text-primary hover:underline text-sm"
                             >
                               {transaction.hostEmail}
                             </a>
                           ) : (
-                            'N/A'
+                            '—'
                           )}
                         </TableCell>
                         <TableCell className="text-right font-semibold text-accent">
