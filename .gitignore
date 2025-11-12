@@ -19,3 +19,8 @@ functions/serviceAccountKey.json
 .env.local
 .env.production
 node_modules
+
+# Build output
+dist
+dist-ssr
+*.local

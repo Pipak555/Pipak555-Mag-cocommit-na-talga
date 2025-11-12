@@ -1,1 +1,0 @@
-import{u as s,j as a}from"./react-vendor-Ve3SFwKO.js";import{B as o}from"./index-BnushFQy.js";import{A as r}from"./icons-vendor-DD8ZfUKZ.js";const n=({to:n,label:t="Back",className:i="",variant:c="ghost"})=>{const e=s();return a.jsx(o,{variant:c,onClick:()=>{e(n||-1)},size:"icon",className:"touch-manipulation "+i,children:a.jsx(r,{className:"h-4 w-4"})})};export{n as B};
