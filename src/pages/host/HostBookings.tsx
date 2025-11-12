@@ -320,6 +320,63 @@ const HostBookings = () => {
           if (paymentResult.success) {
             console.log('✅ Payment processed successfully:', paymentResult);
             toast.success(`Booking confirmed! Payment of ${formatPHP(booking.totalPrice || 0)} processed.`);
+            
+            // After payment succeeds, auto-decline overlapping pending bookings
+            try {
+              // Find all pending bookings for the same listing
+              const pendingBookingsQuery = query(
+                collection(db, 'bookings'),
+                where('listingId', '==', booking.listingId),
+                where('status', '==', 'pending')
+              );
+              
+              const pendingBookingsSnapshot = await getDocs(pendingBookingsQuery);
+              const confirmedCheckIn = new Date(booking.checkIn);
+              const confirmedCheckOut = new Date(booking.checkOut);
+              confirmedCheckIn.setHours(0, 0, 0, 0);
+              confirmedCheckOut.setHours(0, 0, 0, 0);
+              
+              const overlappingBookings: string[] = [];
+              
+              pendingBookingsSnapshot.forEach((doc) => {
+                const pendingBooking = doc.data() as Booking;
+                // Skip the booking we just confirmed
+                if (doc.id === bookingToUpdate.id) return;
+                
+                const pendingCheckIn = new Date(pendingBooking.checkIn);
+                const pendingCheckOut = new Date(pendingBooking.checkOut);
+                pendingCheckIn.setHours(0, 0, 0, 0);
+                pendingCheckOut.setHours(0, 0, 0, 0);
+                
+                // Check if date ranges overlap
+                // Two date ranges overlap if:
+                // - pendingCheckIn < confirmedCheckOut AND pendingCheckOut > confirmedCheckIn
+                const overlaps = pendingCheckIn < confirmedCheckOut && pendingCheckOut > confirmedCheckIn;
+                
+                if (overlaps) {
+                  overlappingBookings.push(doc.id);
+                }
+              });
+              
+              // Auto-decline all overlapping pending bookings
+              if (overlappingBookings.length > 0) {
+                const declinePromises = overlappingBookings.map(bookingId => 
+                  updateBooking(bookingId, { status: 'cancelled' })
+                );
+                
+                await Promise.all(declinePromises);
+                
+                console.log(`✅ Auto-declined ${overlappingBookings.length} overlapping booking(s)`);
+                if (overlappingBookings.length === 1) {
+                  toast.info('1 overlapping booking request was automatically declined.');
+                } else {
+                  toast.info(`${overlappingBookings.length} overlapping booking requests were automatically declined.`);
+                }
+              }
+            } catch (overlapError) {
+              console.error('Error auto-declining overlapping bookings:', overlapError);
+              // Don't fail the confirmation if auto-decline fails
+            }
           } else {
             throw new Error('Payment processing failed');
           }

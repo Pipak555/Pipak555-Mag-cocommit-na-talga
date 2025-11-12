@@ -193,9 +193,8 @@ const AccountSettings = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8 max-w-4xl">
-        <Button variant="ghost" onClick={handleBack} className="mb-6">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Dashboard
+        <Button variant="ghost" size="icon" onClick={handleBack} className="mb-6">
+          <ArrowLeft className="h-4 w-4" />
         </Button>
 
         <h1 className="text-3xl font-bold mb-6">Account Settings</h1>
@@ -311,9 +310,7 @@ const AccountSettings = () => {
                           listing={listing}
                           onView={() => navigate(`/guest/listing/${listing.id}`)}
                           onFavorite={() => handleFavorite(listing.id)}
-                          onWishlist={() => handleWishlist(listing.id)}
                           isFavorite={favorites.includes(listing.id)}
-                          isInWishlist={wishlist.includes(listing.id)}
                         />
                       ))}
                     </div>
@@ -337,11 +334,6 @@ const AccountSettings = () => {
                       icon={<Bookmark className="h-10 w-10" />}
                       title="No wishlist items yet"
                       description="Add listings to your wishlist for future trips!"
-                      action={
-                        <Button onClick={() => navigate('/guest/browse')}>
-                          Browse Listings
-                        </Button>
-                      }
                     />
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -351,9 +343,7 @@ const AccountSettings = () => {
                           listing={listing}
                           onView={() => navigate(`/guest/listing/${listing.id}`)}
                           onFavorite={() => handleFavorite(listing.id)}
-                          onWishlist={() => handleWishlist(listing.id)}
                           isFavorite={favorites.includes(listing.id)}
-                          isInWishlist={wishlist.includes(listing.id)}
                         />
                       ))}
                     </div>

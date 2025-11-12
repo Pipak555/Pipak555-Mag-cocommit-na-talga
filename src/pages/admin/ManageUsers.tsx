@@ -106,12 +106,11 @@ const ManageUsers = () => {
       <div className="max-w-7xl mx-auto">
         <Button
           variant="ghost"
+          size="icon"
           onClick={() => navigate('/admin/dashboard')}
-          className="mb-3 sm:mb-4 md:mb-6 h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation"
+          className="mb-3 sm:mb-4 md:mb-6 touch-manipulation"
         >
-          <ArrowLeft className="h-4 w-4 mr-1.5 sm:mr-2" />
-          <span className="hidden sm:inline">Back to Dashboard</span>
-          <span className="sm:hidden">Back</span>
+          <ArrowLeft className="h-4 w-4" />
         </Button>
 
         <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6">User Management</h1>

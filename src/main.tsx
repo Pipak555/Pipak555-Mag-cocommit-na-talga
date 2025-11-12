@@ -1,10 +1,9 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
-
+import { isProductionConfigured } from "./lib/env-validation";
 
 // Validate environment variables
-
 
 // In production, ensure all required configs are set
 if (import.meta.env.PROD) {

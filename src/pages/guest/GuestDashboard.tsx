@@ -414,9 +414,7 @@ const GuestDashboard = () => {
                 listing={listing}
                 onView={() => navigate(`/guest/listing/${listing.id}`)}
                 onFavorite={() => handleFavorite(listing.id)}
-                onWishlist={() => handleWishlist(listing.id)}
                 isFavorite={favorites.includes(listing.id)}
-                isInWishlist={wishlist.includes(listing.id)}
               />
               ))}
             </div>

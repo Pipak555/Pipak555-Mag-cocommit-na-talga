@@ -12,7 +12,7 @@ const CreateListing = () => {
     <SubscriptionGuard required={true}>
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-3xl mx-auto">
-          <BackButton to="/host/dashboard" label="Back to Dashboard" className="mb-4" />
+          <BackButton to="/host/dashboard" className="mb-4" />
           
           <CreateListingForm onSuccess={() => navigate('/host/listings')} />
         </div>

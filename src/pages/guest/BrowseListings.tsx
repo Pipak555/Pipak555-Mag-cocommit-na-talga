@@ -270,7 +270,7 @@ const BrowseListings = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-6 lg:py-8">
-            <BackButton to="/guest/dashboard" label="Back to Dashboard" className="mb-3 sm:mb-4 md:mb-6" />
+            <BackButton to="/guest/dashboard" className="mb-3 sm:mb-4 md:mb-6" />
 
         <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4 md:mb-6">Browse Listings</h1>
 
@@ -343,9 +343,7 @@ const BrowseListings = () => {
                 listing={listing}
                 onView={() => navigate(`/guest/listing/${listing.id}`)}
                 onFavorite={() => handleFavorite(listing.id)}
-                onWishlist={() => handleWishlist(listing.id)}
                 isFavorite={favorites.includes(listing.id)}
-                isInWishlist={wishlist.includes(listing.id)}
               />
             ))}
           </div>

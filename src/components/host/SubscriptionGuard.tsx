@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { hasActiveSubscription, getUserSubscription } from '@/lib/billingService';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, CreditCard } from 'lucide-react';
+import { AlertCircle, CreditCard, ArrowLeft } from 'lucide-react';
 import { formatPHP } from '@/lib/currency';
 import type { HostSubscription } from '@/types';
 
@@ -90,17 +90,17 @@ export const SubscriptionGuard = ({
             <div className="space-y-2">
               <Button 
                 className="w-full" 
-                onClick={() => navigate('/host/register')}
+                onClick={() => navigate('/host/register', { state: { from: 'dashboard' } })}
               >
                 <CreditCard className="h-4 w-4 mr-2" />
                 Subscribe Now
               </Button>
               <Button 
                 variant="outline" 
-                className="w-full"
+                size="icon"
                 onClick={() => navigate('/host/dashboard')}
               >
-                Back to Dashboard
+                <ArrowLeft className="h-4 w-4" />
               </Button>
             </div>
           </CardContent>
@@ -124,7 +124,7 @@ export const SubscriptionGuard = ({
                 </p>
                 <Button 
                   size="sm"
-                  onClick={() => navigate('/host/register')}
+                  onClick={() => navigate('/host/register', { state: { from: 'dashboard' } })}
                 >
                   <CreditCard className="h-4 w-4 mr-2" />
                   Subscribe Now

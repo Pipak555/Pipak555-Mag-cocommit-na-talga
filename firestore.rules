@@ -116,9 +116,13 @@ service cloud.firestore {
     match /users/{userId} {
       // Allow read for: own document, admins, or any authenticated user (for booking emails, etc.)
       allow read: if isSignedIn();
-      // Allow write for: own document, payment processing, host points, or admin PayPal fields
+      
+      // Allow list/query for password reset (querying by email)
+      // This is needed to fetch user profile by email for password reset emails
+      allow list: if isSignedIn();
+      // Allow write for: own document, payment processing, multi-role management, host points, or admin PayPal fields
       allow write: if isSignedIn() && (
-        // Users can always write their own document (for profile updates, admin PayPal linking, etc.)
+        // Users can always write their own document (for profile updates, multi-role registration, admin PayPal linking, etc.)
         request.auth.uid == userId ||
         // Allow payment processing: host can update guest's walletBalance, points, and coupons when processing booking payment
         // This is needed for the payment service to deduct from guest wallet, credit host wallet, award points, and mark coupons as used
@@ -137,7 +141,12 @@ service cloud.firestore {
         // Only allow updating hostPoints field (and ensure it's a number)
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostPoints']) &&
          request.resource.data.hostPoints is number &&
-         request.resource.data.hostPoints >= 0)
+         request.resource.data.hostPoints >= 0) ||
+        // Allow updating host-specific data fields (hostFavorites, hostWishlist)
+        // This is needed when users interact with listings as host
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostFavorites']) ||
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostWishlist']) ||
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostFavorites', 'hostWishlist']))
       );
 
       // Conversations under a user

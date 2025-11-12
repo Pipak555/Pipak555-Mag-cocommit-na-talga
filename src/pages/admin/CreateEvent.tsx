@@ -104,7 +104,7 @@ const CreateEvent = () => {
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
-          <BackButton to="/admin/dashboard" label="Back to Dashboard" />
+          <BackButton to="/admin/dashboard" />
           <div>
             <h1 className="text-3xl font-bold">Create Platform Event</h1>
             <p className="text-muted-foreground">Create events and notify users (e.g., coupon codes, announcements)</p>

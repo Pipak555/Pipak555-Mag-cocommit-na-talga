@@ -397,13 +397,13 @@ export const getListingReviews = async (listingId: string) => {
   try {
     // Try with orderBy first (requires index)
     try {
-      const q = query(
-        collection(db, 'reviews'), 
-        where('listingId', '==', listingId),
-        orderBy('createdAt', 'desc')
-      );
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Review));
+  const q = query(
+    collection(db, 'reviews'), 
+    where('listingId', '==', listingId),
+    orderBy('createdAt', 'desc')
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Review));
     } catch (orderByError: any) {
       // If orderBy fails (missing index), fallback to query without orderBy
       console.warn('OrderBy query failed, using fallback:', orderByError);

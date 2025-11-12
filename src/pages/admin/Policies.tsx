@@ -21,7 +21,6 @@ const Policies = () => {
    
    Moderate Cancellation (24-48 hours before check-in):
    - 50% refund of the total booking amount
-   - Service fees are non-refundable
    - Refund processed within 5-7 business days
    
    Strict Cancellation (Less than 24 hours before check-in):
@@ -102,7 +101,6 @@ const Policies = () => {
    - Set fair and competitive pricing
    - All fees must be clearly disclosed in listing
    - No hidden charges or surprise fees allowed
-   - Platform service fees are non-negotiable
 
 3. GUEST OBLIGATIONS AND RESPONSIBILITIES:
    
@@ -337,7 +335,7 @@ const Policies = () => {
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-4xl mx-auto">
-        <BackButton to="/admin/dashboard" label="Back to Dashboard" className="mb-6" />
+        <BackButton to="/admin/dashboard" className="mb-6" />
 
         <div className="flex items-center justify-between mb-6">
           <div>

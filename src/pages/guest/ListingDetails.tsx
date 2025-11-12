@@ -2,14 +2,15 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { getListing, createBooking, getListingRating, getBookings } from "@/lib/firestore";
+import { isListingAvailableForDates } from "@/lib/availabilityUtils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Calendar } from "@/components/ui/calendar";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, MapPin, Users, Heart, Bookmark, User, Ticket, X, ChevronLeft, ChevronRight, Calendar as CalendarIcon, ZoomIn } from "lucide-react";
+import { ArrowLeft, MapPin, Users, Heart, User, Ticket, X, ChevronLeft, ChevronRight, Calendar as CalendarIcon, ZoomIn, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import { BackButton } from "@/components/shared/BackButton";
 import { ReviewList } from "@/components/reviews/ReviewList";
@@ -27,12 +28,10 @@ const ListingDetails = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [listing, setListing] = useState<Listing | null>(null);
-  const [checkIn, setCheckIn] = useState<Date>();
-  const [checkOut, setCheckOut] = useState<Date>();
+  const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>();
   const [guests, setGuests] = useState(1);
   const [loading, setLoading] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
-  const [wishlist, setWishlist] = useState<string[]>([]);
   const [hostInfo, setHostInfo] = useState<{ fullName?: string; email?: string } | null>(null);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
@@ -52,7 +51,6 @@ const ListingDetails = () => {
     }
     if (user) {
       loadFavorites();
-      loadWishlist();
       loadCoupons();
     }
   }, [id, user]);
@@ -147,14 +145,6 @@ const ListingDetails = () => {
     }
   };
 
-  const loadWishlist = async () => {
-    if (!user) return;
-    const userDoc = await getDoc(doc(db, 'users', user.uid));
-    if (userDoc.exists()) {
-      setWishlist(userDoc.data().wishlist || []);
-    }
-  };
-
   const loadCoupons = async () => {
     if (!user) return;
     const userDoc = await getDoc(doc(db, 'users', user.uid));
@@ -194,10 +184,20 @@ const ListingDetails = () => {
     });
   };
 
+  // Check if a date is blocked by the host
+  const isDateBlocked = (date: Date): boolean => {
+    if (!listing?.blockedDates || listing.blockedDates.length === 0) {
+      return false;
+    }
+    
+    const dateStr = date.toISOString().split('T')[0];
+    return listing.blockedDates.includes(dateStr);
+  };
+
   // Check if a date is in the listing's available dates
   const isDateAvailable = (date: Date): boolean => {
     if (!listing?.availableDates || listing.availableDates.length === 0) {
-      // If no available dates specified, all dates are available (except booked ones)
+      // If no available dates specified, all dates are available (except booked/blocked ones)
       return true;
     }
     
@@ -215,7 +215,10 @@ const ListingDetails = () => {
     // Disable past dates (dates before today)
     if (dateOnly < today) return true;
     
-    // Disable if not in available dates
+    // Disable if blocked by host
+    if (isDateBlocked(dateOnly)) return true;
+    
+    // Disable if not in available dates (if availableDates is specified)
     if (!isDateAvailable(dateOnly)) return true;
     
     // Disable if booked (but keep showing as "booked" via modifiers)
@@ -239,24 +242,10 @@ const ListingDetails = () => {
     }
   };
 
-  const handleWishlist = async () => {
-    if (!user || !listing) {
-      toast.error("Please login to add to wishlist");
-      return;
-    }
-    try {
-      const { toggleWishlist } = await import('@/lib/firestore');
-      const newWishlist = await toggleWishlist(user.uid, listing.id, wishlist);
-      setWishlist(newWishlist);
-      toast.success(newWishlist.includes(listing.id) ? "Added to wishlist" : "Removed from wishlist");
-    } catch (error) {
-      toast.error("Failed to update wishlist");
-    }
-  };
 
   const calculateTotal = () => {
-    if (!checkIn || !checkOut || !listing) return 0;
-    const days = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+    if (!dateRange?.from || !dateRange?.to || !listing) return 0;
+    const days = Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24));
     const basePrice = days * listing.price;
     
     // Apply listing discount first (percentage discount)
@@ -275,8 +264,8 @@ const ListingDetails = () => {
   };
 
   const calculateListingDiscountAmount = () => {
-    if (!checkIn || !checkOut || !listing || !listing.discount || listing.discount <= 0) return 0;
-    const days = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+    if (!dateRange?.from || !dateRange?.to || !listing || !listing.discount || listing.discount <= 0) return 0;
+    const days = Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24));
     const basePrice = days * listing.price;
     return (basePrice * listing.discount) / 100;
   };
@@ -298,8 +287,8 @@ const ListingDetails = () => {
       return;
     }
 
-    const basePrice = checkIn && checkOut && listing 
-      ? Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)) * listing.price
+    const basePrice = dateRange?.from && dateRange?.to && listing 
+      ? Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24)) * listing.price
       : 0;
 
     if (coupon.minSpend && basePrice < coupon.minSpend) {
@@ -318,44 +307,93 @@ const ListingDetails = () => {
   };
 
   const handleBooking = async () => {
-    if (!user || !listing || !checkIn || !checkOut) {
-      toast.error("Please select dates and sign in");
+    // Check if user is signed in
+    if (!user) {
+      toast.error("Please sign in to book this listing");
       return;
     }
 
+    // Check if listing exists
+    if (!listing) {
+      toast.error("Listing information is missing. Please refresh the page.");
+      return;
+    }
+
+    // Check if dates are selected
+    if (!dateRange?.from || !dateRange?.to) {
+      toast.error("Please select your check-in and check-out dates");
+      return;
+    }
+
+    // Check if number of guests is entered
     if (!guests || guests < 1) {
       toast.error("Please enter the number of guests (minimum 1)");
       return;
     }
 
+    // Check if guests exceed maximum
     if (guests > listing.maxGuests) {
       toast.error(`Maximum ${listing.maxGuests} guest${listing.maxGuests > 1 ? 's' : ''} allowed for this listing`);
       return;
     }
 
+    // Check if host information exists
     if (!listing.hostId) {
       toast.error("Listing error: Missing host information. Please contact support.");
       console.error('Listing missing hostId:', listing);
       return;
     }
 
+    // Validate that the selected dates are available
+    const isAvailable = isListingAvailableForDates(listing, dateRange.from, dateRange.to, confirmedBookings);
+    if (!isAvailable) {
+      toast.error("The selected dates are not available. Please choose different dates.");
+      return;
+    }
+
+    // Calculate the total price first
+    const days = Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24));
+    const basePrice = days * listing.price;
+    const listingDiscountAmount = listing.discount && listing.discount > 0 
+      ? (basePrice * listing.discount) / 100 
+      : 0;
+    const priceAfterListingDiscount = basePrice - listingDiscountAmount;
+    const couponDiscountAmount = appliedCoupon ? appliedCoupon.discount : 0;
+    const finalPrice = calculateTotal();
+
+    // Check if user has sufficient wallet balance
+    try {
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        const walletBalance = userData.walletBalance || 0;
+        
+        if (walletBalance < finalPrice) {
+          const shortfall = finalPrice - walletBalance;
+          toast.error(
+            `Insufficient wallet balance. You need ${formatPHP(finalPrice)} but only have ${formatPHP(walletBalance)}. Please add ${formatPHP(shortfall)} to your wallet to complete this booking.`,
+            { duration: 6000 }
+          );
+          return;
+        }
+      } else {
+        toast.error("Unable to verify wallet balance. Please try again.");
+        return;
+      }
+    } catch (error) {
+      console.error('Error checking wallet balance:', error);
+      toast.error("Unable to verify wallet balance. Please try again.");
+      return;
+    }
+
     setLoading(true);
     try {
-      const days = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
-      const basePrice = days * listing.price;
-      const listingDiscountAmount = listing.discount && listing.discount > 0 
-        ? (basePrice * listing.discount) / 100 
-        : 0;
-      const priceAfterListingDiscount = basePrice - listingDiscountAmount;
-      const couponDiscountAmount = appliedCoupon ? appliedCoupon.discount : 0;
-      const finalPrice = calculateTotal();
-      
       const bookingData: any = {
         listingId: listing.id,
         guestId: user.uid,
         hostId: listing.hostId,
-        checkIn: checkIn.toISOString(),
-        checkOut: checkOut.toISOString(),
+        checkIn: dateRange.from.toISOString(),
+        checkOut: dateRange.to.toISOString(),
         guests,
         totalPrice: finalPrice,
         originalPrice: basePrice,
@@ -452,7 +490,7 @@ const ListingDetails = () => {
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6">
       <div className="max-w-7xl mx-auto">
-        <BackButton to="/guest/browse" label="Back to Browse" className="mb-4" />
+        <BackButton to="/guest/browse" className="mb-4" />
 
         <div className="grid lg:grid-cols-12 gap-4 sm:gap-6 lg:gap-8">
           <div className="lg:col-span-7 space-y-3">
@@ -567,18 +605,7 @@ const ListingDetails = () => {
               <Badge className="text-xs sm:text-sm">{listing.category}</Badge>
               <div className="flex items-center gap-2 flex-wrap">
                 {user && listing && (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleWishlist}
-                      className="flex items-center gap-1.5 sm:gap-2 h-9 sm:h-auto text-xs sm:text-sm touch-manipulation"
-                      title={wishlist.includes(listing.id) ? "Remove from wishlist" : "Add to wishlist"}
-                    >
-                      <Bookmark className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${wishlist.includes(listing.id) ? "fill-blue-500 text-blue-500" : ""}`} />
-                      <span className="hidden sm:inline">{wishlist.includes(listing.id) ? "In Wishlist" : "Wishlist"}</span>
-                    </Button>
-                    <Button
+                  <Button
                       variant="outline"
                       size="sm"
                       onClick={handleFavorite}
@@ -588,7 +615,6 @@ const ListingDetails = () => {
                       <Heart className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${favorites.includes(listing.id) ? "fill-red-500 text-red-500" : ""}`} />
                       <span className="hidden sm:inline">{favorites.includes(listing.id) ? "Favorited" : "Favorite"}</span>
                     </Button>
-                  </>
                 )}
                 {listing && (
                   <SocialShare
@@ -617,17 +643,30 @@ const ListingDetails = () => {
             </div>
 
             {/* Host Information */}
-            {hostInfo && (
+            {listing.hostId && (
               <Card className="mb-6 border-primary/20 bg-primary/5">
                 <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                      <User className="h-6 w-6 text-primary" />
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                        <User className="h-6 w-6 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">Hosted by</p>
+                        <p className="font-semibold text-lg">{hostInfo?.fullName || 'Host'}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Hosted by</p>
-                      <p className="font-semibold text-lg">{hostInfo.fullName}</p>
-                    </div>
+                    {user && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => navigate(`/guest/messages?userId=${listing.hostId}`)}
+                        className="flex items-center gap-2"
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                        Message Host
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -661,125 +700,45 @@ const ListingDetails = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="px-4 sm:px-6 pb-4 sm:pb-6">
-            <div className="grid lg:grid-cols-2 gap-6 sm:gap-8 lg:gap-12">
-              <div className="flex flex-col">
-                {/* Check-in Calendar */}
-                <div className="flex flex-col">
-                  <div className="mb-4 pb-3 border-b">
-                    <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
-                      <div className="h-2 w-2 rounded-full bg-primary"></div>
-                      Check-in
-                    </h3>
-                    {checkIn && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {checkIn.toLocaleDateString('en-US', { 
-                          weekday: 'long', 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })}
-                      </p>
-                    )}
-                  </div>
-                  <div className="w-full">
-                    <div className="w-full border rounded-md shadow-sm bg-card p-4">
-                      <Calendar
-                        mode="single"
-                        selected={checkIn}
-                        onSelect={setCheckIn}
-                        disabled={isDateDisabled}
-                        modifiers={{
-                          booked: (date) => isDateBooked(date),
-                        }}
-                        modifiersClassNames={{
-                          booked: "bg-orange-500/20 text-orange-600 dark:text-orange-400",
-                        }}
-                        className="w-full max-w-none [&_.rdp-day_booked]:bg-orange-500/20 [&_.rdp-day_booked]:text-orange-600 dark:[&_.rdp-day_booked]:text-orange-400 [&_.rdp-day_booked]:relative [&_.rdp-day_booked]:after:content-['booked'] [&_.rdp-day_booked]:after:absolute [&_.rdp-day_booked]:after:bottom-0 [&_.rdp-day_booked]:after:left-1/2 [&_.rdp-day_booked]:after:-translate-x-1/2 [&_.rdp-day_booked]:after:text-[7px] [&_.rdp-day_booked]:after:leading-tight [&_.rdp-day_booked]:after:opacity-80 [&_.rdp-day_booked]:after:whitespace-nowrap [&_.rdp-day_booked]:after:pointer-events-none"
-                        classNames={{
-                          months: "w-full",
-                          month: "w-full space-y-3",
-                          caption: "flex justify-center pt-1 relative items-center mb-4",
-                          caption_label: "text-base font-semibold",
-                          nav: "space-x-1 flex items-center",
-                          nav_button: "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 absolute",
-                          nav_button_previous: "left-1",
-                          nav_button_next: "right-1",
-                          table: "w-full border-collapse",
-                          head_row: "w-full flex justify-between mb-2",
-                          head_cell: "flex-1 text-center text-sm font-medium text-muted-foreground",
-                          row: "w-full flex justify-between my-1",
-                          cell: "flex-1 text-center h-10",
-                          day: "w-full h-full flex items-center justify-center text-sm font-medium rounded-md hover:bg-accent transition-colors",
-                          day_disabled: "text-muted-foreground opacity-50 cursor-not-allowed pointer-events-none",
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col lg:border-l lg:pl-12 lg:border-border/50">
-                {/* Check-out Calendar */}
-                <div className="flex flex-col">
-                  <div className="mb-4 pb-3 border-b">
-                    <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
-                      <div className="h-2 w-2 rounded-full bg-accent"></div>
-                      Check-out
-                    </h3>
-                    {checkOut && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {checkOut.toLocaleDateString('en-US', { 
-                          weekday: 'long', 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })}
-                      </p>
-                    )}
-                  </div>
-                  <div className="w-full">
-                    <div className="w-full border rounded-md shadow-sm bg-card p-4">
-                      <Calendar
-                        mode="single"
-                        selected={checkOut}
-                        onSelect={setCheckOut}
-                        disabled={(date) => {
-                          if (!checkIn) return true;
-                          const checkInDate = new Date(checkIn);
-                          checkInDate.setHours(0, 0, 0, 0);
-                          const dateOnly = new Date(date);
-                          dateOnly.setHours(0, 0, 0, 0);
-                          return dateOnly <= checkInDate || isDateDisabled(date);
-                        }}
-                        modifiers={{
-                          booked: (date) => isDateBooked(date),
-                        }}
-                        modifiersClassNames={{
-                          booked: "bg-orange-500/20 text-orange-600 dark:text-orange-400",
-                        }}
-                        className="w-full max-w-none [&_.rdp-day_booked]:bg-orange-500/20 [&_.rdp-day_booked]:text-orange-600 dark:[&_.rdp-day_booked]:text-orange-400 [&_.rdp-day_booked]:relative [&_.rdp-day_booked]:after:content-['booked'] [&_.rdp-day_booked]:after:absolute [&_.rdp-day_booked]:after:bottom-0 [&_.rdp-day_booked]:after:left-1/2 [&_.rdp-day_booked]:after:-translate-x-1/2 [&_.rdp-day_booked]:after:text-[7px] [&_.rdp-day_booked]:after:leading-tight [&_.rdp-day_booked]:after:opacity-80 [&_.rdp-day_booked]:after:whitespace-nowrap [&_.rdp-day_booked]:after:pointer-events-none"
-                        classNames={{
-                          months: "w-full",
-                          month: "w-full space-y-3",
-                          caption: "flex justify-center pt-1 relative items-center mb-4",
-                          caption_label: "text-base font-semibold",
-                          nav: "space-x-1 flex items-center",
-                          nav_button: "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 absolute",
-                          nav_button_previous: "left-1",
-                          nav_button_next: "right-1",
-                          table: "w-full border-collapse",
-                          head_row: "w-full flex justify-between mb-2",
-                          head_cell: "flex-1 text-center text-sm font-medium text-muted-foreground",
-                          row: "w-full flex justify-between my-1",
-                          cell: "flex-1 text-center h-10",
-                          day: "w-full h-full flex items-center justify-center text-sm font-medium rounded-md hover:bg-accent transition-colors",
-                          day_disabled: "text-muted-foreground opacity-50 cursor-not-allowed pointer-events-none",
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <div className="w-full">
+              <DateRangePicker
+                value={dateRange}
+                onChange={setDateRange}
+                placeholder="Select check-in and check-out dates"
+                disabled={isDateDisabled}
+                modifiers={{
+                  booked: (date) => isDateBooked(date),
+                  blocked: (date) => isDateBlocked(date),
+                }}
+                modifiersClassNames={{
+                  booked: "bg-orange-500/20 text-orange-600 dark:text-orange-400",
+                  blocked: "bg-red-500/20 text-red-600 dark:text-red-400",
+                }}
+                classNames={{
+                  months: "flex flex-row space-x-4",
+                  month: "space-y-4",
+                  caption: "flex justify-center pt-1 relative items-center",
+                  caption_label: "text-sm font-medium",
+                  nav: "space-x-1 flex items-center",
+                  nav_button: "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
+                  nav_button_previous: "absolute left-1",
+                  nav_button_next: "absolute right-1",
+                  table: "w-full border-collapse space-y-1",
+                  head_row: "flex",
+                  head_cell: "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem]",
+                  row: "flex w-full mt-2",
+                  cell: "h-9 w-9 text-center text-sm p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
+                  day: "h-9 w-9 p-0 font-normal aria-selected:opacity-100 rounded-md hover:bg-accent transition-colors",
+                  day_range_end: "day-range-end",
+                  day_selected: "bg-green-500 text-white hover:bg-green-600 hover:text-white focus:bg-green-500 focus:text-white rounded-md",
+                  day_today: "bg-accent text-accent-foreground",
+                  day_outside: "day-outside text-muted-foreground opacity-50 aria-selected:bg-accent/50 aria-selected:text-muted-foreground aria-selected:opacity-30",
+                  day_disabled: "text-muted-foreground opacity-50 cursor-not-allowed",
+                  day_range_middle: "aria-selected:bg-green-100 dark:aria-selected:bg-green-900/30 aria-selected:text-green-900 dark:aria-selected:text-green-100",
+                  day_hidden: "invisible",
+                }}
+                numberOfMonths={2}
+              />
             </div>
           </CardContent>
         </Card>
@@ -787,30 +746,42 @@ const ListingDetails = () => {
         {/* Booking Card */}
         <Card className="mt-6 sm:mt-8 shadow-lg bg-card">
                 <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6">
-                  <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 sm:gap-0">
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
-                        {listing.discount && listing.discount > 0 ? (
-                          <>
-                            <span className="text-xl sm:text-2xl line-through text-muted-foreground">
-                              {formatPHP(listing.price)}
-                            </span>
-                            <span className="text-2xl sm:text-3xl text-primary font-bold">
-                              {formatPHP(listing.price * (1 - listing.discount / 100))}
-                            </span>
-                            <Badge className="bg-red-500 text-white">
-                              -{listing.discount}%
-                            </Badge>
-                          </>
-                        ) : (
+                  <CardTitle className="flex flex-col gap-1">
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      {listing.discount && listing.discount > 0 ? (
+                        <>
+                          <span className="text-xl sm:text-2xl line-through text-muted-foreground">
+                            {formatPHP(listing.price)}
+                          </span>
+                          <span className="text-2xl sm:text-3xl text-primary font-bold">
+                            {formatPHP(listing.price * (1 - listing.discount / 100))}
+                          </span>
+                          <Badge className="bg-red-500 text-white">
+                            -{listing.discount}%
+                          </Badge>
+                        </>
+                      ) : (
                     <span className="text-2xl sm:text-3xl">{formatPHP(listing.price)}</span>
+                      )}
+                    <span className="text-xs sm:text-sm font-normal text-muted-foreground">per night</span>
+                    </div>
+                    {(listing.promo || listing.promoDescription) && (
+                      <p className="text-xs sm:text-sm text-primary font-medium">
+                        {listing.promoDescription || listing.promo}
+                      </p>
+                    )}
+                    {listing.promoCode && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="outline" className="text-xs">
+                          Promo Code: {listing.promoCode}
+                        </Badge>
+                        {listing.promoDiscount && listing.promoDiscount > 0 && (
+                          <Badge className="bg-orange-500 text-white text-xs">
+                            -{listing.promoDiscount}% OFF
+                          </Badge>
                         )}
                       </div>
-                      {listing.promo && (
-                        <p className="text-xs sm:text-sm text-primary font-medium">{listing.promo}</p>
-                      )}
-                    </div>
-                    <span className="text-xs sm:text-sm font-normal text-muted-foreground">per night</span>
+                    )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4 px-4 sm:px-6 pb-4 sm:pb-6">
@@ -889,10 +860,10 @@ const ListingDetails = () => {
                   )}
                 </div>
 
-                {checkIn && checkOut && (
+                {dateRange?.from && dateRange?.to && (
                   <div className="pt-4 border-t space-y-2">
                     {(() => {
-                      const days = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+                      const days = Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24));
                       const basePrice = days * listing.price;
                       const listingDiscountAmount = calculateListingDiscountAmount();
                       const priceAfterListingDiscount = basePrice - listingDiscountAmount;
@@ -937,7 +908,7 @@ const ListingDetails = () => {
                 <Button 
                   className="w-full h-12 sm:h-auto text-base sm:text-sm touch-manipulation" 
                   onClick={handleBooking}
-                  disabled={!checkIn || !checkOut || !guests || guests < 1 || guests > listing.maxGuests || loading}
+                  disabled={!dateRange?.from || !dateRange?.to || !guests || guests < 1 || guests > listing.maxGuests || loading}
                 >
                   {loading ? "Booking..." : "Request to Book"}
                 </Button>
@@ -1049,7 +1020,7 @@ const ListingDetails = () => {
 
         {/* Similar Listings Recommendations */}
         <div className="relative z-0">
-          <SimilarListings listingId={listing.id} />
+        <SimilarListings listingId={listing.id} />
         </div>
       </div>
     </div>
@@ -1062,14 +1033,12 @@ const SimilarListings = ({ listingId }: { listingId: string }) => {
   const { user } = useAuth();
   const [similarListings, setSimilarListings] = useState<Listing[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
-  const [wishlist, setWishlist] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadSimilarListings();
     if (user) {
       loadFavorites();
-      loadWishlist();
     }
   }, [listingId, user]);
 
@@ -1115,16 +1084,6 @@ const SimilarListings = ({ listingId }: { listingId: string }) => {
     }
   };
 
-  const loadWishlist = async () => {
-    if (!user) return;
-    const { doc, getDoc } = await import('firebase/firestore');
-    const { db } = await import('@/lib/firebase');
-    const userDoc = await getDoc(doc(db, 'users', user.uid));
-    if (userDoc.exists()) {
-      setWishlist(userDoc.data().wishlist || []);
-    }
-  };
-
   const handleFavorite = async (id: string) => {
     if (!user) {
       toast.error("Please login to add favorites");
@@ -1137,21 +1096,6 @@ const SimilarListings = ({ listingId }: { listingId: string }) => {
       toast.success(newFavorites.includes(id) ? "Added to favorites" : "Removed from favorites");
     } catch (error) {
       toast.error("Failed to update favorites");
-    }
-  };
-
-  const handleWishlist = async (id: string) => {
-    if (!user) {
-      toast.error("Please login to add to wishlist");
-      return;
-    }
-    try {
-      const { toggleWishlist } = await import('@/lib/firestore');
-      const newWishlist = await toggleWishlist(user.uid, id, wishlist);
-      setWishlist(newWishlist);
-      toast.success(newWishlist.includes(id) ? "Added to wishlist" : "Removed from wishlist");
-    } catch (error) {
-      toast.error("Failed to update wishlist");
     }
   };
 
@@ -1170,9 +1114,7 @@ const SimilarListings = ({ listingId }: { listingId: string }) => {
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
             onFavorite={() => handleFavorite(similarListing.id)}
-            onWishlist={() => handleWishlist(similarListing.id)}
             isFavorite={favorites.includes(similarListing.id)}
-            isInWishlist={wishlist.includes(similarListing.id)}
           />
         ))}
       </div>

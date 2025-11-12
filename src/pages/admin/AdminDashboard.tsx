@@ -46,7 +46,6 @@ const AdminDashboard = () => {
     cancelledBookings: 0,
     totalEarnings: 0,
     subscriptionRevenue: 0,
-    serviceFees: 0,
   });
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [earningsBreakdownOpen, setEarningsBreakdownOpen] = useState(false);
@@ -55,7 +54,7 @@ const AdminDashboard = () => {
     hostEmail?: string;
     listingTitle?: string;
     bookingId?: string;
-    earningsType?: 'subscription' | 'service_fee';
+    earningsType?: 'subscription';
   }>>([]);
   const [loadingBreakdown, setLoadingBreakdown] = useState(false);
   const [recentEvents, setRecentEvents] = useState<PlatformEvent[]>([]);
@@ -157,11 +156,13 @@ const AdminDashboard = () => {
         // Only count confirmed/completed bookings for revenue
         const activeBookings = bookings.filter(b => b.status === 'confirmed' || b.status === 'completed');
         const cancelledBookings = bookings.filter(b => b.status === 'cancelled');
+        // Only count confirmed and completed bookings (not pending)
+        const confirmedBookings = bookings.filter(b => b.status === 'confirmed' || b.status === 'completed');
         const totalRevenue = activeBookings.reduce((sum, b) => sum + (b.totalPrice || 0), 0);
         
         setStats(prev => ({
           ...prev,
-          totalBookings: snapshot.size,
+          totalBookings: confirmedBookings.length,
           cancelledBookings: cancelledBookings.length,
         }));
       },
@@ -171,21 +172,9 @@ const AdminDashboard = () => {
       }
     );
 
-    // Load total earnings (subscription revenue + service fees)
+    // Load total earnings (subscription revenue only)
     const loadTotalEarnings = async () => {
       try {
-        // Load service fees
-        const serviceFeeQuery = query(
-          collection(db, 'transactions'),
-          where('userId', '==', 'platform'),
-          where('paymentMethod', '==', 'service_fee')
-        );
-        const serviceFeeSnapshot = await getDocs(serviceFeeQuery);
-        const totalServiceFees = serviceFeeSnapshot.docs.reduce((sum, doc) => {
-          const data = doc.data();
-          return sum + (data.amount || 0);
-        }, 0);
-
         // Load subscription payments (transactions with subscription in description)
         const allTransactionsSnapshot = await getDocs(collection(db, 'transactions'));
         const subscriptionTransactions = allTransactionsSnapshot.docs
@@ -199,13 +188,12 @@ const AdminDashboard = () => {
           return sum + (t.amount || 0);
         }, 0);
 
-        const totalEarnings = totalServiceFees + subscriptionRevenue;
+        const totalEarnings = subscriptionRevenue;
         
         setStats(prev => ({
           ...prev,
           totalEarnings,
           subscriptionRevenue,
-          serviceFees: totalServiceFees,
         }));
       } catch (error: any) {
         console.error('Error loading total earnings:', error);
@@ -334,28 +322,25 @@ const AdminDashboard = () => {
       // Fetch all transactions
       const allTransactionsSnapshot = await getDocs(collection(db, 'transactions'));
       
-      // Filter for earnings transactions (service fees and subscriptions)
+      // Filter for earnings transactions (subscriptions only)
       const earningsTransactions = allTransactionsSnapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as Transaction))
         .filter((t: Transaction) => 
-          (t.paymentMethod === 'service_fee' && t.userId === 'platform') ||
-          ((t.description?.toLowerCase().includes('host subscription') || 
-            t.description?.toLowerCase().includes('subscription')) &&
-           t.status === 'completed')
+          (t.description?.toLowerCase().includes('host subscription') || 
+           t.description?.toLowerCase().includes('subscription')) &&
+          t.status === 'completed'
         );
       
-      // Fetch host and listing info for each transaction
+      // Fetch host info for each transaction
       const transactionsWithDetails = await Promise.all(
         earningsTransactions.map(async (data) => {
           const transaction: Transaction & { 
             hostName?: string; 
             hostEmail?: string;
-            listingTitle?: string;
-            bookingId?: string;
-            earningsType?: 'subscription' | 'service_fee';
+            earningsType?: 'subscription';
           } = {
             ...data,
-            earningsType: data.paymentMethod === 'service_fee' ? 'service_fee' : 'subscription',
+            earningsType: 'subscription',
           };
 
           // Fetch host information
@@ -386,31 +371,6 @@ const AdminDashboard = () => {
             }
           }
 
-          // Fetch booking and listing information (only for service fees)
-          if (data.bookingId && transaction.earningsType === 'service_fee') {
-            try {
-              const bookingDoc = await getDoc(doc(db, 'bookings', data.bookingId));
-              if (bookingDoc.exists()) {
-                const bookingData = bookingDoc.data() as Booking;
-                transaction.bookingId = data.bookingId;
-                
-                // Fetch listing title
-                if (bookingData.listingId) {
-                  try {
-                    const listingDoc = await getDoc(doc(db, 'listing', bookingData.listingId));
-                    if (listingDoc.exists()) {
-                      const listingData = listingDoc.data() as Listing;
-                      transaction.listingTitle = listingData.title || 'N/A';
-                    }
-                  } catch (error) {
-                    console.error('Error fetching listing info:', error);
-                  }
-                }
-              }
-            } catch (error) {
-              console.error('Error fetching booking info:', error);
-            }
-          }
 
           return transaction;
         })
@@ -513,7 +473,7 @@ const AdminDashboard = () => {
             <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
               <div className="text-xl sm:text-2xl font-bold text-accent">{formatPHP(stats.totalEarnings)}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                Subscriptions: {formatPHP(stats.subscriptionRevenue)} • Service Fees: {formatPHP(stats.serviceFees)}
+                Subscriptions: {formatPHP(stats.subscriptionRevenue)}
               </p>
               <p className="text-xs text-muted-foreground mt-1">Click to view breakdown</p>
             </CardContent>
@@ -632,7 +592,7 @@ const AdminDashboard = () => {
               Total Earnings Breakdown
             </DialogTitle>
             <DialogDescription className="text-xs sm:text-sm">
-              Detailed breakdown of all platform earnings (subscription payments + service fees)
+              Detailed breakdown of all platform earnings (subscription payments)
             </DialogDescription>
           </DialogHeader>
 
@@ -674,18 +634,6 @@ const AdminDashboard = () => {
                 </Card>
                 <Card>
                   <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
-                    <p className="text-xs sm:text-sm text-muted-foreground">Service Fees</p>
-                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-green-600 dark:text-green-400">
-                      {formatPHP(
-                        allEarningsTransactions
-                          .filter(t => t.earningsType === 'service_fee')
-                          .reduce((sum, t) => sum + (t.amount || 0), 0)
-                      )}
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
                     <p className="text-xs sm:text-sm text-muted-foreground">Total Transactions</p>
                     <p className="text-lg sm:text-xl md:text-2xl font-bold">{allEarningsTransactions.length}</p>
                   </CardContent>
@@ -720,7 +668,7 @@ const AdminDashboard = () => {
                               : 'bg-green-500 text-xs'
                           }
                         >
-                          {transaction.earningsType === 'subscription' ? 'Subscription' : 'Service Fee'}
+                          Subscription
                         </Badge>
                       </div>
                       <div className="space-y-1 text-xs">
@@ -802,7 +750,7 @@ const AdminDashboard = () => {
                                   : 'bg-green-500'
                               }
                             >
-                              {transaction.earningsType === 'subscription' ? 'Subscription' : 'Service Fee'}
+                              Subscription
                             </Badge>
                           </TableCell>
                           <TableCell>

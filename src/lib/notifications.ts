@@ -40,22 +40,47 @@ export const createNotification = async (notification: Omit<Notification, 'id' |
 };
 
 /**
- * Get user notifications
+ * Get user notifications filtered by role
  */
-export const getUserNotifications = async (userId: string, limitCount: number = 50): Promise<Notification[]> => {
+export const getUserNotifications = async (
+  userId: string, 
+  role?: 'host' | 'guest' | 'admin',
+  limitCount: number = 50
+): Promise<Notification[]> => {
   try {
-    const q = query(
-      collection(db, 'notifications'),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc'),
-      limit(limitCount)
-    );
+    let q;
+    if (role) {
+      // Filter by both userId and role for role-specific notifications
+      q = query(
+        collection(db, 'notifications'),
+        where('userId', '==', userId),
+        where('role', '==', role),
+        orderBy('createdAt', 'desc'),
+        limit(limitCount)
+      );
+    } else {
+      // Fallback: get notifications without role filter (for backward compatibility)
+      // Also include notifications without role field for migration
+      q = query(
+        collection(db, 'notifications'),
+        where('userId', '==', userId),
+        orderBy('createdAt', 'desc'),
+        limit(limitCount)
+      );
+    }
     
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({
+    const notifications = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     } as Notification));
+    
+    // If role is specified, also filter client-side to include notifications without role (for migration)
+    if (role) {
+      return notifications.filter(n => !n.role || n.role === role);
+    }
+    
+    return notifications;
   } catch (error) {
     console.error('Error fetching notifications:', error);
     throw error;
@@ -63,19 +88,33 @@ export const getUserNotifications = async (userId: string, limitCount: number = 
 };
 
 /**
- * Subscribe to user notifications in real-time
+ * Subscribe to user notifications in real-time, filtered by role
  */
 export const subscribeToNotifications = (
   userId: string,
   callback: (notifications: Notification[]) => void,
+  role?: 'host' | 'guest' | 'admin',
   limitCount: number = 50
 ) => {
-  const q = query(
-    collection(db, 'notifications'),
-    where('userId', '==', userId),
-    orderBy('createdAt', 'desc'),
-    limit(limitCount)
-  );
+  let q;
+  if (role) {
+    // Filter by both userId and role for role-specific notifications
+    q = query(
+      collection(db, 'notifications'),
+      where('userId', '==', userId),
+      where('role', '==', role),
+      orderBy('createdAt', 'desc'),
+      limit(limitCount)
+    );
+  } else {
+    // Fallback: get notifications without role filter (for backward compatibility)
+    q = query(
+      collection(db, 'notifications'),
+      where('userId', '==', userId),
+      orderBy('createdAt', 'desc'),
+      limit(limitCount)
+    );
+  }
 
   const unsubscribe = onSnapshot(
     q,
@@ -84,10 +123,19 @@ export const subscribeToNotifications = (
         id: doc.id,
         ...doc.data()
       } as Notification));
-      callback(notifications);
+      
+      // If role is specified, also filter client-side to include notifications without role (for migration)
+      if (role) {
+        const filtered = notifications.filter(n => !n.role || n.role === role);
+        callback(filtered);
+      } else {
+        callback(notifications);
+      }
     },
     (error) => {
       console.error('Error in notifications subscription:', error);
+      // Call callback with empty array on error to ensure loading state is cleared
+      callback([]);
     }
   );
 
@@ -109,20 +157,41 @@ export const markNotificationAsRead = async (notificationId: string): Promise<vo
 };
 
 /**
- * Mark all notifications as read for a user
+ * Mark all notifications as read for a user (filtered by role)
  */
-export const markAllNotificationsAsRead = async (userId: string): Promise<void> => {
+export const markAllNotificationsAsRead = async (
+  userId: string,
+  role?: 'host' | 'guest' | 'admin'
+): Promise<void> => {
   try {
-    const q = query(
-      collection(db, 'notifications'),
-      where('userId', '==', userId),
-      where('read', '==', false)
-    );
+    let q;
+    if (role) {
+      q = query(
+        collection(db, 'notifications'),
+        where('userId', '==', userId),
+        where('role', '==', role),
+        where('read', '==', false)
+      );
+    } else {
+      q = query(
+        collection(db, 'notifications'),
+        where('userId', '==', userId),
+        where('read', '==', false)
+      );
+    }
     
     const snapshot = await getDocs(q);
     
+    // Also mark notifications without role field if role is specified (for migration)
+    const docsToUpdate = role 
+      ? snapshot.docs.filter(doc => {
+          const data = doc.data();
+          return !data.role || data.role === role;
+        })
+      : snapshot.docs;
+    
     await Promise.all(
-      snapshot.docs.map(doc => 
+      docsToUpdate.map(doc => 
         updateDoc(doc.ref, { read: true })
       )
     );
@@ -148,17 +217,39 @@ export const deleteNotification = async (notificationId: string): Promise<void> 
 };
 
 /**
- * Get unread notification count
+ * Get unread notification count (filtered by role)
  */
-export const getUnreadNotificationCount = async (userId: string): Promise<number> => {
+export const getUnreadNotificationCount = async (
+  userId: string,
+  role?: 'host' | 'guest' | 'admin'
+): Promise<number> => {
   try {
-    const q = query(
-      collection(db, 'notifications'),
-      where('userId', '==', userId),
-      where('read', '==', false)
-    );
+    let q;
+    if (role) {
+      q = query(
+        collection(db, 'notifications'),
+        where('userId', '==', userId),
+        where('role', '==', role),
+        where('read', '==', false)
+      );
+    } else {
+      q = query(
+        collection(db, 'notifications'),
+        where('userId', '==', userId),
+        where('read', '==', false)
+      );
+    }
     
     const snapshot = await getDocs(q);
+    
+    // If role is specified, also count notifications without role field (for migration)
+    if (role) {
+      return snapshot.docs.filter(doc => {
+        const data = doc.data();
+        return !data.role || data.role === role;
+      }).length;
+    }
+    
     return snapshot.size;
   } catch (error) {
     console.error('Error getting unread count:', error);
@@ -172,13 +263,17 @@ export const getUnreadNotificationCount = async (userId: string): Promise<number
 export const notifyBookingConfirmed = async (
   userId: string,
   bookingId: string,
-  listingTitle: string
+  listingTitle: string,
+  role?: 'host' | 'guest' | 'admin'
 ): Promise<void> => {
   try {
-    // Get user profile to determine role and correct bookings URL
-    const { getUserProfile } = await import('./firestore');
-    const userProfile = await getUserProfile(userId);
-    const userRole = userProfile?.role || 'guest';
+    // Get user profile to determine role if not provided
+    let userRole = role;
+    if (!userRole) {
+      const { getUserProfile } = await import('./firestore');
+      const userProfile = await getUserProfile(userId);
+      userRole = userProfile?.role || 'guest';
+    }
     
     // Determine the correct bookings URL based on user role
     let actionUrl = '/guest/bookings';
@@ -191,6 +286,7 @@ export const notifyBookingConfirmed = async (
     
     await createNotification({
       userId,
+      role: userRole, // Include role for role-specific filtering
       type: 'booking',
       title: 'Booking Confirmed!',
       message: `Your booking for "${listingTitle}" has been confirmed.`,
@@ -212,11 +308,21 @@ export const notifyBookingCancelled = async (
   userId: string,
   bookingId: string,
   listingTitle: string,
-  cancelledBy: 'guest' | 'host' | 'admin'
+  cancelledBy: 'guest' | 'host' | 'admin',
+  role?: 'host' | 'guest' | 'admin'
 ): Promise<void> => {
   try {
+    // Get user profile to determine role if not provided
+    let userRole = role;
+    if (!userRole) {
+      const { getUserProfile } = await import('./firestore');
+      const userProfile = await getUserProfile(userId);
+      userRole = userProfile?.role || 'guest';
+    }
+    
     await createNotification({
       userId,
+      role: userRole, // Include role for role-specific filtering
       type: 'booking',
       title: 'Booking Cancelled',
       message: `Your booking for "${listingTitle}" has been cancelled ${cancelledBy === 'guest' ? 'by you' : cancelledBy === 'host' ? 'by the host' : 'by admin'}.`,
@@ -224,7 +330,7 @@ export const notifyBookingCancelled = async (
       relatedType: 'booking',
       read: false,
       priority: 'medium',
-      actionUrl: `/guest/bookings`
+      actionUrl: userRole === 'host' ? '/host/bookings' : '/guest/bookings'
     });
   } catch (error) {
     console.error('Error creating booking cancellation notification:', error);
@@ -238,13 +344,17 @@ export const notifyNewMessage = async (
   userId: string,
   senderId: string,
   senderName: string,
-  messageId: string
+  messageId: string,
+  role?: 'host' | 'guest' | 'admin'
 ): Promise<void> => {
   try {
-    // Get user profile to determine role and correct messages URL
-    const { getUserProfile } = await import('./firestore');
-    const userProfile = await getUserProfile(userId);
-    const userRole = userProfile?.role || 'guest';
+    // Get user profile to determine role if not provided
+    let userRole = role;
+    if (!userRole) {
+      const { getUserProfile } = await import('./firestore');
+      const userProfile = await getUserProfile(userId);
+      userRole = userProfile?.role || 'guest';
+    }
     
     // Determine the correct messages URL based on user role with senderId query parameter
     let actionUrl = '/guest/messages';
@@ -259,6 +369,7 @@ export const notifyNewMessage = async (
     
     await createNotification({
       userId,
+      role: userRole, // Include role for role-specific filtering
       type: 'message',
       title: 'New Message',
       message: `You have a new message from ${senderName}`,
@@ -288,6 +399,7 @@ export const notifyListingApproved = async (
     
     await createNotification({
       userId: hostId,
+      role: 'host', // This is always a host notification
       type: 'system',
       title: 'Listing Approved!',
       message: `Your listing "${listingTitle}" has been approved and is now live.`,
@@ -309,9 +421,18 @@ export const notifyPayment = async (
   userId: string,
   transactionId: string,
   amount: number,
-  type: 'completed' | 'refunded' | 'failed'
+  type: 'completed' | 'refunded' | 'failed',
+  role?: 'host' | 'guest' | 'admin'
 ): Promise<void> => {
   try {
+    // Get user profile to determine role if not provided
+    let userRole = role;
+    if (!userRole) {
+      const { getUserProfile } = await import('./firestore');
+      const userProfile = await getUserProfile(userId);
+      userRole = userProfile?.role || 'guest';
+    }
+    
     const messages = {
       completed: `Payment of ₱${amount.toFixed(2)} has been processed.`,
       refunded: `Refund of ₱${amount.toFixed(2)} has been processed.`,
@@ -320,6 +441,7 @@ export const notifyPayment = async (
 
     await createNotification({
       userId,
+      role: userRole, // Include role for role-specific filtering
       type: 'payment',
       title: `Payment ${type.charAt(0).toUpperCase() + type.slice(1)}`,
       message: messages[type],
@@ -327,7 +449,7 @@ export const notifyPayment = async (
       relatedType: 'transaction',
       read: false,
       priority: type === 'failed' ? 'high' : 'medium',
-      actionUrl: `/guest/wallet`
+      actionUrl: userRole === 'host' ? '/host/wallet' : '/guest/wallet'
     });
   } catch (error) {
     console.error('Error creating payment notification:', error);
@@ -341,11 +463,21 @@ export const notifyNewReview = async (
   userId: string,
   listingId: string,
   listingTitle: string,
-  reviewId: string
+  reviewId: string,
+  role?: 'host' | 'guest' | 'admin'
 ): Promise<void> => {
   try {
+    // Get user profile to determine role if not provided
+    let userRole = role;
+    if (!userRole) {
+      const { getUserProfile } = await import('./firestore');
+      const userProfile = await getUserProfile(userId);
+      userRole = userProfile?.role || 'guest';
+    }
+    
     await createNotification({
       userId,
+      role: userRole, // Include role for role-specific filtering
       type: 'review',
       title: 'New Review',
       message: `You received a new review for "${listingTitle}"`,

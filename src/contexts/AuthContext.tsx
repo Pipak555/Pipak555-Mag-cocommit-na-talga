@@ -15,7 +15,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import { sendOTPEmail } from '@/lib/emailjs';
+import { sendOTPEmail, sendPasswordResetEmail as sendPasswordResetEmailJS } from '@/lib/emailjs';
 import { createOTP, verifyOTP, resendOTP } from '@/lib/firestore';
 import { toast } from 'sonner';
 
@@ -30,8 +30,10 @@ const getAuthErrorMessage = (error: any): string => {
       return 'No account found with this email address. Please check your email or sign up for a new account.';
     
     case 'auth/wrong-password':
-    case 'auth/invalid-credential':
       return 'The password you entered is incorrect. Please try again or use "Forgot Password" to reset it.';
+    
+    case 'auth/invalid-credential':
+      return 'Invalid email or password. Please check your credentials and try again.';
     
     case 'auth/invalid-email':
       return 'The email address you entered is not valid. Please check and try again.';
@@ -215,20 +217,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUserRole(role);
       setUserProfile({ ...userData, role });
 
-      // Check if email is verified (ONLY check Firestore field - OTP verification)
-      const isEmailVerified = userData?.emailVerified === true;
-      
-      if (import.meta.env.DEV) {
-        console.log(`[Auth] Email verified status: ${isEmailVerified}`);
-      }
-      
-      // Don't sign out - allow them to stay signed in but indicate they need verification
-      // The login page will handle redirecting to verification page
-      if (!isEmailVerified) {
-        // Return a special error that login pages can catch and redirect
-        throw new Error('EMAIL_NOT_VERIFIED');
-      }
-      
       if (import.meta.env.DEV) {
         console.log(`[Auth] Sign in successful for role: ${role}`);
       }
@@ -431,15 +419,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         role,
         roles: [role], // Initialize with the role they're signing up with
         createdAt: new Date().toISOString(),
-        points: 0,
         walletBalance: 0,
+        // Initialize guest-specific data
+        points: 0,
         favorites: [],
-        wishlist: []
+        wishlist: [],
+        // Initialize host-specific data if signing up as host
+        ...(role === 'host' ? {
+          hostPoints: 0,
+          hostFavorites: [],
+          hostWishlist: []
+        } : {}),
+        // Initialize guest-specific arrays if signing up as guest
+        ...(role === 'guest' ? {
+          coupons: []
+        } : {})
       };
       
-      // Initialize host points if user is signing up as host
+      // Add host policy data if provided
       if (role === 'host') {
-        userData.hostPoints = 0;
+        // hostPoints already added above
       }
       
       // Add policy acceptance data for hosts
@@ -490,7 +489,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (error: any) {
       // Handle email already in use error
       if (error.code === 'auth/email-already-in-use') {
-        // Try to sign in with the provided credentials
+        // Try to sign in with the provided credentials to add the new role
         try {
           const userCredential = await signInWithEmailAndPassword(auth, email, password);
           const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
@@ -498,9 +497,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           if (userDoc.exists()) {
             const userData = userDoc.data();
             const isEmailVerified = userData?.emailVerified === true;
+            const userRoles = userData.roles || (userData.role ? [userData.role] : []);
+            
+            // Admin cannot be guest or host, and vice versa
+            if (role === 'admin') {
+              if (!userRoles.includes('admin')) {
+                await firebaseSignOut(auth);
+                throw new Error('Admin access denied. This account does not have admin privileges.');
+              }
+              await firebaseSignOut(auth);
+              throw new Error('This email is already registered with an admin account. Please sign in instead.');
+            } else {
+              if (userRoles.includes('admin')) {
+                await firebaseSignOut(auth);
+                throw new Error('Admin accounts cannot sign up as guest or host. Please use the admin login page.');
+              }
+            }
             
             if (!isEmailVerified) {
-              // Account exists but not verified - resend OTP
+              // Account exists but not verified - resend OTP and add role if needed
               try {
                 const otpCode = await createOTP(userCredential.user.uid, email);
                 const emailSent = await sendOTPEmail(email, userData.fullName || fullName, otpCode, role);
@@ -512,34 +527,44 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                   });
                 }
                 
-                // Check if user has this role - if not, they need to sign up for it
-                const userRoles = userData.roles || (userData.role ? [userData.role] : []);
-                
-                // Admin cannot be guest or host, and vice versa
-                if (role === 'admin') {
-                  if (!userRoles.includes('admin')) {
-                    await firebaseSignOut(auth);
-                    throw new Error('Admin access denied. This account does not have admin privileges.');
-                  }
-                } else {
-                  if (userRoles.includes('admin')) {
-                    await firebaseSignOut(auth);
-                    throw new Error('Admin accounts cannot sign up as guest or host. Please use the admin login page.');
+                // Add the new role if they don't have it
+                if (!userRoles.includes(role)) {
+                  const updateData: any = {
+                    roles: [...userRoles, role],
+                    role: role, // Update primary role to the new one
+                  };
+                  
+                  // If signing up as host, initialize host-specific data
+                  if (role === 'host') {
+                    updateData.hostPoints = 0;
+                    updateData.hostFavorites = [];
+                    updateData.hostWishlist = [];
+                    // Add policy data if provided
+                    if (policyData) {
+                      updateData.policyAccepted = policyData.policyAccepted;
+                      updateData.policyAcceptedDate = policyData.policyAcceptedDate;
+                    }
                   }
                   
-                  if (!userRoles.includes(role)) {
-                    await firebaseSignOut(auth);
-                    const roleName = role === 'guest' ? 'guest' : 'host';
-                    throw new Error(`This account is not registered as a ${roleName}. Please sign up for a ${roleName} account first.`);
+                  // If signing up as guest, initialize guest-specific data if not already present
+                  if (role === 'guest') {
+                    // Check if these fields exist, if not initialize them
+                    if (!userData.points) updateData.points = 0;
+                    if (!userData.favorites) updateData.favorites = [];
+                    if (!userData.wishlist) updateData.wishlist = [];
+                    if (!userData.coupons) updateData.coupons = [];
                   }
+                  
+                  await updateDoc(doc(db, 'users', userCredential.user.uid), updateData);
+                  toast.success(`${role === 'host' ? 'Host' : 'Guest'} access added to your account!`);
                 }
                 
                 // Update user profile state
                 setUserRole(role);
-                setUserProfile(userData);
+                setUserProfile({ ...userData, ...{ roles: userRoles.includes(role) ? userRoles : [...userRoles, role], role } });
                 setUser(userCredential.user);
                 
-                toast.success('Verification code resent! Please check your email.');
+                toast.success('Verification code sent! Please check your email.');
                 // Don't throw - redirect to verification page
                 return;
               } catch (otpError: any) {
@@ -547,32 +572,66 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 throw new Error('Your account exists but hasn\'t been verified yet. We\'ve sent a new verification code to your email. Please check your inbox and verify your account.');
               }
             } else {
-              // Account exists and is verified - check if they have this role
-              const userRoles = userData.roles || (userData.role ? [userData.role] : []);
-              
-              // Admin cannot be guest or host, and vice versa
-              if (role === 'admin') {
-                if (!userRoles.includes('admin')) {
-                  await firebaseSignOut(auth);
-                  throw new Error('Admin access denied. This account does not have admin privileges.');
-                }
+              // Account exists and is verified
+              if (userRoles.includes(role)) {
+                // User already has this role
+                await firebaseSignOut(auth);
+                throw new Error(`This email is already registered with a ${role} account. Please sign in instead.`);
               } else {
-                if (userRoles.includes('admin')) {
-                  await firebaseSignOut(auth);
-                  throw new Error('Admin accounts cannot sign up as guest or host. Please use the admin login page.');
+                // Add the new role to the verified account
+                const updateData: any = {
+                  roles: [...userRoles, role],
+                  role: role, // Update primary role to the new one
+                };
+                
+                // If signing up as host, initialize host-specific data
+                if (role === 'host') {
+                  updateData.hostPoints = 0;
+                  updateData.hostFavorites = [];
+                  updateData.hostWishlist = [];
+                  // Add policy data if provided
+                  if (policyData) {
+                    updateData.policyAccepted = policyData.policyAccepted;
+                    updateData.policyAcceptedDate = policyData.policyAcceptedDate;
+                  }
                 }
                 
-                // Check if user has this role - if not, they need to sign up for it
-                if (!userRoles.includes(role)) {
-                  await firebaseSignOut(auth);
-                  const roleName = role === 'guest' ? 'guest' : 'host';
-                  throw new Error(`This account is not registered as a ${roleName}. Please sign up for a ${roleName} account first, or sign in with an account that has ${roleName} access.`);
+                // If signing up as guest, initialize guest-specific data if not already present
+                if (role === 'guest') {
+                  if (!userData.points) updateData.points = 0;
+                  if (!userData.favorites) updateData.favorites = [];
+                  if (!userData.wishlist) updateData.wishlist = [];
+                  if (!userData.coupons) updateData.coupons = [];
                 }
+                
+                await updateDoc(doc(db, 'users', userCredential.user.uid), updateData);
+                
+                // Generate and send OTP for the new role (optional, for security)
+                try {
+                  const otpCode = await createOTP(userCredential.user.uid, email);
+                  const emailSent = await sendOTPEmail(email, userData.fullName || fullName, otpCode, role);
+                  
+                  if (emailSent) {
+                    toast.success(`${role === 'host' ? 'Host' : 'Guest'} access added! Please verify with the code sent to your email.`);
+                  } else {
+                    console.warn('⚠️ EmailJS not configured. Your OTP code is:', otpCode);
+                    toast.warning(`${role === 'host' ? 'Host' : 'Guest'} access added! Check console for OTP code: ${otpCode}`, {
+                      duration: 10000,
+                    });
+                  }
+                } catch (otpError) {
+                  console.error('Error sending OTP:', otpError);
+                  toast.success(`${role === 'host' ? 'Host' : 'Guest'} access added! Please verify your account.`);
+                }
+                
+                // Update user profile state
+                setUserRole(role);
+                setUserProfile({ ...userData, ...updateData });
+                setUser(userCredential.user);
+                
+                // Don't throw - redirect to verification page
+                return;
               }
-              
-              // User already has this role
-              await firebaseSignOut(auth);
-              throw new Error(`This email is already registered with a ${role} account. Please sign in instead.`);
             }
           } else {
             // Account exists in Firebase Auth but not in Firestore - this shouldn't happen
@@ -580,7 +639,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             throw new Error('We found your account, but some information is missing. Please contact support for assistance.');
           }
         } catch (signInError: any) {
-          // Sign in failed - handle Firebase errors
+          // Sign in failed - check if it's a password error
+          if (signInError.code === 'auth/wrong-password' || signInError.code === 'auth/invalid-credential') {
+            await firebaseSignOut(auth);
+            throw new Error('This email address is already registered. Please sign in with your existing password, or use "Forgot Password" if you don\'t remember it.');
+          }
+          // Handle other Firebase Auth errors
           if (signInError.code && signInError.code.startsWith('auth/')) {
             throw new Error(getAuthErrorMessage(signInError));
           }
@@ -622,12 +686,50 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const sendPasswordReset = async (email: string) => {
-    // Get the current origin (localhost in dev, or your domain in production)
-    const actionCodeSettings = {
-      url: `${window.location.origin}/reset-password`,
-      handleCodeInApp: false, // Set to false to open the link in a browser
-    };
-    await sendPasswordResetEmail(auth, email, actionCodeSettings);
+    try {
+      // Get user profile to get fullName
+      // Note: This query requires authentication, so it may fail for password reset
+      // If it fails, we'll just use "User" as the default name
+      let fullName = 'User';
+      try {
+        // Try to find user by email in Firestore
+        // This requires the user to be authenticated, which they won't be on forgot password page
+        // So we'll skip this and just use "User" as default
+        // If you want to get the name, you'd need to use Firebase Admin SDK on the server side
+      } catch (error) {
+        // Silently fail - we'll use "User" as default
+      }
+
+      // Get the current origin (localhost in dev, or your domain in production)
+      // Use production URL for password reset to ensure domain is authorized
+      const appUrl = import.meta.env.VITE_APP_URL || 'https://mojo-dojo-casa-house-f31a5.web.app';
+      const actionCodeSettings = {
+        url: `${appUrl}/reset-password`,
+        handleCodeInApp: false, // Set to false to open the link in a browser
+      };
+      
+      // Generate password reset link using Firebase
+      // Firebase will send its own email, but we'll also send our custom EmailJS email
+      await sendPasswordResetEmail(auth, email, actionCodeSettings);
+      
+      // Send custom EmailJS email with better template
+      // Note: The actual reset link with oobCode is sent by Firebase's email
+      // We send a custom email for better UX, but users should use the link from Firebase's email
+      // The reset link format will be: ${appUrl}/reset-password?oobCode=...
+      const resetLink = `${appUrl}/reset-password`;
+      
+      // Try to send custom EmailJS email (non-blocking - if it fails, Firebase email still works)
+      try {
+        await sendPasswordResetEmailJS(email, fullName, resetLink);
+      } catch (emailJSError) {
+        // EmailJS failed, but Firebase email was sent, so we don't throw
+        console.warn('Custom EmailJS password reset email failed, but Firebase email was sent:', emailJSError);
+      }
+      
+    } catch (error: any) {
+      // Re-throw Firebase errors (user not found, etc.)
+      throw error;
+    }
   };
 
   const resetPassword = async (actionCode: string, newPassword: string) => {

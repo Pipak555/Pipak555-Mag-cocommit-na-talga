@@ -277,7 +277,7 @@ const HostDashboard = () => {
                   </p>
                   <Button 
                     size="sm"
-                    onClick={() => navigate('/host/register')}
+                    onClick={() => navigate('/host/register', { state: { from: 'dashboard' } })}
                   >
                     <CreditCard className="h-4 w-4 mr-2" />
                     Subscribe Now
@@ -406,7 +406,7 @@ const HostDashboard = () => {
             onClick={() => {
               if (!hasSubscription) {
                 toast.error('Subscription required to create listings');
-                navigate('/host/register');
+                navigate('/host/register', { state: { from: 'dashboard' } });
               } else {
                 navigate('/host/create-listing');
               }

@@ -127,7 +127,7 @@ const Favorites = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
-        <BackButton to="/guest/dashboard" label="Back to Dashboard" className="mb-4 sm:mb-6" />
+        <BackButton to="/guest/dashboard" className="mb-4 sm:mb-6" />
 
         <h1 className="text-3xl font-bold mb-6">Your Favorites</h1>
 
@@ -156,9 +156,7 @@ const Favorites = () => {
                     listing={listing}
                     onView={() => navigate(`/guest/listing/${listing.id}`)}
                     onFavorite={() => handleFavorite(listing.id)}
-                    onWishlist={() => handleWishlist(listing.id)}
                     isFavorite={favorites.includes(listing.id)}
-                    isInWishlist={wishlist.includes(listing.id)}
                   />
                 ))}
               </div>

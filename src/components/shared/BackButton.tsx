@@ -29,11 +29,10 @@ export const BackButton = ({
     <Button
       variant={variant}
       onClick={handleBack}
-      className={`h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation ${className}`}
+      size="icon"
+      className={`touch-manipulation ${className}`}
     >
-      <ArrowLeft className="h-4 w-4 mr-1.5 sm:mr-2" />
-      <span className="hidden sm:inline">{label}</span>
-      <span className="sm:hidden">Back</span>
+      <ArrowLeft className="h-4 w-4" />
     </Button>
   );
 };

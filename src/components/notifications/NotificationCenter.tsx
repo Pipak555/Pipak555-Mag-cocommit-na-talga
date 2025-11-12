@@ -271,17 +271,17 @@ export const NotificationCenter = ({ onClose, onNavigate }: NotificationCenterPr
       className="absolute right-0 top-12 w-96 max-w-[calc(100vw-2rem)] max-h-[600px] z-50 shadow-xl border animate-in slide-in-from-top-2 fade-in-0 duration-200"
     >
       <CardHeader className="pb-3 border-b space-y-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg font-semibold flex items-center gap-2">
-            <Bell className="h-5 w-5" />
-            Notifications
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-lg font-semibold flex items-center gap-2 min-w-0 flex-1">
+            <Bell className="h-5 w-5 flex-shrink-0" />
+            <span className="truncate">Notifications</span>
             {unreadCount > 0 && (
-              <Badge variant="destructive" className="ml-2 animate-pulse">
+              <Badge variant="destructive" className="ml-1 animate-pulse flex-shrink-0">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </Badge>
             )}
           </CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 flex-shrink-0">
             <Button
               variant="ghost"
               size="icon"
@@ -306,22 +306,13 @@ export const NotificationCenter = ({ onClose, onNavigate }: NotificationCenterPr
                 variant="ghost"
                 size="sm"
                 onClick={handleMarkAllAsRead}
-                className="text-xs h-8"
+                className="text-xs h-8 whitespace-nowrap"
                 title="Mark all as read"
               >
                 <CheckCheck className="h-3 w-3 mr-1" />
-                <span className="hidden sm:inline">Mark all read</span>
+                <span>Mark all read</span>
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onClose}
-              className="h-8 w-8"
-              aria-label="Close notifications"
-            >
-              <X className="h-4 w-4" />
-            </Button>
           </div>
         </div>
 

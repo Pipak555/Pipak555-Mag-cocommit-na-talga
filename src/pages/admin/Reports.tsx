@@ -100,7 +100,11 @@ const Reports = () => {
         b.status === 'confirmed' || b.status === 'completed'
       );
       const totalRevenue = revenueBookings.reduce((sum, b) => sum + (b.totalPrice || 0), 0);
-      const serviceFeeRate = 0.15; // 15% service fee
+      
+      // Only count confirmed and completed bookings (not pending)
+      const totalConfirmedBookings = filteredBookings.filter(b => 
+        b.status === 'confirmed' || b.status === 'completed'
+      ).length;
       
       // Count users with multiple roles
       const hosts = users.filter(u => {
@@ -118,13 +122,13 @@ const Reports = () => {
       const rejectedListings = listings.filter(l => l.status === 'rejected').length;
       
       setReportData({
-        totalBookings: filteredBookings.length,
+        totalBookings: totalConfirmedBookings,
         confirmedBookings,
         cancelledBookings,
         completedBookings,
         pendingBookings,
         totalRevenue,
-        totalServiceFees: totalRevenue * serviceFeeRate,
+        totalServiceFees: 0, // No service fees - hosts get 100%
         totalUsers: users.length,
         totalListings: listings.length,
         activeHosts: hosts,
@@ -177,8 +181,7 @@ Cancelled Bookings,${reportData.cancelledBookings}
 Completed Bookings,${reportData.completedBookings}
 Pending Bookings,${reportData.pendingBookings}
 Total Revenue,₱${reportData.totalRevenue.toFixed(2)}
-Service Fees Collected (15%),₱${reportData.totalServiceFees.toFixed(2)}
-Net to Hosts,₱${(reportData.totalRevenue - reportData.totalServiceFees).toFixed(2)}
+Net to Hosts,₱${reportData.totalRevenue.toFixed(2)}
 Total Users,${reportData.totalUsers}
 Active Hosts,${reportData.activeHosts}
 Active Guests,${reportData.activeGuests}
@@ -335,16 +338,14 @@ Rejected:                 ${reportData.rejectedListings}
     const revenueBookings = detailedData.bookings.filter(b => 
       b.status === 'confirmed' || b.status === 'completed'
     );
-    const serviceFeeRate = 0.15;
     
     if (format === 'csv') {
-      const headers = 'Booking ID,Guest ID,Host ID,Total Price,Service Fee (15%),Net to Host,Status,Check In Date\n';
+      const headers = 'Booking ID,Guest ID,Host ID,Total Price,Net to Host,Status,Check In Date\n';
       const rows = revenueBookings.map(booking => {
-        const serviceFee = (booking.totalPrice || 0) * serviceFeeRate;
-        const netToHost = (booking.totalPrice || 0) - serviceFee;
-        return `${booking.id},${booking.guestId},${booking.hostId},${booking.totalPrice || 0},${serviceFee.toFixed(2)},${netToHost.toFixed(2)},${booking.status},${booking.checkIn}`;
+        const netToHost = booking.totalPrice || 0; // Hosts get 100%
+        return `${booking.id},${booking.guestId},${booking.hostId},${booking.totalPrice || 0},${netToHost.toFixed(2)},${booking.status},${booking.checkIn}`;
       }).join('\n');
-      const summary = `Total Revenue,${reportData.totalRevenue.toFixed(2)}\nTotal Service Fees,${reportData.totalServiceFees.toFixed(2)}\nNet to Hosts,${(reportData.totalRevenue - reportData.totalServiceFees).toFixed(2)}\n`;
+      const summary = `Total Revenue,${reportData.totalRevenue.toFixed(2)}\nNet to Hosts,${reportData.totalRevenue.toFixed(2)}\n`;
       return `Revenue Report\nGenerated: ${timestamp}\n\n${summary}\n${headers}${rows}`;
     } else if (format === 'json') {
       return JSON.stringify({
@@ -352,37 +353,28 @@ Rejected:                 ${reportData.rejectedListings}
         generated: timestamp,
         summary: {
           totalRevenue: reportData.totalRevenue,
-          totalServiceFees: reportData.totalServiceFees,
-          netToHosts: reportData.totalRevenue - reportData.totalServiceFees
+          netToHosts: reportData.totalRevenue // Hosts get 100%
         },
-        bookings: revenueBookings.map(booking => {
-          const serviceFee = (booking.totalPrice || 0) * serviceFeeRate;
-          const netToHost = (booking.totalPrice || 0) - serviceFee;
-          return {
-            bookingId: booking.id,
-            guestId: booking.guestId,
-            hostId: booking.hostId,
-            totalPrice: booking.totalPrice || 0,
-            serviceFee,
-            netToHost,
-            status: booking.status,
-            checkIn: booking.checkIn
-          };
-        })
+        bookings: revenueBookings.map(booking => ({
+          bookingId: booking.id,
+          guestId: booking.guestId,
+          hostId: booking.hostId,
+          totalPrice: booking.totalPrice || 0,
+          netToHost: booking.totalPrice || 0, // Hosts get 100%
+          status: booking.status,
+          checkIn: booking.checkIn
+        }))
       }, null, 2);
     } else {
       let text = `REVENUE REPORT\nGenerated: ${timestamp}\n═══════════════════════════════════════════════════════════\n\n`;
       text += `SUMMARY\n───────────────────────────────────────────────────────────\n`;
       text += `Total Revenue:            ${formatPHP(reportData.totalRevenue)}\n`;
-      text += `Service Fees (15%):      ${formatPHP(reportData.totalServiceFees)}\n`;
-      text += `Net to Hosts:            ${formatPHP(reportData.totalRevenue - reportData.totalServiceFees)}\n\n`;
+      text += `Net to Hosts:            ${formatPHP(reportData.totalRevenue)}\n\n`;
       text += `DETAILED BREAKDOWN\n───────────────────────────────────────────────────────────\n\n`;
       revenueBookings.forEach((booking, index) => {
-        const serviceFee = (booking.totalPrice || 0) * serviceFeeRate;
-        const netToHost = (booking.totalPrice || 0) - serviceFee;
+        const netToHost = booking.totalPrice || 0; // Hosts get 100%
         text += `${index + 1}. Booking #${booking.id.slice(0, 8)}\n`;
         text += `   Total Price: ${formatPHP(booking.totalPrice || 0)}\n`;
-        text += `   Service Fee: ${formatPHP(serviceFee)}\n`;
         text += `   Net to Host: ${formatPHP(netToHost)}\n`;
         text += `   Check In: ${new Date(booking.checkIn).toLocaleDateString()}\n\n`;
       });
@@ -487,7 +479,7 @@ Rejected:                 ${reportData.rejectedListings}
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto">
-        <BackButton to="/admin/dashboard" label="Back to Dashboard" className="mb-6" />
+        <BackButton to="/admin/dashboard" className="mb-6" />
 
         <div className="mb-6">
           <div className="flex items-center justify-between mb-6">
@@ -615,12 +607,6 @@ Rejected:                 ${reportData.rejectedListings}
                       <div className="text-sm text-muted-foreground">Total Revenue</div>
                     </div>
                     <div className="p-4 border rounded-lg">
-                      <div className="text-2xl font-bold text-blue-600">
-                        {formatPHP(reportData.totalServiceFees)}
-                      </div>
-                      <div className="text-sm text-muted-foreground">Service Fees (15%)</div>
-                    </div>
-                    <div className="p-4 border rounded-lg">
                       <div className="text-2xl font-bold">{reportData.totalUsers}</div>
                       <div className="text-sm text-muted-foreground">Total Users</div>
                     </div>
@@ -638,9 +624,9 @@ Rejected:                 ${reportData.rejectedListings}
                     </div>
                     <div className="p-4 border rounded-lg">
                       <div className="text-2xl font-bold text-green-600">
-                        {formatPHP(reportData.totalRevenue - reportData.totalServiceFees)}
+                        {formatPHP(reportData.totalRevenue)}
                       </div>
-                      <div className="text-sm text-muted-foreground">Net to Hosts</div>
+                      <div className="text-sm text-muted-foreground">Net to Hosts (100%)</div>
                     </div>
                   </div>
                 </CardContent>
@@ -680,26 +666,21 @@ Rejected:                 ${reportData.rejectedListings}
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <DollarSign className="h-5 w-5" />
-                      Service Fee Breakdown
+                      Revenue Breakdown
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
                       <div className="flex justify-between items-center p-3 bg-muted rounded">
-                        <span>Gross Revenue</span>
+                        <span>Total Revenue</span>
                         <span className="font-bold">{formatPHP(reportData.totalRevenue)}</span>
-                      </div>
-                      <div className="flex justify-between items-center p-3 bg-muted rounded">
-                        <span>Platform Fee (15%)</span>
-                        <span className="font-bold text-blue-600">
-                          {formatPHP(reportData.totalServiceFees)}
-                        </span>
                       </div>
                       <div className="flex justify-between items-center p-3 bg-primary/10 rounded">
                         <span className="font-semibold">Net to Hosts</span>
                         <span className="font-bold">
-                          {formatPHP(reportData.totalRevenue - reportData.totalServiceFees)}
+                          {formatPHP(reportData.totalRevenue)}
                         </span>
+                        <span className="text-xs text-muted-foreground">(100%)</span>
                       </div>
                     </div>
                   </CardContent>

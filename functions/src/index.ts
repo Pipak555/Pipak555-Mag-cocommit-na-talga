@@ -110,7 +110,7 @@ export const processHostPayoutFunction = functions.https.onCall(async (data, con
 /**
  * Process Admin Payout
  * 
- * Called when service fees or subscription payments need to be paid to admin
+ * Called when subscription payments need to be paid to admin
  */
 export const processAdminPayoutFunction = functions.https.onCall(async (data, context) => {
   // Verify authentication
@@ -188,25 +188,16 @@ export const autoProcessHostPayout = functions.firestore
   });
 
 /**
- * Firestore Trigger: Automatically process admin payout when service fee or subscription transaction is created
+ * Firestore Trigger: Automatically process admin payout when subscription transaction is created
  * 
  * This trigger fires when:
- * 1. Service fee transactions are created (userId: 'platform', paymentMethod: 'service_fee', payoutStatus: 'pending')
- * 2. Subscription payment transactions are created (type: 'payment', description contains 'subscription', payoutStatus: 'pending')
+ * Subscription payment transactions are created (type: 'payment', description contains 'subscription', payoutStatus: 'pending')
  */
 export const autoProcessAdminPayout = functions.firestore
   .document('transactions/{transactionId}')
   .onCreate(async (snap, context) => {
     const transaction = snap.data();
     const transactionId = context.params.transactionId;
-
-    // Check if this is a service fee transaction
-    const isServiceFee = 
-      transaction.userId === 'platform' &&
-      transaction.paymentMethod === 'service_fee' &&
-      transaction.status === 'completed' &&
-      transaction.payoutStatus === 'pending' &&
-      !transaction.payoutId; // Don't process if already processed
 
     // Check if this is a subscription payment transaction
     const isSubscriptionPayment = 
@@ -218,18 +209,17 @@ export const autoProcessAdminPayout = functions.firestore
        transaction.description.toLowerCase().includes('subscription')) &&
       !transaction.payoutId; // Don't process if already processed
 
-    if (isServiceFee || isSubscriptionPayment) {
+    if (isSubscriptionPayment) {
       try {
         const amount = transaction.amount;
-        const description = transaction.description || 
-          (isServiceFee ? 'Service fee payment' : 'Subscription payment');
+        const description = transaction.description || 'Subscription payment';
 
         if (!amount || amount <= 0) {
           console.log(`Skipping admin payout for transaction ${transactionId}: Invalid amount`);
           return;
         }
 
-        console.log(`Processing automatic admin payout for transaction ${transactionId} (${isServiceFee ? 'service fee' : 'subscription'})`);
+        console.log(`Processing automatic admin payout for transaction ${transactionId} (subscription)`);
         await processAdminPayout(transactionId, amount, description);
       } catch (error: any) {
         console.error(`Error in autoProcessAdminPayout for transaction ${transactionId}:`, error);

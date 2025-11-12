@@ -19,6 +19,7 @@ import { getUserSubscription, hasActiveSubscription, getPlanById, cancelSubscrip
 import type { UserProfile, Booking, Coupon, NotificationPreferences, HostSubscription } from "@/types";
 import { formatPHP } from "@/lib/currency";
 import LoadingScreen from "@/components/ui/loading-screen";
+import PayPalIdentity from "@/components/payments/PayPalIdentity";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -205,9 +206,8 @@ const HostAccountSettings = () => {
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8 max-w-4xl">
         <div className="flex items-center justify-between mb-6">
-          <Button variant="ghost" onClick={handleBack}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Dashboard
+          <Button variant="ghost" size="icon" onClick={handleBack}>
+            <ArrowLeft className="h-4 w-4" />
           </Button>
           <Button variant="outline" onClick={() => setLogoutDialogOpen(true)}>
             Sign Out
@@ -278,6 +278,33 @@ const HostAccountSettings = () => {
                   <Label htmlFor="balance">Wallet Balance</Label>
                   <Input id="balance" value={formatPHP(profile.walletBalance)} disabled />
                 </div>
+                
+                {/* PayPal Account Linking */}
+                <div className="pt-4 border-t">
+                  <Label className="text-base font-semibold mb-2 block">PayPal Account</Label>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Link your PayPal account to receive payouts from your bookings. Payments will be sent to your PayPal account.
+                  </p>
+                  {user && (
+                    <PayPalIdentity
+                      userId={user.uid}
+                      paypalEmail={profile.paypalEmail}
+                      paypalVerified={profile.paypalEmailVerified}
+                      onVerified={async (email: string) => {
+                        // Update profile state
+                        setProfile(prev => prev ? {
+                          ...prev,
+                          paypalEmail: email,
+                          paypalEmailVerified: true
+                        } : null);
+                        // Reload profile to get latest data
+                        await loadProfile();
+                        toast.success('PayPal account linked successfully!');
+                      }}
+                    />
+                  )}
+                </div>
+                
                 <Button onClick={handleSaveProfile} disabled={loading}>
                   {loading ? "Saving..." : "Save Changes"}
                 </Button>

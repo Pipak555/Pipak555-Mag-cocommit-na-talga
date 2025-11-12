@@ -8,7 +8,7 @@ const Messages = () => {
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-6xl mx-auto">
-        <BackButton to="/admin/dashboard" label="Back to Dashboard" className="mb-6" />
+        <BackButton to="/admin/dashboard" className="mb-6" />
 
         <h1 className="text-3xl font-bold mb-6">Messages</h1>
         

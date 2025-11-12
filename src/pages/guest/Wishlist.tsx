@@ -131,7 +131,7 @@ const Wishlist = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
-        <BackButton to="/guest/dashboard" label="Back to Dashboard" className="mb-4 sm:mb-6" />
+        <BackButton to="/guest/dashboard" className="mb-4 sm:mb-6" />
 
         <h1 className="text-3xl font-bold mb-6">Your Wishlist</h1>
 
@@ -146,11 +146,6 @@ const Wishlist = () => {
                 icon={<Bookmark className="h-10 w-10" />}
                 title="No wishlist items yet"
                 description="Add listings to your wishlist for future trips!"
-                action={
-                  <Button onClick={() => navigate('/guest/browse')}>
-                    Browse Listings
-                  </Button>
-                }
               />
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -169,9 +164,7 @@ const Wishlist = () => {
                         listing={listing}
                         onView={() => navigate(`/guest/listing/${listing.id}`)}
                         onFavorite={() => handleFavorite(listing.id)}
-                        onWishlist={() => handleWishlist(listing.id)}
                         isFavorite={favorites.includes(listing.id)}
-                        isInWishlist={isInWishlist}
                       />
                       {(recommendations || (typeof wishlistItem === 'object' && wishlistItem?.propertyRequirements) || (typeof wishlistItem === 'object' && wishlistItem?.desiredAmenities)) && (
                         <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">

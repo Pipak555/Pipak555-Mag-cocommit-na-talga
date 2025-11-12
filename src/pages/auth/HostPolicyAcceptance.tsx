@@ -22,6 +22,17 @@ const HostPolicyAcceptance = () => {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [acceptedRules, setAcceptedRules] = useState(false);
   
+  // Check if user is in a broken state (logged in but incomplete account)
+  useEffect(() => {
+    // If user is logged in but we're on the policy page for NEW signup (not adding role)
+    // and they don't have proper account data, sign them out
+    const showSignup = (location.state as any)?.showSignup;
+    if (user && showSignup && !hasRole('guest') && !hasRole('host') && !hasRole('admin')) {
+      console.warn('User in broken state, signing out...');
+      signOut();
+    }
+  }, [user, hasRole, location, signOut]);
+  
   // Calculate allAccepted based on all checkboxes
   const allAccepted = acceptedCancellation && acceptedTerms && acceptedRules;
   
@@ -118,7 +129,6 @@ const HostPolicyAcceptance = () => {
    
    Moderate Cancellation (24-48 hours before check-in):
    - 50% refund of the total booking amount
-   - Service fees are non-refundable
    - Refund processed within 5-7 business days
    
    Strict Cancellation (Less than 24 hours before check-in):
@@ -199,7 +209,6 @@ const HostPolicyAcceptance = () => {
    - Set fair and competitive pricing
    - All fees must be clearly disclosed in listing
    - No hidden charges or surprise fees allowed
-   - Platform service fees are non-negotiable
 
 3. GUEST OBLIGATIONS AND RESPONSIBILITIES:
    
@@ -457,8 +466,26 @@ const HostPolicyAcceptance = () => {
     
     const policyAcceptedDate = new Date().toISOString();
     
-    // If user is already signed in and doesn't have host role, add it directly
-    if (user && !hasRole('host')) {
+    // Save policy acceptance for the signup process
+    sessionStorage.setItem('hostPolicyAccepted', 'true');
+    sessionStorage.setItem('hostPolicyAcceptedDate', policyAcceptedDate);
+    
+    // Check if there's a returnTo location (e.g., from HostRegister or HostLogin)
+    const returnTo = (location.state as any)?.returnTo;
+    const planId = (location.state as any)?.planId;
+    const showSignup = (location.state as any)?.showSignup;
+    
+    // Check if user is trying to add host role to existing account
+    const isAddingRole = user && hasRole('guest') && !hasRole('host');
+    
+    // If user is already signed in and verified with host role, go to dashboard
+    if (user && hasRole('host')) {
+      navigate('/host/dashboard');
+      return;
+    }
+    
+    // If user is signed in with a different role and wants to add host role
+    if (isAddingRole) {
       try {
         await addRole('host', {
           policyAccepted: true,
@@ -470,25 +497,16 @@ const HostPolicyAcceptance = () => {
         }, 1500);
         return;
       } catch (error: any) {
-        toast.error(error.message || 'Failed to add host role. Please try again.');
+        console.error('Error adding host role:', error);
+        toast.error('Failed to add host access. Please try again or contact support.');
         return;
       }
     }
     
-    // If user is not signed in or already has host role, proceed to signup/login
-    sessionStorage.setItem('hostPolicyAccepted', 'true');
-    sessionStorage.setItem('hostPolicyAcceptedDate', policyAcceptedDate);
-    
-    // Check if there's a returnTo location (e.g., from HostRegister)
-    const returnTo = (location.state as any)?.returnTo;
-    const planId = (location.state as any)?.planId;
-    
-    if (user && hasRole('host')) {
-      // Already a host, just go to dashboard
-      navigate('/host/dashboard');
-    } else if (returnTo) {
-      // Return to the original page (e.g., HostRegister)
-      navigate(returnTo, { state: { planId } });
+    // For new users (not signed in), navigate back to signup/login
+    if (returnTo) {
+      // Return to the original page (e.g., HostRegister or HostLogin)
+      navigate(returnTo, { state: { planId, showSignup } });
     } else {
       // Not signed in or new user, go to login/signup
       navigate('/host/login', { state: { showSignup: true, planId } });
@@ -519,9 +537,8 @@ const HostPolicyAcceptance = () => {
       <header className="relative z-10 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" onClick={() => navigate('/')}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Home
+            <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
+              <ArrowLeft className="h-4 w-4" />
             </Button>
             <Logo size="sm" />
           </div>

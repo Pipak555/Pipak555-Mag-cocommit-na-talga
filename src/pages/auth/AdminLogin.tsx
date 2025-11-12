@@ -33,12 +33,6 @@ const AdminLogin = () => {
           toast.success('Admin access granted');
           navigate('/admin/dashboard');
         } catch (error: any) {
-          // Check if email is not verified - redirect to verification page
-          if (error.message === 'EMAIL_NOT_VERIFIED') {
-            toast.info('Please verify your email address to continue.');
-            navigate('/verify-otp');
-            return;
-          }
           // Error messages are already user-friendly from AuthContext
           toast.error(error.message || 'Unable to sign in. Please check your email and password, then try again.');
         } finally {
@@ -97,10 +91,8 @@ const AdminLogin = () => {
       <header className="relative z-10 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
         <div className="container mx-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4 flex justify-between items-center gap-2 sm:gap-3">
           <div className="flex items-center gap-2 sm:gap-3 md:gap-4 min-w-0 flex-1">
-            <Button variant="ghost" onClick={() => navigate('/')} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation">
-              <ArrowLeft className="h-4 w-4 mr-1.5 sm:mr-2" />
-              <span className="hidden sm:inline">Back to Home</span>
-              <span className="sm:hidden">Back</span>
+            <Button variant="ghost" size="icon" onClick={() => navigate('/')} className="touch-manipulation">
+              <ArrowLeft className="h-4 w-4" />
             </Button>
             <Logo size="sm" />
           </div>

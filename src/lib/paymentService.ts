@@ -9,12 +9,6 @@ import {
 } from './notifications';
 
 /**
- * Service fee rate (10% of booking total)
- * This fee is deducted from the host's payment and kept by the platform
- */
-const SERVICE_FEE_RATE = 0.1; // 10% service fee
-
-/**
  * Process payment when booking is confirmed
  * 
  * This function handles the complete payment flow:
@@ -22,14 +16,13 @@ const SERVICE_FEE_RATE = 0.1; // 10% service fee
  * 2. Checks guest's wallet balance
  * 3. If wallet has sufficient balance, deducts payment from guest's wallet
  * 4. If wallet is insufficient, checks for PayPal payment transaction
- * 5. Calculates service fee (10%)
- * 6. Credits host's wallet with net amount (after service fee)
- * 7. Creates transaction records for audit trail
- * 8. Sends notifications to guest
+ * 5. Credits host's wallet with full booking amount (100%)
+ * 6. Creates transaction records for audit trail
+ * 7. Sends notifications to guest
  * 
  * @param booking - The booking object to process payment for
  * @param paymentMethod - The payment method used ('wallet' or 'paypal')
- * @returns Object containing success status, new balances, and fee information
+ * @returns Object containing success status and new balances
  * @throws Error if booking data is invalid or guest has insufficient balance
  */
 export const processBookingPayment = async (booking: Booking, paymentMethod: 'wallet' | 'paypal' = 'wallet') => {
@@ -95,10 +88,6 @@ export const processBookingPayment = async (booking: Booking, paymentMethod: 'wa
       });
     }
 
-    // Calculate service fee and net amount to host
-    const serviceFee = totalPrice * SERVICE_FEE_RATE;
-    const netToHost = totalPrice - serviceFee;
-
     // Create payment transaction for guest (if not already created by PayPal)
     if (paymentMethod === 'wallet') {
       await createTransaction({
@@ -109,8 +98,6 @@ export const processBookingPayment = async (booking: Booking, paymentMethod: 'wa
         status: 'completed',
         paymentMethod: 'wallet',
         bookingId: bookingId,
-        serviceFee: serviceFee,
-        netAmount: netToHost
       });
     }
 
@@ -122,9 +109,9 @@ export const processBookingPayment = async (booking: Booking, paymentMethod: 'wa
 
     const hostData = hostDoc.data();
     const hostCurrentBalance = hostData.walletBalance || 0;
-    const hostNewBalance = hostCurrentBalance + netToHost;
+    const hostNewBalance = hostCurrentBalance + totalPrice; // Host gets 100% of booking payment
 
-    // Add net amount to host wallet
+    // Add full amount to host wallet
     await updateDoc(doc(db, 'users', booking.hostId), {
       walletBalance: hostNewBalance
     });
@@ -134,12 +121,10 @@ export const processBookingPayment = async (booking: Booking, paymentMethod: 'wa
     await createTransaction({
       userId: booking.hostId,
       type: 'deposit',
-      amount: netToHost,
-      description: `Earnings from booking #${bookingId.slice(0, 8)} (after 10% service fee)`,
+      amount: totalPrice,
+      description: `Earnings from booking #${bookingId.slice(0, 8)}`,
       status: 'completed',
       bookingId: bookingId,
-      serviceFee: serviceFee,
-      grossAmount: totalPrice,
       payoutStatus: 'pending' // Will be updated by Firebase Function when payout is processed
     });
 
@@ -152,41 +137,6 @@ export const processBookingPayment = async (booking: Booking, paymentMethod: 'wa
       // Don't fail payment if points award fails
     }
 
-    // Get admin PayPal account info
-    let adminPayPalEmail: string | undefined;
-    try {
-      const adminSettingsDoc = await getDoc(doc(db, 'adminSettings', 'paypal'));
-      if (adminSettingsDoc.exists()) {
-        const adminSettings = adminSettingsDoc.data();
-        adminPayPalEmail = adminSettings.paypalEmail;
-      }
-    } catch (error) {
-      console.error('Error fetching admin PayPal settings:', error);
-    }
-
-    // Create service fee transaction for platform
-    // All service fees go to admin's PayPal account
-    // For PayPal payments: Service fee is already in admin's PayPal (full payment goes there)
-    // For wallet payments: Service fee portion should be transferred to admin's PayPal
-    const serviceFeeDescription = adminPayPalEmail
-      ? `Service fee from booking #${bookingId.slice(0, 8)} → ${adminPayPalEmail}`
-      : `Service fee from booking #${bookingId.slice(0, 8)} (to admin PayPal account)`;
-
-    await createTransaction({
-      userId: 'platform', // Platform account
-      type: 'deposit',
-      amount: serviceFee,
-      description: serviceFeeDescription,
-      status: 'completed', // Mark as completed - all service fees go to admin PayPal
-      paymentMethod: 'service_fee',
-      bookingId: bookingId,
-      guestId: guestId,
-      hostId: booking.hostId,
-      adminPayPalEmail: adminPayPalEmail, // Store admin PayPal email for reference
-      originalPaymentMethod: paymentMethod, // Track original payment method for reference
-      payoutStatus: 'pending' // Will be processed by Firebase Function for admin payout
-    });
-
     // Only log in development
     if (import.meta.env.DEV) {
       console.log('✅ Payment processed successfully:', {
@@ -194,8 +144,6 @@ export const processBookingPayment = async (booking: Booking, paymentMethod: 'wa
         guestId,
         hostId: booking.hostId,
         totalPrice,
-        serviceFee,
-        netToHost,
         guestNewBalance: newBalance,
         hostNewBalance
       });
@@ -282,9 +230,7 @@ export const processBookingPayment = async (booking: Booking, paymentMethod: 'wa
     return {
       success: true,
       guestNewBalance: newBalance,
-      hostNewBalance,
-      serviceFee,
-      netToHost
+      hostNewBalance
     };
   } catch (error: any) {
     console.error('❌ Error processing booking payment:', error);
@@ -299,10 +245,9 @@ export const processBookingPayment = async (booking: Booking, paymentMethod: 'wa
  * 1. Validates booking data
  * 2. Checks if payment was already made (for pending bookings, no refund needed)
  * 3. Refunds full amount to guest's wallet
- * 4. Deducts net amount from host's wallet (if they received payment)
- * 5. Reverses platform's service fee
- * 6. Creates transaction records for audit trail
- * 7. Sends notifications to guest
+ * 4. Deducts full amount from host's wallet (if they received payment)
+ * 5. Creates transaction records for audit trail
+ * 6. Sends notifications to guest
  * 
  * @param booking - The booking object to process refund for
  * @param cancelledBy - Who initiated the cancellation ('guest', 'host', or 'admin')
@@ -342,10 +287,6 @@ export const processBookingRefund = async (
             message: 'No payment was made for this pending booking'
           };
         }
-
-    // Calculate service fee and net amount
-    const serviceFee = totalPrice * SERVICE_FEE_RATE;
-    const netToHost = totalPrice - serviceFee;
 
     // Get current balances
     const [guestDoc, hostDoc] = await Promise.all([
@@ -398,20 +339,20 @@ export const processBookingRefund = async (
       walletBalance: guestNewBalance
     });
 
-    // Deduct net amount from host (if they already received it)
+    // Deduct full amount from host (if they already received it)
     // Only deduct if host balance is sufficient, otherwise just record the debt
     let hostNewBalance = hostCurrentBalance;
-    if (hostCurrentBalance >= netToHost) {
-      hostNewBalance = hostCurrentBalance - netToHost;
+    if (hostCurrentBalance >= totalPrice) {
+      hostNewBalance = hostCurrentBalance - totalPrice;
       await updateDoc(doc(db, 'users', hostId), {
         walletBalance: hostNewBalance
       });
-        } else {
-          // Record negative balance or debt
-          if (import.meta.env.DEV) {
-            console.warn('⚠️ Host balance insufficient for refund, recording debt');
-          }
-        }
+    } else {
+      // Record negative balance or debt
+      if (import.meta.env.DEV) {
+        console.warn('⚠️ Host balance insufficient for refund, recording debt');
+      }
+    }
 
     // Create refund transaction for guest
     await createTransaction({
@@ -425,34 +366,12 @@ export const processBookingRefund = async (
     });
 
     // Create deduction transaction for host (if applicable)
-    if (hostCurrentBalance >= netToHost) {
+    if (hostCurrentBalance >= totalPrice) {
       await createTransaction({
         userId: hostId,
         type: 'withdrawal',
-        amount: netToHost,
+        amount: totalPrice,
         description: `Refund deduction for cancelled booking #${bookingId.slice(0, 8)}`,
-        status: 'completed',
-        bookingId: bookingId,
-        cancelledBy: cancelledBy
-      });
-    }
-
-    // Create service fee refund transaction (deduct from platform)
-    const platformTransactionsQuery = query(
-      collection(db, 'transactions'),
-      where('bookingId', '==', bookingId),
-      where('type', '==', 'deposit'),
-      where('userId', '==', 'platform')
-    );
-    const platformTx = await getDocs(platformTransactionsQuery);
-    
-    if (!platformTx.empty) {
-      // Service fee was collected, so we should reverse it
-      await createTransaction({
-        userId: 'platform',
-        type: 'withdrawal',
-        amount: serviceFee,
-        description: `Service fee refund for cancelled booking #${bookingId.slice(0, 8)}`,
         status: 'completed',
         bookingId: bookingId,
         cancelledBy: cancelledBy
@@ -466,8 +385,6 @@ export const processBookingRefund = async (
         guestId,
         hostId,
         totalPrice,
-        serviceFee,
-        netToHost,
         guestNewBalance,
         hostNewBalance,
         cancelledBy
@@ -494,8 +411,7 @@ export const processBookingRefund = async (
       success: true,
       guestNewBalance,
       hostNewBalance,
-      refundAmount: totalPrice,
-      serviceFeeRefund: serviceFee
+      refundAmount: totalPrice
     };
   } catch (error: any) {
     console.error('❌ Error processing booking refund:', error);
@@ -538,7 +454,7 @@ export const processTransactionRefund = async (
       const bookingDoc = await getDoc(doc(db, 'bookings', bookingId));
       if (bookingDoc.exists()) {
         const booking = { id: bookingDoc.id, ...bookingDoc.data() } as Booking;
-        // Use the full refund function which handles host and service fee
+        // Use the full refund function which handles host deduction
         return await processBookingRefund(booking, 'admin', reason);
       }
     }

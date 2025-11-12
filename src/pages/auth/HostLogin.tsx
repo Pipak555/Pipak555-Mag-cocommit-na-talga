@@ -47,6 +47,23 @@ const HostLogin = () => {
       setActiveTab('signup');
     }
   }, [shouldShowSignup]);
+  
+  // Restore saved form data when returning from policy acceptance
+  useEffect(() => {
+    const savedData = sessionStorage.getItem('hostSignUpData');
+    if (savedData && shouldShowSignup) {
+      try {
+        const parsedData = JSON.parse(savedData);
+        signUpForm.setValue('fullName', parsedData.fullName || '');
+        signUpForm.setValue('email', parsedData.email || '');
+        signUpForm.setValue('password', parsedData.password || '');
+        signUpForm.setValue('confirmPassword', parsedData.confirmPassword || '');
+        toast.success('Your form data has been restored. Please continue creating your account.');
+      } catch (error) {
+        console.error('Error parsing saved signup data:', error);
+      }
+    }
+  }, [shouldShowSignup]);
 
   // Login form
   const loginForm = useForm<LoginFormData>({
@@ -79,12 +96,6 @@ const HostLogin = () => {
       toast.success('Welcome back!');
       navigate('/host/dashboard');
     } catch (error: any) {
-      // Check if email is not verified - redirect to verification page
-      if (error.message === 'EMAIL_NOT_VERIFIED') {
-        toast.info('Please verify your email address to continue.');
-        navigate('/verify-otp');
-        return;
-      }
       toast.error(error.message || 'Unable to sign in. Please check your email and password, then try again.');
     } finally {
       setLoading(false);
@@ -96,8 +107,16 @@ const HostLogin = () => {
     
     const policyAccepted = sessionStorage.getItem('hostPolicyAccepted');
     if (!policyAccepted) {
-      toast.error('To create a host account, you must first read and accept our policies and compliance terms. Please review them and accept before continuing.');
-      navigate('/host/policies');
+      // Save form data to sessionStorage before redirecting to policies
+      sessionStorage.setItem('hostSignUpData', JSON.stringify({
+        fullName: data.fullName,
+        email: data.email,
+        password: data.password,
+        confirmPassword: data.confirmPassword
+      }));
+      
+      toast.info('Please accept our policies and terms to continue creating your host account.');
+      navigate('/host/policies', { state: { returnTo: '/host/login', showSignup: true } });
       setLoading(false);
       return;
     }
@@ -113,11 +132,13 @@ const HostLogin = () => {
         policyAcceptedDate: policyAcceptedDate || new Date().toISOString()
       });
       
+      // Clear saved form data and policy acceptance data
       sessionStorage.removeItem('hostPolicyAccepted');
       sessionStorage.removeItem('hostPolicyAcceptedDate');
+      sessionStorage.removeItem('hostSignUpData');
       
       toast.success('Account created! Please check your email to verify your account.');
-      navigate('/verification-pending');
+      navigate('/verify-otp');
     } catch (error: any) {
       toast.error(error.message || 'Unable to create account. Please check your information and try again.');
     } finally {
@@ -209,10 +230,8 @@ const HostLogin = () => {
       <header className="relative z-10 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
         <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center gap-2 sm:gap-3">
           <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
-            <Button variant="ghost" onClick={() => navigate('/')} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation">
-              <ArrowLeft className="h-4 w-4 mr-1.5 sm:mr-2" />
-              <span className="hidden sm:inline">Back to Home</span>
-              <span className="sm:hidden">Back</span>
+            <Button variant="ghost" size="icon" onClick={() => navigate('/')} className="touch-manipulation">
+              <ArrowLeft className="h-4 w-4" />
             </Button>
             <Logo size="sm" />
           </div>

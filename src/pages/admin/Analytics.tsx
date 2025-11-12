@@ -55,12 +55,11 @@ const Analytics = () => {
     setLoading(true);
     try {
       // Fetch all data in parallel
-      const [usersSnap, listingsSnap, bookingsSnap, reviewsSnap, transactionsSnap] = await Promise.all([
+      const [usersSnap, listingsSnap, bookingsSnap, reviewsSnap] = await Promise.all([
         getDocs(collection(db, 'users')),
         getDocs(collection(db, 'listing')),
         getDocs(collection(db, 'bookings')),
-        getDocs(collection(db, 'reviews')),
-        getDocs(query(collection(db, 'transactions'), where('paymentMethod', '==', 'service_fee')))
+        getDocs(collection(db, 'reviews'))
       ]);
 
       const users = usersSnap.docs.map(doc => doc.data());
@@ -76,19 +75,22 @@ const Analytics = () => {
       // Only count approved listings
       const approvedListings = listings.filter(l => l.status === 'approved');
       const bookings = bookingsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+      // Only count confirmed and completed bookings (not pending)
+      const confirmedBookings = bookings.filter(b => b.status === 'confirmed' || b.status === 'completed');
       const reviews = reviewsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Review));
-      const transactions = transactionsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
 
-      // Calculate service fees from actual transactions (more accurate)
-      const serviceFeeTransactions = transactions.filter(t => 
-        t.status === 'completed' || t.status === 'pending' // Include pending as they're still revenue
-      );
-      const serviceFee = serviceFeeTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
-
-      // Calculate revenue
-      const confirmedBookings = bookings.filter(b => 
-        b.status === 'confirmed' || b.status === 'completed'
-      );
+      // Calculate revenue from subscriptions only
+      const allTransactionsSnapshot = await getDocs(collection(db, 'transactions'));
+      const subscriptionTransactions = allTransactionsSnapshot.docs
+        .map(doc => doc.data())
+        .filter((t: any) => 
+          (t.description?.toLowerCase().includes('host subscription') || 
+           t.description?.toLowerCase().includes('subscription')) &&
+          t.status === 'completed'
+        );
+      
+      const subscriptionRevenue = subscriptionTransactions.reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
+      const totalRevenue = subscriptionRevenue;
 
       // Calculate average rating
       const avgRating = reviews.length > 0
@@ -153,12 +155,13 @@ const Analytics = () => {
 
       setLowestRatedListings(lowestListings);
 
-      // Calculate revenue trends (last 30 days) using actual service fee transactions
+      // Calculate revenue trends (last 30 days) using subscriptions
       const now = new Date();
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       
       const weeklyRevenue: WeeklyRevenue[] = [];
-      const maxRevenue = Math.max(...serviceFeeTransactions.map(t => t.amount || 0), 1);
+      const allRevenueTransactions = subscriptionTransactions;
+      const maxRevenue = Math.max(...allRevenueTransactions.map((t: any) => t.amount || 0), 1);
 
       for (let week = 0; week < 4; week++) {
         const weekStart = new Date(thirtyDaysAgo);
@@ -168,14 +171,14 @@ const Analytics = () => {
         weekEnd.setDate(weekEnd.getDate() + 7);
         weekEnd.setHours(0, 0, 0, 0);
 
-        // Get service fee transactions for this week
-        const weekTransactions = serviceFeeTransactions.filter(t => {
+        // Get revenue transactions for this week
+        const weekTransactions = allRevenueTransactions.filter((t: any) => {
           const transactionDate = new Date(t.createdAt);
           transactionDate.setHours(0, 0, 0, 0);
           return transactionDate >= weekStart && transactionDate < weekEnd;
         });
 
-        const weekRev = weekTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+        const weekRev = weekTransactions.reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
         const percentage = maxRevenue > 0 ? (weekRev / maxRevenue) * 100 : 0;
 
         weeklyRevenue.push({
@@ -226,8 +229,8 @@ const Analytics = () => {
         totalHosts: hosts,
         totalGuests: guests,
         totalListings: approvedListings.length, // Only count approved listings
-        totalBookings: bookingsSnap.size,
-        totalRevenue: serviceFee, // Real service fees from transactions
+        totalBookings: confirmedBookings.length,
+        totalRevenue: totalRevenue, // Subscription revenue only
         avgRating: avgRating,
       });
 
@@ -266,7 +269,7 @@ const Analytics = () => {
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto">
-        <BackButton to="/admin/dashboard" label="Back to Dashboard" className="mb-6" />
+        <BackButton to="/admin/dashboard" className="mb-6" />
 
         <h1 className="text-3xl font-bold mb-6">Platform Analytics</h1>
 
@@ -305,13 +308,13 @@ const Analytics = () => {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm text-muted-foreground">Service Fees</CardTitle>
+              <CardTitle className="text-sm text-muted-foreground">Platform Revenue</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-accent">
                 {formatPHP(stats.totalRevenue)}
               </div>
-              <p className="text-xs text-muted-foreground mt-1">10% commission</p>
+              <p className="text-xs text-muted-foreground mt-1">Subscription revenue</p>
             </CardContent>
           </Card>
         </div>

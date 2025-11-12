@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Verification</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f5f5f5;">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                <!-- Main Container -->
+                <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
+                    
+                    <!-- Header with Logo and Gradient -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
+                            <!-- Logo -->
+                            <div style="margin-bottom: 20px;">
+                                <img src="https://mojo-dojo-casa-house-f31a5.web.app/logo.png" alt="{{logo_alt}}" style="width: 80px; height: 80px; object-fit: contain; display: block; margin: 0 auto; border: 0; background-color: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px;" />
+                            </div>
+                            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
+                                Welcome to {{platform_name}}! 🎉
+                            </h1>
+                            <p style="margin: 10px 0 0 0; color: #ffffff; font-size: 16px; opacity: 0.9;">
+                                Please verify your email address
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Greeting -->
+                    <tr>
+                        <td style="padding: 40px 30px 20px 30px;">
+                            <h2 style="margin: 0; color: #1a1a1a; font-size: 22px; font-weight: 600;">
+                                Hi {{to_name}},
+                            </h2>
+                            <p style="margin: 15px 0 0 0; color: #666666; font-size: 16px; line-height: 1.6;">
+                                Thank you for joining our community! We're excited to have you on board as a <strong>{{user_role}}</strong>. To complete your registration and start exploring amazing places to stay, please verify your email address using the code below.
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- OTP Code Card -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f8f9fa; border-radius: 8px; padding: 25px; border: 1px solid #e9ecef;">
+                                <tr>
+                                    <td style="text-align: center; padding-bottom: 20px;">
+                                        <h3 style="margin: 0; color: #1a1a1a; font-size: 18px; font-weight: 600; margin-bottom: 15px;">
+                                            Your Verification Code
+                                        </h3>
+                                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: 8px; padding: 20px; border-radius: 8px; display: inline-block; font-family: 'Courier New', monospace;">
+                                            {{otp_code}}
+                                        </div>
+                                        <p style="margin: 15px 0 0 0; color: #666666; font-size: 14px;">
+                                            This code will expire in 10 minutes
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Instructions -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <div style="background-color: #e8f5e9; border-left: 4px solid #4caf50; padding: 20px; border-radius: 6px;">
+                                <p style="margin: 0; color: #2e7d32; font-size: 15px; line-height: 1.6;">
+                                    <strong>📝 How to verify:</strong><br>
+                                    1. Copy the verification code above<br>
+                                    2. Go to the verification page on our website<br>
+                                    3. Enter the code to complete your registration
+                                </p>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- CTA Button -->
+                    <tr>
+                        <td style="padding: 0 30px 40px 30px; text-align: center;">
+                            <a href="{{verification_link}}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);">
+                                Verify My Email
+                            </a>
+                        </td>
+                    </tr>
+
+                    <!-- Security Note -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <div style="background-color: #fef5e7; border-left: 4px solid #f6e05e; padding: 20px; border-radius: 6px;">
+                                <p style="margin: 0; color: #744210; font-size: 14px; line-height: 1.6;">
+                                    <strong>🔒 Security Note:</strong> This verification code will expire in 10 minutes. If you didn't create an account with {{platform_name}}, you can safely ignore this email.
+                                </p>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- Additional Info -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <p style="margin: 0; color: #666666; font-size: 14px; line-height: 1.6;">
+                                Once verified, you'll be able to:
+                            </p>
+                            <ul style="margin: 10px 0 0 0; padding-left: 20px; color: #666666; font-size: 14px; line-height: 1.8;">
+                                <li>✨ Browse and book amazing accommodations</li>
+                                <li>🏠 List your property and start earning (if you're a host)</li>
+                                <li>💬 Connect with hosts and guests</li>
+                                <li>🎁 Earn rewards and special offers</li>
+                            </ul>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f8f9fa; padding: 30px; text-align: center; border-top: 1px solid #e9ecef;">
+                            <!-- Logo in Footer -->
+                            <div style="margin-bottom: 15px;">
+                                <img src="https://mojo-dojo-casa-house-f31a5.web.app/logo.png" alt="{{logo_alt}}" style="width: 60px; height: 60px; object-fit: contain; display: block; margin: 0 auto; border: 0; background-color: #ffffff; border-radius: 6px; padding: 6px;" />
+                            </div>
+                            <p style="margin: 0 0 10px 0; color: #666666; font-size: 14px;">
+                                <strong>{{platform_name}}</strong>
+                            </p>
+                            <p style="margin: 0 0 10px 0; color: #999999; font-size: 12px;">
+                                Need help? Contact us at <a href="mailto:{{support_email}}" style="color: #667eea; text-decoration: none;">{{support_email}}</a>
+                            </p>
+                            <p style="margin: 0; color: #999999; font-size: 12px;">
+                                © {{year}} {{platform_name}}. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+

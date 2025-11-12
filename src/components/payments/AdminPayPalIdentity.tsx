@@ -175,7 +175,7 @@ const AdminPayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified }
                 {paypalEmail}
               </p>
               <p className="text-xs text-green-600 dark:text-green-400 mt-2">
-                ✓ Subscription payments • ✓ Service fees (10% commission)
+                ✓ Subscription payments
               </p>
             </div>
           </div>
@@ -210,7 +210,6 @@ const AdminPayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified }
             </p>
             <ul className="text-sm text-muted-foreground mt-2 space-y-1 list-disc list-inside">
               <li><strong>Subscription Revenue:</strong> Payments from hosts for subscriptions</li>
-              <li><strong>Service Fees:</strong> 10% commission from all booking payments</li>
             </ul>
             <p className="text-xs text-primary mt-3 font-medium bg-primary/10 p-2 rounded">
               ⚙️ Admin Only: Link any PayPal account (business or personal) where you want to receive platform revenue

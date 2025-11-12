@@ -1,6 +1,7 @@
 export interface Notification {
   id: string;
   userId: string;
+  role?: 'host' | 'guest' | 'admin'; // Role-specific notifications for multi-role users
   type: 'booking' | 'message' | 'payment' | 'system' | 'review';
   title: string;
   message: string;

@@ -23,11 +23,18 @@ const Logo = ({ size = 'md', className = '', showText = true }: LogoProps) => {
 
   return (
     <div className={`flex items-center space-x-3 ${className}`}>
-      {/* Logo Image - Using logo.svg directly */}
+      {/* Logo Image - Using logo.svg from public folder */}
       <img 
-        src="/logo.svg" 
+        src="/logo.svg"
         alt="Mojo Dojo Casa House Logo" 
         className={`${sizeClasses[size]} object-contain`}
+        onError={(e) => {
+          // Fallback to logo.png if svg fails
+          const target = e.target as HTMLImageElement;
+          if (!target.src.includes('logo.png')) {
+            target.src = '/logo.png';
+          }
+        }}
       />
       
       {/* Company Name */}

@@ -265,10 +265,8 @@ const GuestAccountSettings = () => {
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-6 lg:py-8 max-w-4xl">
         <div className="flex items-center justify-between mb-4 sm:mb-6 gap-2 sm:gap-4">
-          <Button variant="ghost" onClick={handleBack} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation">
-            <ArrowLeft className="h-4 w-4 mr-1.5 sm:mr-2" />
-            <span className="hidden sm:inline">Back to Dashboard</span>
-            <span className="sm:hidden">Back</span>
+          <Button variant="ghost" size="icon" onClick={handleBack} className="touch-manipulation">
+            <ArrowLeft className="h-4 w-4" />
           </Button>
           <Button variant="outline" onClick={() => setLogoutDialogOpen(true)} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation">
             <span className="hidden sm:inline">Sign Out</span>

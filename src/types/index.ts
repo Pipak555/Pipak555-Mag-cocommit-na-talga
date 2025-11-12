@@ -127,16 +127,34 @@ export interface WishlistItem {
 export interface UserProfile {
   email: string;
   fullName: string;
-  role: 'host' | 'guest' | 'admin'; // Primary role (for backward compatibility)
+  role: 'host' | 'guest' | 'admin'; // Primary role (current active role)
   roles?: ('host' | 'guest' | 'admin')[]; // Array of all roles user has
   createdAt: string;
-  points: number; // Guest points
-  hostPoints?: number; // Host points (separate from guest points)
-  walletBalance: number;
-  favorites: string[]; // Liked listings
-  wishlist: string[] | WishlistItem[]; // Future planned listings (separate from favorites)
-  coupons?: Coupon[];
+  
+  // Guest-specific data
+  points: number; // Guest reward points
+  favorites: string[]; // Guest favorites (liked listings)
+  wishlist: string[] | WishlistItem[]; // Guest wishlist (future planned listings)
+  coupons?: Coupon[]; // Guest coupons
+  
+  // Host-specific data (separate from guest data)
+  hostPoints?: number; // Host reward points (separate from guest points)
+  hostFavorites?: string[]; // Host favorites (separate list from guest favorites)
+  hostWishlist?: string[] | WishlistItem[]; // Host wishlist (separate from guest wishlist)
+  
+  // Shared data across all roles
+  walletBalance: number; // Shared wallet balance
+  emailVerified?: boolean;
+  verifiedAt?: string;
+  bio?: string;
+  phone?: string;
+  profilePicture?: string;
   notifications?: NotificationPreferences;
+  policyAccepted?: boolean;
+  policyAcceptedDate?: string;
+  paypalEmail?: string;
+  paypalEmailVerified?: boolean;
+  adminPayPalEmail?: string;
 }
 
 export interface Coupon {

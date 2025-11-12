@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { getAvailablePlans, getPlanById } from '@/lib/billingService';
 import { formatPHP } from '@/lib/currency';
@@ -19,10 +19,15 @@ type Step = 'plan' | 'account' | 'payment';
 
 const HostRegister = () => {
   const navigate = useNavigate();
-  const { user, signUp, signInWithGoogle } = useAuth();
+  const location = useLocation();
+  const { user, signUp, signInWithGoogle, hasRole } = useAuth();
   const [currentStep, setCurrentStep] = useState<Step>('plan');
   const [selectedPlan, setSelectedPlan] = useState<HostPlan | null>(null);
   const [loading, setLoading] = useState(false);
+  
+  // Check if user came from dashboard
+  const cameFromDashboard = (location.state as any)?.from === 'dashboard' || 
+                            document.referrer.includes('/host/dashboard');
 
   const plans = getAvailablePlans();
 
@@ -30,25 +35,56 @@ const HostRegister = () => {
   useEffect(() => {
     const policyAccepted = sessionStorage.getItem('hostPolicyAccepted');
     if (!policyAccepted) {
-      // Redirect to policy acceptance page first
-      navigate('/host/policies', { 
-        state: { 
-          returnTo: '/host/register',
-          planId: new URLSearchParams(window.location.search).get('planId')
-        } 
-      });
+      // If user is already logged in and has host role, they've already accepted policies
+      if (user && hasRole('host')) {
+        // Set policy accepted in session so we don't redirect
+        sessionStorage.setItem('hostPolicyAccepted', 'true');
+      } else {
+        // Redirect to policy acceptance page first
+        navigate('/host/policies', { 
+          state: { 
+            returnTo: '/host/register',
+            planId: new URLSearchParams(window.location.search).get('planId'),
+            from: cameFromDashboard ? 'dashboard' : undefined
+          } 
+        });
+      }
     }
-  }, [navigate]);
+  }, [navigate, user, hasRole, cameFromDashboard]);
+
+  // Check if user is already logged in and has a planId in URL - go directly to payment
+  useEffect(() => {
+    const planIdFromUrl = new URLSearchParams(window.location.search).get('planId');
+    if (user && hasRole('host') && planIdFromUrl) {
+      const plan = getPlanById(planIdFromUrl);
+      if (plan) {
+        // User is logged in, has host role, and has a plan selected - go directly to payment
+        navigate(`/host/payment?planId=${planIdFromUrl}`, { 
+          state: { from: cameFromDashboard ? 'dashboard' : undefined } 
+        });
+      }
+    }
+  }, [user, hasRole, navigate, cameFromDashboard]);
 
   const handlePlanSelect = (plan: HostPlan) => {
     setSelectedPlan(plan);
-    setCurrentStep('account');
+    // If user is already logged in and has host role, skip account creation and go to payment
+    if (user && hasRole('host')) {
+      navigate(`/host/payment?planId=${plan.id}`, { 
+        state: { from: cameFromDashboard ? 'dashboard' : (location.state as any)?.from } 
+      });
+    } else {
+      // User needs to create account, show account creation step
+      setCurrentStep('account');
+    }
   };
 
   const handleAccountCreated = () => {
     if (selectedPlan) {
-      // Navigate to payment page
-      navigate(`/host/payment?planId=${selectedPlan.id}`);
+      // Navigate to payment page, preserve the 'from' state
+      navigate(`/host/payment?planId=${selectedPlan.id}`, { 
+        state: { from: cameFromDashboard ? 'dashboard' : (location.state as any)?.from } 
+      });
     } else {
       toast.error('Please select a plan first');
       setCurrentStep('plan');
@@ -106,6 +142,24 @@ const HostRegister = () => {
 
   const handleExit = () => {
     if (window.confirm('Are you sure you want to exit registration? Your progress will be saved.')) {
+      // If user is logged in and has host role, go to dashboard
+      if (user && hasRole('host')) {
+        navigate('/host/dashboard');
+      } else if (cameFromDashboard) {
+        navigate('/host/dashboard');
+      } else {
+        navigate('/');
+      }
+    }
+  };
+
+  const handleBackToHome = () => {
+    // If user is logged in and has host role, go to dashboard
+    if (user && hasRole('host')) {
+      navigate('/host/dashboard');
+    } else if (cameFromDashboard) {
+      navigate('/host/dashboard');
+    } else {
       navigate('/');
     }
   };
@@ -117,11 +171,10 @@ const HostRegister = () => {
         <div className="flex justify-between items-center mb-6">
           <Button
             variant="ghost"
-            onClick={() => navigate('/')}
-            className="gap-2"
+            size="icon"
+            onClick={handleBackToHome}
           >
             <Home className="h-4 w-4" />
-            Back to Home
           </Button>
           <Button
             variant="ghost"

@@ -39,20 +39,37 @@ const ManagePayments = () => {
   const [loading, setLoading] = useState(true);
   const [transactions, setTransactions] = useState<TransactionWithUser[]>([]);
   const [subscriptions, setSubscriptions] = useState<Array<HostSubscription & { userName?: string; userEmail?: string }>>([]);
-  const [transactionToUpdate, setTransactionToUpdate] = useState<Transaction | null>(null);
+  const [transactionToUpdate, setTransactionToUpdate] = useState<TransactionWithUser | null>(null);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [action, setAction] = useState<'confirm' | 'refund' | null>(null);
   const [refundReason, setRefundReason] = useState('');
   const [processing, setProcessing] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
+  const [adminPayPalLinked, setAdminPayPalLinked] = useState(false); // Add this line
 
   useEffect(() => {
     if (!user || userRole !== 'admin') {
       navigate('/admin/login');
     } else {
       loadTransactions();
+      loadAdminPayPalStatus(); // Add this line
     }
   }, [user, userRole, navigate]);
+
+  // Add this new function
+  const loadAdminPayPalStatus = async () => {
+    if (!user) return;
+    try {
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        const hasPayPal = !!(userData.adminPayPalEmail && userData.adminPayPalEmailVerified);
+        setAdminPayPalLinked(hasPayPal);
+      }
+    } catch (error) {
+      console.error('Error loading admin PayPal status:', error);
+    }
+  };
 
   const loadTransactions = async () => {
     try {
@@ -209,13 +226,6 @@ const ManagePayments = () => {
     .filter(t => t.status === 'completed')
     .reduce((sum, t) => sum + t.amount, 0);
   
-  // Service fee payments (commission fees) - all go to admin PayPal account
-  const serviceFeeTransactions = transactions.filter(t => 
-    t.paymentMethod === 'service_fee'
-  );
-  const serviceFeeRevenue = serviceFeeTransactions
-    .filter(t => t.status === 'completed')
-    .reduce((sum, t) => sum + t.amount, 0);
   
   const activeSubscriptions = subscriptions.filter(s => s.status === 'active');
   const totalSubscriptionValue = subscriptions
@@ -236,7 +246,7 @@ const ManagePayments = () => {
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
-          <BackButton to="/admin/dashboard" label="Back to Dashboard" />
+          <BackButton to="/admin/dashboard" />
           <div>
             <h1 className="text-3xl font-bold">Payment Management</h1>
             <p className="text-muted-foreground">Review and manage all platform transactions</p>
@@ -252,15 +262,6 @@ const ManagePayments = () => {
             <CardContent>
               <div className="text-2xl font-bold text-primary">{formatPHP(subscriptionRevenue)}</div>
               <p className="text-xs text-muted-foreground mt-1">Paid to your PayPal</p>
-            </CardContent>
-          </Card>
-          <Card className="border-green-200 bg-green-50/50 dark:bg-green-950/20 dark:border-green-900">
-            <CardHeader>
-              <CardTitle className="text-sm font-medium text-muted-foreground">Service Fees (Commission)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600 dark:text-green-400">{formatPHP(serviceFeeRevenue)}</div>
-              <p className="text-xs text-muted-foreground mt-1">To your PayPal account</p>
             </CardContent>
           </Card>
           <Card>
@@ -283,23 +284,25 @@ const ManagePayments = () => {
           </Card>
         </div>
 
-        {/* PayPal Settings Link */}
-        <Card className="mb-6 border-primary/20 bg-primary/5">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Link Your PayPal Account</p>
-                <p className="text-sm text-muted-foreground">
-                  Link your PayPal account to receive all subscription payments and service fees (commission)
-                </p>
+        {/* PayPal Settings Link - Only show if not linked */}
+        {!adminPayPalLinked && (
+          <Card className="mb-6 border-primary/20 bg-primary/5">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Link Your PayPal Account</p>
+                  <p className="text-sm text-muted-foreground">
+                    Link your PayPal account to receive all subscription payments
+                  </p>
+                </div>
+                <Button onClick={() => navigate('/admin/paypal-settings')}>
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Link PayPal Account
+                </Button>
               </div>
-              <Button onClick={() => navigate('/admin/paypal-settings')}>
-                <CreditCard className="h-4 w-4 mr-2" />
-                Link PayPal Account
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Transactions List */}
         <Card>
@@ -309,11 +312,10 @@ const ManagePayments = () => {
           </CardHeader>
           <CardContent>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="all">All Transactions</TabsTrigger>
                 <TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
                 <TabsTrigger value="subscription-payments">Subscription Payments</TabsTrigger>
-                <TabsTrigger value="service-fees">Service Fees</TabsTrigger>
               </TabsList>
 
               <TabsContent value="all" className="mt-6">
@@ -340,9 +342,6 @@ const ManagePayments = () => {
                       )}
                       {transaction.paymentId && (
                         <p className="text-xs text-muted-foreground">Payment ID: {transaction.paymentId}</p>
-                      )}
-                      {transaction.serviceFee && (
-                        <p className="text-xs text-muted-foreground">Service Fee: {formatPHP(transaction.serviceFee)}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-4">
@@ -471,59 +470,6 @@ const ManagePayments = () => {
                 )}
               </TabsContent>
 
-              <TabsContent value="service-fees" className="mt-6">
-                {serviceFeeTransactions.length === 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <DollarSign className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>No service fees found</p>
-                    <p className="text-xs mt-2">Service fees (10% commission) from bookings go to your PayPal account</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900 rounded-lg p-4 mb-4">
-                      <p className="text-sm font-medium text-green-900 dark:text-green-100">
-                        💰 All Service Fees Go to Your PayPal Account
-                      </p>
-                      <p className="text-lg font-bold text-green-600 dark:text-green-400 mt-2">
-                        Total: {formatPHP(serviceFeeRevenue)}
-                      </p>
-                      <p className="text-xs text-green-700 dark:text-green-300 mt-2">
-                        All service fees (10% commission) from bookings are processed to your linked PayPal account. 
-                        Make sure your PayPal account is linked in the PayPal Settings page.
-                      </p>
-                    </div>
-                    {serviceFeeTransactions.map((transaction) => (
-                      <div 
-                        key={transaction.id} 
-                        className="flex items-center justify-between p-4 border rounded-lg border-green-200 bg-green-50/50 dark:bg-green-950/20 dark:border-green-900"
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-4 mb-2">
-                            <p className="font-medium">Service Fee</p>
-                            {getStatusBadge('completed')}
-                            <Badge variant="outline" className="border-primary text-primary">
-                              Commission
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground">{transaction.description}</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Booking #{(transaction.bookingId || '').slice(0, 8)} • {new Date(transaction.createdAt).toLocaleDateString()}
-                          </p>
-                          {transaction.adminPayPalEmail && (
-                            <p className="text-xs text-primary font-medium mt-1">
-                              → {transaction.adminPayPalEmail}
-                            </p>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          <p className="text-lg font-bold text-primary">{formatPHP(transaction.amount)}</p>
-                          <p className="text-xs text-green-600 dark:text-green-400 mt-1">✓ To PayPal</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
             </Tabs>
           </CardContent>
         </Card>

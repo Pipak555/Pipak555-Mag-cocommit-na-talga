@@ -208,59 +208,52 @@ export const SocialShare = ({
 
   return (
     <>
-      <div className="flex items-center gap-2">
-        {/* Native Share Button (Mobile) */}
-        {navigator.share && (
-          <Button
-            variant={variant}
-            size={size}
-            onClick={handleNativeShare}
-            className="flex items-center gap-2"
-          >
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant={variant} size={size} className="flex items-center gap-2">
             <Share2 className="h-4 w-4" />
-            <span className="hidden sm:inline">Share</span>
+            <span>Share</span>
           </Button>
-        )}
-
-        {/* Dropdown Menu for Desktop */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant={variant} size={size} className="flex items-center gap-2">
-              <Share2 className="h-4 w-4" />
-              {!navigator.share && <span>Share</span>}
-              {navigator.share && <span className="hidden sm:inline">More</span>}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem onClick={handleCopyLink}>
-              {copied ? (
-                <>
-                  <Check className="h-4 w-4 mr-2 text-green-500" />
-                  Copied!
-                </>
-              ) : (
-                <>
-                  <LinkIcon className="h-4 w-4 mr-2" />
-                  Copy Link
-                </>
-              )}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={shareToFacebook}>
-              <Facebook className="h-4 w-4 mr-2 text-blue-600" />
-              Share to Facebook
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={shareToTwitter}>
-              <Twitter className="h-4 w-4 mr-2 text-sky-500" />
-              Share to Twitter
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={shareToWhatsApp}>
-              <MessageCircle className="h-4 w-4 mr-2 text-green-600" />
-              Share to WhatsApp
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          {/* Native Share Option (Mobile) */}
+          {navigator.share && (
+            <>
+              <DropdownMenuItem onClick={handleNativeShare}>
+                <Share2 className="h-4 w-4 mr-2" />
+                Share via...
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
+          <DropdownMenuItem onClick={handleCopyLink}>
+            {copied ? (
+              <>
+                <Check className="h-4 w-4 mr-2 text-green-500" />
+                Copied!
+              </>
+            ) : (
+              <>
+                <LinkIcon className="h-4 w-4 mr-2" />
+                Copy Link
+              </>
+            )}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={shareToFacebook}>
+            <Facebook className="h-4 w-4 mr-2 text-blue-600" />
+            Share to Facebook
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={shareToTwitter}>
+            <Twitter className="h-4 w-4 mr-2 text-sky-500" />
+            Share to Twitter
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={shareToWhatsApp}>
+            <MessageCircle className="h-4 w-4 mr-2 text-green-600" />
+            Share to WhatsApp
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {/* Copy Link Dialog */}
       <Dialog open={showCopyDialog} onOpenChange={setShowCopyDialog}>

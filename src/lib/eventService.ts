@@ -88,6 +88,16 @@ export const sendEventNotifications = async (eventId: string): Promise<void> => 
     // Send notifications to all target users
     const notificationPromises = targetUsers.map(async (user) => {
       try {
+        // Get user roles
+        const userRoles = user.roles && Array.isArray(user.roles) && user.roles.length > 0
+          ? user.roles
+          : user.role
+            ? [user.role]
+            : [];
+        
+        // Find which roles match the event target roles
+        const matchingRoles = userRoles.filter(role => event.targetRoles.includes(role));
+        
         // If event includes a coupon, add it to user's coupons
         if (event.type === 'coupon' && event.couponCode && event.couponDiscount) {
           const userDoc = await getDoc(doc(db, 'users', user.id));
@@ -116,18 +126,24 @@ export const sendEventNotifications = async (eventId: string): Promise<void> => 
           }
         }
 
-        // Create notification
-        await createNotification({
-          userId: user.id,
-          type: 'system',
-          title: event.title,
-          message: event.description,
-          relatedId: eventId,
-          relatedType: 'event',
-          read: false,
-          priority: event.type === 'coupon' ? 'high' : 'medium',
-          actionUrl: event.actionUrl || '/guest/wallet'
+        // Create notifications for each matching role
+        // This ensures users with multiple roles get separate notifications for each role
+        const notificationPromisesForUser = matchingRoles.map(async (role) => {
+          await createNotification({
+            userId: user.id,
+            role: role as 'host' | 'guest' | 'admin', // Include role for role-specific filtering
+            type: 'system',
+            title: event.title,
+            message: event.description,
+            relatedId: eventId,
+            relatedType: 'event',
+            read: false,
+            priority: event.type === 'coupon' ? 'high' : 'medium',
+            actionUrl: event.actionUrl || (role === 'host' ? '/host/wallet' : '/guest/wallet')
+          });
         });
+        
+        await Promise.all(notificationPromisesForUser);
       } catch (error) {
         console.error(`Error sending notification to user ${user.id}:`, error);
       }

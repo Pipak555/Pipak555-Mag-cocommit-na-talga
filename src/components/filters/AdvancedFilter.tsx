@@ -4,15 +4,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { CalendarIcon, Filter } from "lucide-react";
-import { format } from "date-fns";
 
 export interface FilterValues {
   location: string;
   checkIn?: Date;
   checkOut?: Date;
+  dateRange?: { from: Date | undefined; to: Date | undefined };
   guests: number;
   category: string;
   minPrice?: number;
@@ -52,11 +51,23 @@ export const AdvancedFilter = ({ onFilterChange, initialFilters }: AdvancedFilte
       category: 'all',
       checkIn: undefined,
       checkOut: undefined,
+      dateRange: undefined,
       minPrice: undefined,
       maxPrice: undefined
     };
     setFilters(resetFilters);
     onFilterChange(resetFilters);
+  };
+
+  // Sync dateRange with checkIn/checkOut for backward compatibility
+  const handleDateRangeChange = (range: { from: Date | undefined; to: Date | undefined } | undefined) => {
+    const newFilters = {
+      ...filters,
+      dateRange: range,
+      checkIn: range?.from,
+      checkOut: range?.to,
+    };
+    setFilters(newFilters);
   };
 
   return (
@@ -80,44 +91,14 @@ export const AdvancedFilter = ({ onFilterChange, initialFilters }: AdvancedFilte
             />
           </div>
 
-          <div>
-            <Label className="text-sm sm:text-base">Check-in</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full justify-start h-11 sm:h-10 md:h-auto text-base sm:text-sm mt-1 touch-manipulation">
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {filters.checkIn ? format(filters.checkIn, "PP") : "Select date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={filters.checkIn}
-                  onSelect={(date) => setFilters({ ...filters, checkIn: date })}
-                  disabled={(date) => date < new Date()}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          <div>
-            <Label className="text-sm sm:text-base">Check-out</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full justify-start h-11 sm:h-10 md:h-auto text-base sm:text-sm mt-1 touch-manipulation">
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {filters.checkOut ? format(filters.checkOut, "PP") : "Select date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={filters.checkOut}
-                  onSelect={(date) => setFilters({ ...filters, checkOut: date })}
-                  disabled={(date) => date < (filters.checkIn || new Date())}
-                />
-              </PopoverContent>
-            </Popover>
+          <div className="sm:col-span-2">
+            <Label className="text-sm sm:text-base">Check-in & Check-out</Label>
+            <DateRangePicker
+              value={filters.dateRange || (filters.checkIn || filters.checkOut ? { from: filters.checkIn, to: filters.checkOut } : undefined)}
+              onChange={handleDateRangeChange}
+              placeholder="Select check-in and check-out dates"
+              className="h-11 sm:h-10 md:h-auto text-base sm:text-sm mt-1"
+            />
           </div>
         </div>
 

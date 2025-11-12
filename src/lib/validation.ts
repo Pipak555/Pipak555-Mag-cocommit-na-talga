@@ -29,6 +29,22 @@ export const listingFormSchema = z.object({
       "Discount must be between 0 and 100"
     ),
   promo: z.string().max(100, "Promo description must not exceed 100 characters").optional(),
+  promoCode: z.string().max(50, "Promo code must not exceed 50 characters").optional(),
+  promoDescription: z.string().max(100, "Discount description must not exceed 100 characters").optional(),
+  promoDiscount: z
+    .string()
+    .optional()
+    .refine(
+      (val) => !val || val.trim() === "" || (!isNaN(Number(val)) && Number(val) >= 0 && Number(val) <= 100),
+      "Promo discount must be between 0 and 100"
+    ),
+  promoMaxUses: z
+    .string()
+    .optional()
+    .refine(
+      (val) => !val || val.trim() === "" || (!isNaN(Number(val)) && Number(val) > 0 && Number.isInteger(Number(val))),
+      "Maximum uses must be a positive integer"
+    ),
   location: z
     .string()
     .min(5, "Location must be at least 5 characters")

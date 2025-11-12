@@ -13,6 +13,16 @@ interface DateRangePickerProps {
   className?: string;
   disabled?: (date: Date) => boolean;
   error?: boolean;
+  modifiers?: {
+    [key: string]: (date: Date) => boolean;
+  };
+  modifiersClassNames?: {
+    [key: string]: string;
+  };
+  classNames?: {
+    [key: string]: string;
+  };
+  numberOfMonths?: number;
 }
 
 export function DateRangePicker({
@@ -22,6 +32,10 @@ export function DateRangePicker({
   className,
   disabled,
   error,
+  modifiers,
+  modifiersClassNames,
+  classNames,
+  numberOfMonths = 2,
 }: DateRangePickerProps) {
   const [open, setOpen] = React.useState(false);
 
@@ -78,8 +92,11 @@ export function DateRangePicker({
           defaultMonth={value?.from || today}
           selected={value}
           onSelect={handleSelect}
-          numberOfMonths={2}
+          numberOfMonths={numberOfMonths}
           disabled={isDisabled}
+          modifiers={modifiers}
+          modifiersClassNames={modifiersClassNames}
+          classNames={classNames}
         />
       </PopoverContent>
     </Popover>

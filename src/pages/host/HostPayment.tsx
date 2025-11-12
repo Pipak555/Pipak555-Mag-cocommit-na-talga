@@ -21,11 +21,15 @@ const HostPayment = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { user } = useAuth();
+  const { user, hasRole } = useAuth();
   const [plan, setPlan] = useState<HostPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [paymentCompleted, setPaymentCompleted] = useState(false);
   const [checkingPayment, setCheckingPayment] = useState(true);
+  
+  // Check if user came from dashboard
+  const cameFromDashboard = (location.state as any)?.from === 'dashboard' || 
+                            document.referrer.includes('/host/dashboard');
 
   const planId = searchParams.get('planId') || 'active-host-monthly';
   const isSuccessPage = location.pathname === '/host/payment/success';
@@ -127,7 +131,12 @@ const HostPayment = () => {
 
   const handleExit = () => {
     if (window.confirm('Are you sure you want to exit? Your payment progress will not be saved.')) {
-      navigate('/host/settings');
+      // If user came from dashboard, go back there
+      if (cameFromDashboard || (user && hasRole('host'))) {
+        navigate('/host/dashboard');
+      } else {
+        navigate('/host/settings');
+      }
     }
   };
 
@@ -138,20 +147,18 @@ const HostPayment = () => {
         <div className="flex justify-between items-center mb-6">
           <Button
             variant="ghost"
+            size="icon"
             onClick={() => navigate('/host/register')}
-            className="gap-2"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to Registration
           </Button>
           <div className="flex gap-2">
             <Button
               variant="ghost"
+              size="icon"
               onClick={() => navigate('/host/dashboard')}
-              className="gap-2"
             >
               <Home className="h-4 w-4" />
-              Dashboard
             </Button>
             <Button
               variant="ghost"

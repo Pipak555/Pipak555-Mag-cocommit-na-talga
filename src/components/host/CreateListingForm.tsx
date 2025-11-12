@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -28,7 +28,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { PayPalButton } from "@/components/payments/PayPalButton";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { ImagePreview } from "./ImagePreview";
 import { LocationMapPicker } from "./LocationMapPicker";
@@ -70,12 +69,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [blockedDates, setBlockedDates] = useState<string[]>([]);
-  const [showPayment, setShowPayment] = useState(false);
   const [draftFound, setDraftFound] = useState(false);
   const [showDraftDialog, setShowDraftDialog] = useState(false);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
-  const [paymentConfirmOpen, setPaymentConfirmOpen] = useState(false);
+  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
   const [isPublished, setIsPublished] = useState(false); // Track if listing has been published
 
   // debounce timer ref
@@ -91,6 +89,10 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
       price: "",
       discount: "",
       promo: "",
+      promoCode: "",
+      promoDescription: "",
+      promoDiscount: "",
+      promoMaxUses: "",
       location: "",
       maxGuests: "",
       bedrooms: "",
@@ -100,20 +102,12 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
       images: [],
     },
     mode: "onChange",
+    shouldFocusError: true,
   });
 
   const watchedValues = form.watch();
   const formErrors = form.formState.errors;
   
-  // Calculate publish fee as 1 day of booking cost
-  const getPublishFee = (): number => {
-    const price = watchedValues.price;
-    if (!price || price.trim() === "") return 0;
-    const priceNum = Number(price);
-    return isNaN(priceNum) || priceNum <= 0 ? 0 : priceNum;
-  };
-  
-  const publishFee = getPublishFee();
 
   // Helper: deterministic draft doc id (one draft per user)
   const getDraftDocId = useCallback(() => {
@@ -311,7 +305,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
     if (!user) return;
     
     // Don't auto-save if we're in edit mode, payment flow, if listing is already published, or if loading
-    if (isEditMode || showPayment || loading || isPublished) return;
+    if (isEditMode || loading || isPublished) return;
 
     if (saveTimeoutRef.current) {
       window.clearTimeout(saveTimeoutRef.current);
@@ -328,7 +322,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         window.clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [watchedValues, images, user, form.formState.isDirty, saveDraftToFirestore, showPayment, loading, isPublished, isEditMode]);
+  }, [watchedValues, images, user, form.formState.isDirty, saveDraftToFirestore, loading, isPublished, isEditMode]);
 
   // Save draft on page unload (disabled in edit mode)
   useEffect(() => {
@@ -370,6 +364,10 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
           price: listing.price ? String(listing.price) : "",
           discount: listing.discount ? String(listing.discount) : "",
           promo: listing.promo || "",
+          promoCode: (listing as any).promoCode || "",
+          promoDescription: (listing as any).promoDescription || "",
+          promoDiscount: (listing as any).promoDiscount ? String((listing as any).promoDiscount) : "",
+          promoMaxUses: (listing as any).promoMaxUses ? String((listing as any).promoMaxUses) : "",
           location: listing.location || "",
           maxGuests: listing.maxGuests ? String(listing.maxGuests) : "",
           bedrooms: listing.bedrooms ? String(listing.bedrooms) : "",
@@ -454,6 +452,10 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         price: data.price ? String(data.price) : "",
         discount: data.discount ? String(data.discount) : "",
         promo: data.promo || "",
+        promoCode: (data as any).promoCode || "",
+        promoDescription: (data as any).promoDescription || "",
+        promoDiscount: (data as any).promoDiscount ? String((data as any).promoDiscount) : "",
+        promoMaxUses: (data as any).promoMaxUses ? String((data as any).promoMaxUses) : "",
         location: data.location || "",
         maxGuests: data.maxGuests ? String(data.maxGuests) : "",
         bedrooms: data.bedrooms ? String(data.bedrooms) : "",
@@ -543,6 +545,10 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
       price: Number(formValues.price),
       discount: formValues.discount && formValues.discount.trim() ? Number(formValues.discount) : undefined,
       promo: formValues.promo || undefined,
+      promoCode: formValues.promoCode || undefined,
+      promoDescription: formValues.promoDescription || undefined,
+      promoDiscount: formValues.promoDiscount && formValues.promoDiscount.trim() ? Number(formValues.promoDiscount) : undefined,
+      promoMaxUses: formValues.promoMaxUses && formValues.promoMaxUses.trim() ? Number(formValues.promoMaxUses) : undefined,
       location: formValues.location,
       maxGuests: Number(formValues.maxGuests),
       bedrooms: formValues.bedrooms && formValues.bedrooms.trim() ? Number(formValues.bedrooms) : undefined,
@@ -687,44 +693,147 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
       toast.error(errorMessage);
     } finally {
       setLoading(false);
-      setShowPayment(false);
     }
   };
 
   const handleProceedToPayment = async () => {
+    // Trigger validation for all fields
     const isValid = await form.trigger();
     const dateRange = form.getValues("dateRange");
-    const price = form.getValues("price");
+    const formErrors = form.formState.errors;
     
-    if (!isValid) {
-      toast.error("Please fix the errors in the form before proceeding.");
-      return;
-    }
-
-    if (!price || price.trim() === "" || isNaN(Number(price)) || Number(price) <= 0) {
-      toast.error("Please set a valid listing price. The publish fee is 1 day of your listing price.");
-      form.setError("price", { message: "Price is required for publishing" });
-      return;
-    }
-
+    // Check date range
     if (!dateRange?.from || !dateRange?.to) {
-      toast.error("Please select an availability date range.");
       form.setError("dateRange.to", { message: "Date range is required" });
+      await form.trigger("dateRange");
+    }
+
+    // Check if there are images (new or existing in edit mode)
+    const totalImages = (isEditMode ? existingImages.length : 0) + images.length;
+    if (totalImages === 0) {
+      form.setError("images", { 
+        type: "manual",
+        message: "At least 1 image is required" 
+      });
+      await form.trigger("images");
+    }
+
+    // If there are any errors, show them and scroll to first error
+    if (!isValid || !dateRange?.from || !dateRange?.to || totalImages === 0) {
+      toast.error("Please fix all errors in the form before proceeding.");
+      // Scroll to first error field
+      const firstErrorField = Object.keys(formErrors)[0] || "dateRange" || "images";
+      const errorElement = document.querySelector(`[name="${firstErrorField}"]`) || 
+                          document.querySelector('[name="dateRange"]') ||
+                          document.querySelector('[name="images"]');
+      if (errorElement) {
+        errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        (errorElement as HTMLElement).focus();
+      }
       return;
     }
 
-    if (images.length === 0) {
-      toast.error("Please upload at least one image.");
-      form.setError("images", { message: "At least one image is required" });
-      return;
-    }
-
-    setPaymentConfirmOpen(true);
+    // Show confirmation dialog before submitting
+    setSubmitConfirmOpen(true);
   };
 
-  const confirmPayment = () => {
-    setPaymentConfirmOpen(false);
-    setShowPayment(true);
+  const confirmSubmitListing = async () => {
+    setSubmitConfirmOpen(false);
+    // Submit listing for free - payment will be processed when admin approves
+    await handleSubmitListing();
+  };
+
+  const handleSubmitListing = async () => {
+    if (!user) return;
+    
+    // Trigger validation for all fields
+    const isValid = await form.trigger();
+    const dateRange = form.getValues("dateRange");
+    const formErrors = form.formState.errors;
+    
+    // Check date range
+    if (!dateRange?.from || !dateRange?.to) {
+      form.setError("dateRange.to", { message: "Date range is required" });
+      await form.trigger("dateRange");
+    }
+
+    // Check if there are images (new or existing in edit mode)
+    const totalImages = (isEditMode ? existingImages.length : 0) + images.length;
+    if (totalImages === 0) {
+      form.setError("images", { 
+        type: "manual",
+        message: "At least 1 image is required" 
+      });
+      await form.trigger("images");
+    }
+
+    // If there are any errors, show them and scroll to first error
+    if (!isValid || !dateRange?.from || !dateRange?.to || totalImages === 0) {
+      toast.error("Please fix all errors in the form before submitting.");
+      // Scroll to first error field
+      const firstErrorField = Object.keys(formErrors)[0] || "dateRange" || "images";
+      const errorElement = document.querySelector(`[name="${firstErrorField}"]`) || 
+                          document.querySelector('[name="dateRange"]') ||
+                          document.querySelector('[name="images"]');
+      if (errorElement) {
+        errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        (errorElement as HTMLElement).focus();
+      }
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      console.log('handleSubmitListing: Starting listing creation with status "pending"');
+      const listingId = await persistListing("pending");
+      console.log('handleSubmitListing: Listing created with ID:', listingId);
+
+      // Verify the listing was created with status "pending"
+      const listingDoc = await getDoc(doc(db, "listing", listingId));
+      if (listingDoc.exists()) {
+        const listingData = listingDoc.data();
+        console.log('handleSubmitListing: Listing status after creation:', listingData.status);
+        
+        // If status is not "pending", fix it
+        if (listingData.status !== "pending") {
+          console.warn('handleSubmitListing: Listing status is not "pending", fixing it...');
+          await setDoc(doc(db, "listing", listingId), {
+            status: "pending",
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
+        }
+      }
+
+      if (images.length > 0) {
+        console.log('handleSubmitListing: Uploading', images.length, 'images');
+        const imageUrls = await uploadImagesWithProgress(images, listingId);
+        console.log('handleSubmitListing: Images uploaded, updating listing with URLs');
+        // Explicitly preserve status when updating with images
+        await setDoc(doc(db, "listing", listingId), {
+          images: imageUrls,
+          status: "pending", // Explicitly set status to pending
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+        console.log('handleSubmitListing: Listing updated with images and status preserved');
+      }
+
+      setDraftId(null);
+      setDraftFound(false);
+      setIsPublished(true); // Mark as published to prevent auto-save from overwriting
+      console.log('handleSubmitListing: Success! Listing ID:', listingId, 'Status: pending');
+      toast.success("Listing submitted for review! Payment will be processed when approved.");
+      onSuccess();
+    } catch (error: any) {
+      console.error('handleSubmitListing: Error occurred:', error);
+      console.error('handleSubmitListing: Error details:', {
+        message: error.message,
+        code: error.code,
+        stack: error.stack
+      });
+      toast.error(error.message || "Failed to submit listing");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSaveDraft = async () => {
@@ -737,9 +846,31 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
   const handleSaveListing = async () => {
     if (!isEditMode || !editListingId || !user) return;
 
+    // Trigger validation for all fields
     const isValid = await form.trigger();
-    if (!isValid) {
-      toast.error("Please fix the errors in the form before saving.");
+    const formErrors = form.formState.errors;
+
+    // Check if there are images (existing or new)
+    const totalImages = existingImages.length + images.length;
+    if (totalImages === 0) {
+      form.setError("images", { 
+        type: "manual",
+        message: "At least 1 image is required" 
+      });
+      await form.trigger("images");
+    }
+
+    // If there are any errors, show them and scroll to first error
+    if (!isValid || totalImages === 0) {
+      toast.error("Please fix all errors in the form before saving.");
+      // Scroll to first error field
+      const firstErrorField = Object.keys(formErrors)[0] || "images";
+      const errorElement = document.querySelector(`[name="${firstErrorField}"]`) || 
+                          document.querySelector('[name="images"]');
+      if (errorElement) {
+        errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        (errorElement as HTMLElement).focus();
+      }
       return;
     }
 
@@ -760,6 +891,10 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         price: Number(formValues.price),
         discount: formValues.discount && formValues.discount.trim() ? Number(formValues.discount) : undefined,
         promo: formValues.promo || undefined,
+        promoCode: formValues.promoCode || undefined,
+        promoDescription: formValues.promoDescription || undefined,
+        promoDiscount: formValues.promoDiscount && formValues.promoDiscount.trim() ? Number(formValues.promoDiscount) : undefined,
+        promoMaxUses: formValues.promoMaxUses && formValues.promoMaxUses.trim() ? Number(formValues.promoMaxUses) : undefined,
         location: formValues.location,
         maxGuests: Number(formValues.maxGuests),
         bedrooms: formValues.bedrooms && formValues.bedrooms.trim() ? Number(formValues.bedrooms) : undefined,
@@ -984,49 +1119,158 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
               </div>
 
               {/* Discount and Promo */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <FormField
-                  control={form.control}
-                  name="discount"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Discount (%)</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="0"
-                          max="100"
-                          placeholder="0"
-                          {...field}
-                          value={field.value || ""}
-                          onChange={(e) => field.onChange(e.target.value)}
-                        />
-                      </FormControl>
-                      <FormDescription>Optional discount percentage (0-100)</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                  <FormField
+                    control={form.control}
+                    name="discount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Discount (%)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="100"
+                            placeholder="0"
+                            {...field}
+                            value={field.value || ""}
+                            onChange={(e) => field.onChange(e.target.value)}
+                          />
+                        </FormControl>
+                        <FormDescription>Optional discount percentage (0-100)</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <FormField
-                  control={form.control}
-                  name="promo"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Promo Description</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="e.g., 'Summer Special'"
-                          maxLength={100}
-                          {...field}
-                          value={field.value || ""}
-                        />
-                      </FormControl>
-                      <FormDescription>Optional promotional message</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                  <FormField
+                    control={form.control}
+                    name="promo"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Discount Description</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., 'Summer Special'"
+                            maxLength={100}
+                            {...field}
+                            value={field.value || ""}
+                          />
+                        </FormControl>
+                        <FormDescription>Optional promotional message</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* Promo Code Section */}
+                <Card className="border-2">
+                  <CardHeader>
+                    <CardTitle className="text-lg">Create a Promo Code</CardTitle>
+                    <CardDescription>Generate and customize special promo codes for your guests.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="promoCode"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Promo Code</FormLabel>
+                          <FormControl>
+                            <div className="flex gap-2">
+                              <Input
+                                placeholder="PROMO-XXXXXX"
+                                value={field.value || ""}
+                                onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                                className="flex-1"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => {
+                                  const code = `PROMO-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+                                  field.onChange(code);
+                                }}
+                              >
+                                Generate
+                              </Button>
+                            </div>
+                          </FormControl>
+                          <FormDescription>Enter a custom code or generate one automatically</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="promoDescription"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Promo Description</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="e.g., 'Summer Special'"
+                              maxLength={100}
+                              {...field}
+                              value={field.value || ""}
+                            />
+                          </FormControl>
+                          <FormDescription>Optional promotional message</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="promoDiscount"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Discount (%)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min="0"
+                                max="100"
+                                placeholder="15"
+                                {...field}
+                                value={field.value || ""}
+                                onChange={(e) => field.onChange(e.target.value)}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="promoMaxUses"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Maximum Uses</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min="1"
+                                placeholder="Unlimited"
+                                {...field}
+                                value={field.value || ""}
+                                onChange={(e) => field.onChange(e.target.value)}
+                              />
+                            </FormControl>
+                            <FormDescription>Leave empty for unlimited uses</FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
 
               {/* Location */}
@@ -1287,16 +1531,16 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                   <>
                     <Button
                       type="submit"
-                      disabled={loading || isUploading || publishFee === 0}
+                      disabled={loading || isUploading}
                       className="flex-1"
                     >
                       {loading ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Processing...
+                          Submitting...
                         </>
                       ) : (
-                        `Pay & Publish (${formatPHP(publishFee)})`
+                        "Submit Listing"
                       )}
                     </Button>
                     <Button
@@ -1317,62 +1561,6 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         </CardContent>
       </Card>
       )}
-
-      {/* Payment Dialog */}
-      <Dialog open={showPayment} onOpenChange={setShowPayment}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Complete Payment to Publish</DialogTitle>
-            <DialogDescription>
-              Pay a one-time publish fee of {formatPHP(publishFee)} (1 day of your listing price) to submit your listing for review.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="rounded-lg border p-4">
-              <div className="text-sm text-muted-foreground">Listing Details</div>
-              <div className="font-medium mt-1">{watchedValues.title || "Untitled Listing"}</div>
-              <div className="text-sm text-muted-foreground mt-2">
-                Category: {watchedValues.category}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Location: {watchedValues.location || "-"}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {watchedValues.dateRange?.from && watchedValues.dateRange?.to
-                  ? `Availability: ${watchedValues.dateRange.from.toLocaleDateString()} - ${watchedValues.dateRange.to.toLocaleDateString()}`
-                  : "Availability: Not set"}
-              </div>
-            </div>
-
-            <div className="rounded-lg bg-muted p-4">
-              <div className="flex justify-between text-sm mb-2">
-                <span>Publish Fee:</span>
-                <span className="font-medium">{formatPHP(publishFee)}</span>
-              </div>
-              <div className="text-xs text-muted-foreground mb-2">
-                This fee equals 1 day of your listing price ({formatPHP(Number(watchedValues.price) || 0)}/night).
-              </div>
-              <div className="text-xs text-muted-foreground">
-                This fee covers listing review and processing. Your listing will be reviewed by our team before going live.
-              </div>
-            </div>
-
-            {user && publishFee > 0 && (
-              <PayPalButton
-                amount={publishFee}
-                userId={user.uid}
-                description={`Host publish fee for listing: ${watchedValues.title || "Untitled"}`}
-                onSuccess={createListingAfterPayment}
-              />
-            )}
-            {publishFee === 0 && (
-              <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-4 text-sm text-yellow-700 dark:text-yellow-400">
-                Please set a valid listing price before publishing. The publish fee is 1 day of your listing price.
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Discard Draft Confirmation */}
       <AlertDialog open={discardConfirmOpen} onOpenChange={setDiscardConfirmOpen}>
@@ -1395,20 +1583,19 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Payment Confirmation */}
-      <AlertDialog open={paymentConfirmOpen} onOpenChange={setPaymentConfirmOpen}>
+      {/* Submit Listing Confirmation */}
+      <AlertDialog open={submitConfirmOpen} onOpenChange={setSubmitConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Proceed to Payment?</AlertDialogTitle>
+            <AlertDialogTitle>Submit Listing for Review?</AlertDialogTitle>
             <AlertDialogDescription>
-              You're about to pay a one-time publish fee of {formatPHP(publishFee)} (1 day of your listing price) to publish this listing.
-              After payment, your listing will be submitted for admin review.
+              Your listing will be submitted for admin review. Once approved, it will be published and visible to guests. Are you sure you want to continue?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmPayment}>
-              Proceed to Payment
+            <AlertDialogAction onClick={confirmSubmitListing}>
+              Submit Listing
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

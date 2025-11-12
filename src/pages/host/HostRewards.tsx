@@ -52,7 +52,7 @@ const HostRewards = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-6 lg:py-8 max-w-4xl">
-        <BackButton to="/host/dashboard" label="Back to Dashboard" className="mb-4 sm:mb-6" />
+        <BackButton to="/host/dashboard" className="mb-4 sm:mb-6" />
 
         <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6">Rewards</h1>
 

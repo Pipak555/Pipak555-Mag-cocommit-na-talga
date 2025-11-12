@@ -148,7 +148,7 @@ const ActiveListings = () => {
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6">
       <div className="max-w-7xl mx-auto">
-        <BackButton to="/admin/dashboard" label="Back to Dashboard" className="mb-4 sm:mb-6" />
+        <BackButton to="/admin/dashboard" className="mb-4 sm:mb-6" />
 
         <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6">Active Listings</h1>
 
