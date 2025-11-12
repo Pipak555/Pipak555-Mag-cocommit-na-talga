@@ -32,9 +32,11 @@ export interface Booking {
   checkOut: string;
   guests: number;
   totalPrice: number;
-  originalPrice?: number; // Price before coupon discount
+  originalPrice?: number; // Price before any discounts
+  listingDiscount?: number; // Listing discount percentage
+  listingDiscountAmount?: number; // Listing discount amount in PHP
   couponCode?: string; // Applied coupon code
-  discountAmount?: number; // Discount amount applied
+  discountAmount?: number; // Total discount amount applied (listing + coupon)
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
   createdAt: string;
 }
@@ -108,6 +110,20 @@ export interface NotificationPreferences {
   };
 }
 
+export interface WishlistItem {
+  listingId: string;
+  recommendations?: string; // Guest's recommendations/wishes for improvements (text)
+  propertyRequirements?: {
+    beds?: number;
+    bedrooms?: number;
+    bathrooms?: number;
+    guests?: number;
+  };
+  desiredAmenities?: string[]; // Array of amenity names (e.g., ['WiFi', 'Kitchen', 'Pool'])
+  addedAt: string;
+  addedFromBooking?: string; // Booking ID if added from past booking
+}
+
 export interface UserProfile {
   email: string;
   fullName: string;
@@ -118,7 +134,7 @@ export interface UserProfile {
   hostPoints?: number; // Host points (separate from guest points)
   walletBalance: number;
   favorites: string[]; // Liked listings
-  wishlist: string[]; // Future planned listings (separate from favorites)
+  wishlist: string[] | WishlistItem[]; // Future planned listings (separate from favorites)
   coupons?: Coupon[];
   notifications?: NotificationPreferences;
 }

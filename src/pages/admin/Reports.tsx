@@ -13,6 +13,7 @@ import { db } from "@/lib/firebase";
 import { toast } from "sonner";
 import { formatPHP } from "@/lib/currency";
 import type { Booking, Listing, UserProfile } from "@/types";
+import { BackButton } from "@/components/shared/BackButton";
 
 type ReportType = 'summary' | 'users' | 'bookings' | 'revenue' | 'listings';
 type ExportFormat = 'csv' | 'json' | 'txt';
@@ -486,14 +487,7 @@ Rejected:                 ${reportData.rejectedListings}
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto">
-        <Button
-          variant="ghost"
-          onClick={() => navigate('/admin/dashboard')}
-          className="mb-6"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Dashboard
-        </Button>
+        <BackButton to="/admin/dashboard" label="Back to Dashboard" className="mb-6" />
 
         <div className="mb-6">
           <div className="flex items-center justify-between mb-6">

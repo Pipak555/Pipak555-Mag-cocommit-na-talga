@@ -20,6 +20,7 @@ import { getBookings, getUserTransactions } from "@/lib/firestore";
 import type { Booking, Transaction, Listing } from "@/types";
 import { formatPHP } from "@/lib/currency";
 import LoadingScreen from "@/components/ui/loading-screen";
+import { BackButton } from "@/components/shared/BackButton";
 
 const HostPayments = () => {
   const navigate = useNavigate();
@@ -182,10 +183,7 @@ const HostPayments = () => {
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
-          <Button variant="ghost" onClick={() => navigate('/host/dashboard')}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Dashboard
-          </Button>
+          <BackButton to="/host/dashboard" label="Back to Dashboard" />
           <div>
             <h1 className="text-3xl font-bold">Payments & Earnings</h1>
             <p className="text-muted-foreground">View your earnings and payment history</p>
@@ -333,7 +331,10 @@ const HostPayments = () => {
                           ? 'text-green-500'
                           : 'text-red-500'
                       }`}>
-                        {transaction.type === 'deposit' || transaction.type === 'reward' ? '+' : '-'}{formatPHP(transaction.amount)}
+                        {transaction.type === 'reward' 
+                          ? `+${transaction.amount} points`
+                          : `${transaction.type === 'deposit' ? '+' : '-'}${formatPHP(transaction.amount)}`
+                        }
                       </p>
                       {transaction.status && (
                         <Badge className={

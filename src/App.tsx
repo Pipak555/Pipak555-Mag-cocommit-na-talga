@@ -48,6 +48,7 @@ const HostMessages = lazy(() => import("./pages/host/Messages"));
 const GuestMessages = lazy(() => import("./pages/guest/Messages"));
 const AdminMessages = lazy(() => import("./pages/admin/Messages"));
 const HostCalendar = lazy(() => import("./pages/host/Calendar"));
+const HostRewards = lazy(() => import("./pages/host/HostRewards"));
 const Analytics = lazy(() => import("./pages/admin/Analytics"));
 const ManagePayments = lazy(() => import("./pages/admin/ManagePayments"));
 const AdminPayPalSettings = lazy(() => import("./pages/admin/AdminPayPalSettings"));
@@ -97,6 +98,7 @@ const AppRoutes = () => {
             <Route path="/host/payments" element={<LazyRoute component={HostPayments} />} />
             <Route path="/host/messages" element={<LazyRoute component={HostMessages} />} />
             <Route path="/host/settings" element={<LazyRoute component={HostAccountSettings} />} />
+            <Route path="/host/rewards" element={<LazyRoute component={HostRewards} />} />
             <Route path="/guest/dashboard" element={<LazyRoute component={GuestDashboard} />} />
             <Route path="/guest/browse" element={<LazyRoute component={BrowseListings} />} />
             <Route path="/guest/listing/:id" element={<LazyRoute component={ListingDetails} />} />
@@ -115,7 +117,7 @@ const AppRoutes = () => {
             <Route path="/admin/payments" element={<LazyRoute component={ManagePayments} />} />
               <Route path="/admin/paypal-settings" element={<LazyRoute component={AdminPayPalSettings} />} />
               <Route path="/admin/create-event" element={<LazyRoute component={CreateEvent} />} />
-              <Route path="/admin/analytics" element={<LazyRoute component={Analytics} />} />
+            <Route path="/admin/analytics" element={<LazyRoute component={Analytics} />} />
             <Route path="/admin/reports" element={<LazyRoute component={Reports} />} />
             <Route path="/admin/policies" element={<LazyRoute component={Policies} />} />
             <Route path="/settings" element={<LazyRoute component={AccountSettings} />} />

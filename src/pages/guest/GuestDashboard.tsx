@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CategoryCardVideo } from '@/components/ui/category-card-video';
 import { VideoBackground } from '@/components/ui/video-background';
-import { Heart, MapPin, Calendar, Wallet, Settings, User, Sparkles, Bookmark, Home, Compass, Wrench, Building2, MessageSquare } from 'lucide-react';
+import { Heart, MapPin, Calendar, CalendarDays, Wallet, Settings, User, Sparkles, Bookmark, Home, Compass, Wrench, Building2, MessageSquare } from 'lucide-react';
 import { formatPHP } from '@/lib/currency';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
@@ -46,6 +46,7 @@ const GuestDashboard = () => {
   });
   const [recommendations, setRecommendations] = useState<Listing[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [wishlist, setWishlist] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
@@ -57,7 +58,7 @@ const GuestDashboard = () => {
 
     loadDashboardData();
 
-    // Real-time listener for favorites
+    // Real-time listener for favorites and wishlist
     const userUnsubscribe = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
       if (docSnap.exists()) {
         const userData = docSnap.data();
@@ -68,6 +69,7 @@ const GuestDashboard = () => {
           walletBalance: userData.walletBalance || 0,
         }));
         setFavorites(userData.favorites || []);
+        setWishlist(userData.wishlist || []);
       }
     });
 
@@ -156,6 +158,7 @@ const GuestDashboard = () => {
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       const currentWishlist = userDoc.exists() ? (userDoc.data().wishlist || []) : [];
       const newWishlist = await toggleWishlist(user.uid, listingId, currentWishlist);
+      setWishlist(newWishlist);
       toast.success(newWishlist.includes(listingId) ? "Added to wishlist" : "Removed from wishlist");
     } catch (error) {
       toast.error("Failed to update wishlist");
@@ -238,19 +241,20 @@ const GuestDashboard = () => {
         </div>
 
         {/* Quick Stats */}
-        <div className={`grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-6 sm:mb-8 ${hasRole('host') ? 'lg:grid-cols-5' : 'lg:grid-cols-6'}`}>
+        <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 md:gap-4 lg:gap-6 mb-4 sm:mb-6 md:mb-8 ${hasRole('host') ? 'lg:grid-cols-5' : 'lg:grid-cols-6'}`}>
           <Card 
             className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer hover:scale-105 active:scale-100"
             onClick={() => navigate('/guest/favorites')}
           >
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-secondary to-accent" />
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+            <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                <Heart className="h-3 w-3 sm:h-4 sm:w-4" />
                 Favorites
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold bg-gradient-to-br from-primary to-primary-glow bg-clip-text text-transparent">
+            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+              <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-br from-primary to-primary-glow bg-clip-text text-transparent">
                 {stats.favorites}
               </div>
             </CardContent>
@@ -261,13 +265,14 @@ const GuestDashboard = () => {
             onClick={() => navigate('/guest/wishlist')}
           >
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-blue-400 to-blue-300" />
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+            <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                <Bookmark className="h-3 w-3 sm:h-4 sm:w-4" />
                 Wishlist
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold bg-gradient-to-br from-blue-500 to-blue-600 bg-clip-text text-transparent">
+            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+              <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-br from-blue-500 to-blue-600 bg-clip-text text-transparent">
                 {stats.wishlist}
               </div>
             </CardContent>
@@ -278,13 +283,14 @@ const GuestDashboard = () => {
             onClick={() => navigate('/guest/bookings?filter=upcoming')}
           >
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-secondary via-primary to-accent" />
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+            <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
                 Upcoming Trips
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold bg-gradient-to-br from-secondary to-secondary/80 bg-clip-text text-transparent">
+            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+              <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-br from-secondary to-secondary/80 bg-clip-text text-transparent">
                 {stats.upcomingTrips}
               </div>
             </CardContent>
@@ -295,25 +301,27 @@ const GuestDashboard = () => {
             onClick={() => navigate('/guest/bookings?filter=past')}
           >
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-accent via-primary to-secondary" />
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+            <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                <CalendarDays className="h-3 w-3 sm:h-4 sm:w-4" />
                 Past Bookings
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{stats.pastBookings}</div>
+            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+              <div className="text-2xl sm:text-3xl font-bold">{stats.pastBookings}</div>
             </CardContent>
           </Card>
 
           <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group">
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-accent via-green-500 to-green-600" />
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+            <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                <Wallet className="h-3 w-3 sm:h-4 sm:w-4" />
                 Wallet Balance
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-accent">{formatPHP(stats.walletBalance)}</div>
+            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+              <div className="text-xl sm:text-2xl md:text-3xl font-bold text-accent">{formatPHP(stats.walletBalance)}</div>
             </CardContent>
           </Card>
 
@@ -408,6 +416,7 @@ const GuestDashboard = () => {
                 onFavorite={() => handleFavorite(listing.id)}
                 onWishlist={() => handleWishlist(listing.id)}
                 isFavorite={favorites.includes(listing.id)}
+                isInWishlist={wishlist.includes(listing.id)}
               />
               ))}
             </div>

@@ -35,13 +35,18 @@ const AdminPayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified }
   const clientId = import.meta.env.VITE_PAYPAL_CLIENT_ID || '';
   const paypalEnv = import.meta.env.VITE_PAYPAL_ENV || 'sandbox';
   const isSandbox = paypalEnv !== 'production';
-  const baseUrl = window.location.origin;
+  
+  // Get base URL from environment variable or use current origin
+  // In production, use VITE_APP_URL to ensure consistent redirect URIs
+  const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
+  const baseUrl = import.meta.env.PROD ? appUrl : window.location.origin;
   
   // Use the same redirect URI as guests (already configured in PayPal app)
   // The callback handler will route admin back to admin/paypal-settings based on state
   let redirectUri = `${baseUrl}/paypal-callback`;
   
-  if (baseUrl.includes('localhost')) {
+  // For localhost development, try both localhost and 127.0.0.1
+  if (baseUrl.includes('localhost') && !import.meta.env.PROD) {
     redirectUri = redirectUri.replace('localhost', '127.0.0.1');
   }
 

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, Shield, FileText, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Shield, FileText, AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import { VideoBackground } from '@/components/ui/video-background';
 import Logo from '@/components/shared/Logo';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
@@ -16,6 +16,7 @@ const hostLoginVideo = '/videos/landing-hero.mp4';
 
 const HostPolicyAcceptance = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, hasRole, addRole, signOut } = useAuth();
   const [acceptedCancellation, setAcceptedCancellation] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -456,24 +457,8 @@ const HostPolicyAcceptance = () => {
     
     const policyAcceptedDate = new Date().toISOString();
     
-    // If user is an admin, sign them out first so they can create a new account
-    if (user && hasRole('admin')) {
-      try {
-        await signOut();
-        toast.info('Please sign up with a different account to become a host.');
-        // Save policies acceptance for after signup
-        sessionStorage.setItem('hostPolicyAccepted', 'true');
-        sessionStorage.setItem('hostPolicyAcceptedDate', policyAcceptedDate);
-        navigate('/host/login', { state: { showSignup: true } });
-        return;
-      } catch (error: any) {
-        toast.error('Failed to sign out. Please sign out manually and try again.');
-        return;
-      }
-    }
-    
-    // If user is already signed in and doesn't have host role (and is not admin), add it directly
-    if (user && !hasRole('host') && !hasRole('admin')) {
+    // If user is already signed in and doesn't have host role, add it directly
+    if (user && !hasRole('host')) {
       try {
         await addRole('host', {
           policyAccepted: true,
@@ -494,12 +479,30 @@ const HostPolicyAcceptance = () => {
     sessionStorage.setItem('hostPolicyAccepted', 'true');
     sessionStorage.setItem('hostPolicyAcceptedDate', policyAcceptedDate);
     
+    // Check if there's a returnTo location (e.g., from HostRegister)
+    const returnTo = (location.state as any)?.returnTo;
+    const planId = (location.state as any)?.planId;
+    
     if (user && hasRole('host')) {
       // Already a host, just go to dashboard
       navigate('/host/dashboard');
+    } else if (returnTo) {
+      // Return to the original page (e.g., HostRegister)
+      navigate(returnTo, { state: { planId } });
     } else {
       // Not signed in or new user, go to login/signup
-      navigate('/host/login', { state: { showSignup: true } });
+      navigate('/host/login', { state: { showSignup: true, planId } });
+    }
+  };
+
+  const handleClose = () => {
+    // Check if there's a returnTo location
+    const returnTo = (location.state as any)?.returnTo;
+    if (returnTo) {
+      navigate(returnTo);
+    } else {
+      // Default: go back to home or host login
+      navigate('/host/login');
     }
   };
 
@@ -529,7 +532,16 @@ const HostPolicyAcceptance = () => {
       {/* Policy Content */}
       <div className="relative z-10 flex-1 flex items-center justify-center p-4">
         <Card className="w-full max-w-4xl shadow-2xl border-border/50 bg-card/95 backdrop-blur-md max-h-[95vh] overflow-hidden flex flex-col">
-          <CardHeader className="space-y-2 text-center pb-3 border-b">
+          <CardHeader className="space-y-2 text-center pb-3 border-b relative">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-4 right-4 h-8 w-8 rounded-full hover:bg-muted"
+              onClick={handleClose}
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </Button>
             <div className="w-12 h-12 mx-auto rounded-xl bg-primary/10 flex items-center justify-center">
               <Shield className="w-6 h-6 text-primary" />
             </div>
@@ -700,25 +712,27 @@ const HostPolicyAcceptance = () => {
           
           {/* Footer Actions */}
           <div className="border-t p-4 bg-muted/30">
-            {user && hasRole('admin') && (
-              <div className="mb-4 p-4 bg-orange-100 dark:bg-orange-900/20 border-2 border-orange-300 dark:border-orange-800 rounded-xl shadow-md">
-                <p className="text-sm text-orange-800 dark:text-orange-200 flex items-center gap-2 font-medium">
-                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-                  <strong>Admin Account Detected:</strong> You'll be signed out to create a host account with a different email.
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={handleClose}
+                  className="flex items-center gap-2"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Go Back
+                </Button>
+                <p className="text-sm text-muted-foreground">
+                  {allAccepted ? (
+                    <span className="text-green-600 dark:text-green-400 font-medium flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4" />
+                      All policies accepted
+                    </span>
+                  ) : (
+                    'Please accept all policies to continue'
+                  )}
                 </p>
               </div>
-            )}
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-sm text-muted-foreground">
-                {allAccepted ? (
-                  <span className="text-green-600 dark:text-green-400 font-medium flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4" />
-                    All policies accepted
-                  </span>
-                ) : (
-                  'Please accept all policies to continue'
-                )}
-              </p>
               <Button
                 onClick={handleContinue}
                 disabled={!allAccepted}

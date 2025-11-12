@@ -6,6 +6,7 @@ import { ListingCard } from "@/components/listings/ListingCard";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Mail, User, MapPin, DollarSign, Users, Home, Bed, Bath, X, ChevronLeft, ChevronRight, ZoomIn } from "lucide-react";
 import { toast } from "sonner";
+import { BackButton } from "@/components/shared/BackButton";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -166,14 +167,7 @@ const ReviewListings = () => {
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto">
-        <Button
-          variant="ghost"
-          onClick={() => navigate('/admin/dashboard')}
-          className="mb-6"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Dashboard
-        </Button>
+        <BackButton to="/admin/dashboard" label="Back to Dashboard" className="mb-6" />
 
         <h1 className="text-3xl font-bold mb-6">Review Pending Listings</h1>
 

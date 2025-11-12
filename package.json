@@ -16,8 +16,12 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
+    "verify": "node verify-deployment.js",
+    "troubleshoot": "node troubleshoot.js",
+    "predeploy": "npm run verify",
     "deploy": "npm run build:prod && firebase deploy --only hosting",
     "deploy:all": "npm run build:prod && firebase deploy",
+    "deploy:force": "npm run build:prod && firebase deploy --only hosting",
     "emulators": "firebase emulators:start",
     "emulators:only": "firebase emulators:start --only firestore,auth,storage"
   },

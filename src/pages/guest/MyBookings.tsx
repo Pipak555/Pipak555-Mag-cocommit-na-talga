@@ -1,20 +1,21 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { getBookings, updateBooking, getListing, getUserProfile } from "@/lib/firestore";
+import { getBookings, updateBooking, getListing, getUserProfile, getBookingReview, toggleWishlist, updateWishlistRecommendations } from "@/lib/firestore";
 import { processBookingRefund } from "@/lib/paymentService";
 import { collection, query, where, onSnapshot, doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Calendar as CalendarIcon, X, MessageSquare, Home, MapPin, DollarSign, Users, Bed, Bath, ChevronLeft, ChevronRight, ZoomIn } from "lucide-react";
+import { ArrowLeft, Calendar as CalendarIcon, X, MessageSquare, Home, MapPin, DollarSign, Users, Bed, Bath, ChevronLeft, ChevronRight, ZoomIn, Star, Bookmark, Sparkles } from "lucide-react";
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { PayPalButton } from "@/components/payments/PayPalButton";
-import type { Booking } from "@/types";
+import type { Booking, Review } from "@/types";
 import { formatPHP } from "@/lib/currency";
 import { BookingListSkeleton } from "@/components/ui/booking-skeleton";
 import { toast } from "sonner";
+import { BackButton } from "@/components/shared/BackButton";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,7 +34,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import type { Listing } from "@/types";
+import { ReviewForm } from "@/components/reviews/ReviewForm";
 
 const MyBookings = () => {
   const navigate = useNavigate();
@@ -52,20 +57,39 @@ const MyBookings = () => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxImageIndex, setLightboxImageIndex] = useState(0);
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [bookingToReview, setBookingToReview] = useState<Booking | null>(null);
+  const [bookingReviews, setBookingReviews] = useState<Record<string, Review | null>>({});
+  const [loadingReviews, setLoadingReviews] = useState<Record<string, boolean>>({});
+  const [wishlist, setWishlist] = useState<string[] | any[]>([]);
+  const [wishlistDialogOpen, setWishlistDialogOpen] = useState(false);
+  const [bookingForWishlist, setBookingForWishlist] = useState<Booking | null>(null);
+  const [recommendations, setRecommendations] = useState("");
+  const [propertyRequirements, setPropertyRequirements] = useState({
+    beds: '',
+    bedrooms: '',
+    bathrooms: '',
+    guests: ''
+  });
+  const [desiredAmenities, setDesiredAmenities] = useState<string[]>([]);
   const filter = searchParams.get('filter'); // 'upcoming', 'past', or null
+
+  const availableAmenities = ['WiFi', 'Kitchen', 'Air Conditioning', 'Parking', 'Pool', 'Gym', 'TV', 'Washer', 'Dryer', 'Heating', 'Pet Friendly', 'Balcony'];
 
   useEffect(() => {
     if (!user) return;
 
-    // Load wallet balance
-    const loadWalletBalance = async () => {
+    // Load wallet balance and wishlist
+    const loadUserData = async () => {
       if (!user) return;
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (userDoc.exists()) {
-        setWalletBalance(userDoc.data().walletBalance || 0);
+        const userData = userDoc.data();
+        setWalletBalance(userData.walletBalance || 0);
+        setWishlist(userData.wishlist || []);
       }
     };
-    loadWalletBalance();
+    loadUserData();
 
     setLoading(true);
     
@@ -145,6 +169,38 @@ const MyBookings = () => {
 
     return () => unsubscribe();
   }, [user, filter]);
+
+  // Load reviews for past bookings
+  useEffect(() => {
+    if (!user || bookings.length === 0) return;
+
+    const loadReviews = async () => {
+      // Only load reviews for past bookings (check-out date has passed or status is completed/cancelled)
+      const pastBookings = bookings.filter(b => {
+        const checkOut = new Date(b.checkOut);
+        const now = new Date();
+        return checkOut < now || b.status === 'completed' || b.status === 'cancelled';
+      });
+
+      for (const booking of pastBookings) {
+        if (booking.id && bookingReviews[booking.id] === undefined && !loadingReviews[booking.id]) {
+          setLoadingReviews(prev => ({ ...prev, [booking.id]: true }));
+          try {
+            const review = await getBookingReview(booking.id, user.uid);
+            setBookingReviews(prev => ({ ...prev, [booking.id]: review }));
+          } catch (error) {
+            console.error(`Error loading review for booking ${booking.id}:`, error);
+            setBookingReviews(prev => ({ ...prev, [booking.id]: null }));
+          } finally {
+            setLoadingReviews(prev => ({ ...prev, [booking.id]: false }));
+          }
+        }
+      }
+    };
+
+    loadReviews();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookings, user]);
 
   const loadBookingsFallback = async () => {
     if (!user) return;
@@ -259,6 +315,115 @@ const MyBookings = () => {
     } else {
       toast.error('Host information not available');
     }
+  };
+
+  const handleLeaveReview = (booking: Booking) => {
+    setBookingToReview(booking);
+    setReviewDialogOpen(true);
+  };
+
+  const handleAddToWishlist = (booking: Booking) => {
+    if (!user || !booking.listingId) {
+      toast.error("Unable to add to wishlist");
+      return;
+    }
+    
+    // Check if already in wishlist
+    const isInWishlist = wishlist.some(item => 
+      (typeof item === 'string' ? item === booking.listingId : item.listingId === booking.listingId)
+    );
+    
+    if (isInWishlist) {
+      // Remove from wishlist
+      handleRemoveFromWishlist(booking.listingId!);
+    } else {
+      // Open dialog to add recommendations
+      setBookingForWishlist(booking);
+      setRecommendations("");
+      setWishlistDialogOpen(true);
+    }
+  };
+
+  const handleRemoveFromWishlist = async (listingId: string) => {
+    if (!user) return;
+    
+    try {
+      const newWishlist = await toggleWishlist(user.uid, listingId, wishlist);
+      setWishlist(newWishlist);
+      toast.success("Removed from wishlist");
+    } catch (error) {
+      toast.error("Failed to remove from wishlist");
+    }
+  };
+
+  const handleSaveWishlistWithRecommendations = async () => {
+    if (!user || !bookingForWishlist?.listingId) {
+      toast.error("Unable to add to wishlist");
+      return;
+    }
+    
+    try {
+      // Prepare property requirements object (only include fields with values)
+      const requirements: any = {};
+      if (propertyRequirements.beds) requirements.beds = parseInt(propertyRequirements.beds) || 0;
+      if (propertyRequirements.bedrooms) requirements.bedrooms = parseInt(propertyRequirements.bedrooms) || 0;
+      if (propertyRequirements.bathrooms) requirements.bathrooms = parseInt(propertyRequirements.bathrooms) || 0;
+      if (propertyRequirements.guests) requirements.guests = parseInt(propertyRequirements.guests) || 0;
+
+      const hasRequirements = Object.keys(requirements).length > 0;
+      const hasAmenities = desiredAmenities.length > 0;
+      const hasRecommendations = recommendations.trim().length > 0;
+
+      const newWishlist = await toggleWishlist(
+        user.uid, 
+        bookingForWishlist.listingId, 
+        wishlist,
+        hasRecommendations ? recommendations.trim() : undefined,
+        bookingForWishlist.id,
+        hasRequirements ? requirements : undefined,
+        hasAmenities ? desiredAmenities : undefined
+      );
+      setWishlist(newWishlist);
+      setWishlistDialogOpen(false);
+      setBookingForWishlist(null);
+      setRecommendations("");
+      setPropertyRequirements({ beds: '', bedrooms: '', bathrooms: '', guests: '' });
+      setDesiredAmenities([]);
+      toast.success("Added to wishlist with your requirements!");
+    } catch (error) {
+      toast.error("Failed to add to wishlist");
+    }
+  };
+
+  const toggleAmenity = (amenity: string) => {
+    setDesiredAmenities(prev => 
+      prev.includes(amenity) 
+        ? prev.filter(a => a !== amenity)
+        : [...prev, amenity]
+    );
+  };
+
+  const isInWishlist = (listingId: string) => {
+    return wishlist.some(item => 
+      (typeof item === 'string' ? item === listingId : item.listingId === listingId)
+    );
+  };
+
+  const getWishlistItem = (listingId: string) => {
+    return wishlist.find(item => 
+      (typeof item === 'string' ? item === listingId : item.listingId === listingId)
+    );
+  };
+
+  const handleReviewSuccess = () => {
+    if (bookingToReview && user) {
+      // Reload the review for this booking
+      getBookingReview(bookingToReview.id, user.uid).then(review => {
+        setBookingReviews(prev => ({ ...prev, [bookingToReview.id]: review }));
+      });
+    }
+    setReviewDialogOpen(false);
+    setBookingToReview(null);
   };
 
   const confirmCancel = async () => {
@@ -378,6 +543,15 @@ const MyBookings = () => {
               const canCancel = (booking.status === 'pending' || booking.status === 'confirmed') && 
                                 new Date(booking.checkIn) >= new Date();
               
+              // Check if this is a past booking
+              const checkOut = new Date(booking.checkOut);
+              const now = new Date();
+              const isPastBooking = filter === 'past' || checkOut < now || booking.status === 'completed' || booking.status === 'cancelled';
+              
+              // Check if booking has been reviewed
+              const hasReview = bookingReviews[booking.id] !== undefined;
+              const review = bookingReviews[booking.id];
+              
               return (
                 <Card key={booking.id}>
                   <CardHeader>
@@ -462,6 +636,103 @@ const MyBookings = () => {
                             redirectUrl={window.location.origin + '/guest/bookings'}
                           />
                         </div>
+                      </div>
+                    )}
+                    
+                    {/* Actions for Past Bookings */}
+                    {isPastBooking && booking.status !== 'cancelled' && (
+                      <div className="pt-4 border-t space-y-2">
+                        {/* Add to Wishlist Button */}
+                        {booking.listingId && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleAddToWishlist(booking)}
+                            className="w-full"
+                          >
+                            <Bookmark className={`h-4 w-4 mr-2 ${isInWishlist(booking.listingId) ? 'fill-blue-500 text-blue-500' : ''}`} />
+                            {isInWishlist(booking.listingId) ? 'Remove from Wishlist' : 'Add to Wishlist with Recommendations'}
+                          </Button>
+                        )}
+                        {isInWishlist(booking.listingId) && (() => {
+                          const wishlistItem = getWishlistItem(booking.listingId);
+                          if (typeof wishlistItem !== 'object') return null;
+                          
+                          const recommendations = wishlistItem?.recommendations;
+                          const requirements = wishlistItem?.propertyRequirements;
+                          const amenities = wishlistItem?.desiredAmenities;
+                          
+                          const hasData = recommendations || (requirements && Object.keys(requirements).length > 0) || (amenities && amenities.length > 0);
+                          
+                          return hasData ? (
+                            <div className="p-3 bg-muted rounded-md space-y-2">
+                              {requirements && Object.keys(requirements).length > 0 && (
+                                <div>
+                                  <p className="text-xs font-semibold text-muted-foreground mb-1">Requirements:</p>
+                                  <div className="text-xs space-y-1">
+                                    {requirements.beds && <p>• Beds: {requirements.beds}</p>}
+                                    {requirements.bedrooms && <p>• Bedrooms: {requirements.bedrooms}</p>}
+                                    {requirements.bathrooms && <p>• Bathrooms: {requirements.bathrooms}</p>}
+                                    {requirements.guests && <p>• Guests: {requirements.guests}</p>}
+                                  </div>
+                                </div>
+                              )}
+                              {amenities && amenities.length > 0 && (
+                                <div>
+                                  <p className="text-xs font-semibold text-muted-foreground mb-1">Desired Amenities:</p>
+                                  <p className="text-xs">{amenities.join(', ')}</p>
+                                </div>
+                              )}
+                              {recommendations && (
+                                <div>
+                                  <p className="text-xs font-semibold text-muted-foreground mb-1">Recommendations:</p>
+                                  <p className="text-sm">{recommendations}</p>
+                                </div>
+                              )}
+                            </div>
+                          ) : null;
+                        })()}
+                        
+                        {/* Review Button */}
+                        {loadingReviews[booking.id] ? (
+                          <Button variant="outline" size="sm" disabled className="w-full">
+                            Checking review status...
+                          </Button>
+                        ) : hasReview && review ? (
+                          <div className="p-3 bg-muted rounded-md">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium">Your Review:</span>
+                                <div className="flex items-center gap-1">
+                                  {[1, 2, 3, 4, 5].map((star) => (
+                                    <Star
+                                      key={star}
+                                      className={`h-4 w-4 ${
+                                        star <= review.rating
+                                          ? 'fill-yellow-400 text-yellow-400'
+                                          : 'text-muted'
+                                      }`}
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+                              <Badge variant="outline">Reviewed</Badge>
+                            </div>
+                            {review.comment && (
+                              <p className="text-sm text-muted-foreground mt-2">{review.comment}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => handleLeaveReview(booking)}
+                            className="w-full"
+                          >
+                            <Star className="h-4 w-4 mr-2" />
+                            Leave a Review
+                          </Button>
+                        )}
                       </div>
                     )}
                     
@@ -853,6 +1124,163 @@ const MyBookings = () => {
               </>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Wishlist Recommendations Dialog */}
+      <Dialog open={wishlistDialogOpen} onOpenChange={setWishlistDialogOpen}>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Property Requirements</DialogTitle>
+            <DialogDescription>
+              Desired Amenities/Features
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            {/* Property Requirements Section */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold">Property Requirements</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="beds" className="flex items-center gap-2">
+                    <Bed className="h-4 w-4" />
+                    Number of Beds
+                  </Label>
+                  <Input
+                    id="beds"
+                    type="number"
+                    placeholder="e.g., 4"
+                    value={propertyRequirements.beds}
+                    onChange={(e) => setPropertyRequirements(prev => ({ ...prev, beds: e.target.value }))}
+                    min="0"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="bedrooms" className="flex items-center gap-2">
+                    <Home className="h-4 w-4" />
+                    Number of Bedrooms
+                  </Label>
+                  <Input
+                    id="bedrooms"
+                    type="number"
+                    placeholder="e.g., 2"
+                    value={propertyRequirements.bedrooms}
+                    onChange={(e) => setPropertyRequirements(prev => ({ ...prev, bedrooms: e.target.value }))}
+                    min="0"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="bathrooms" className="flex items-center gap-2">
+                    <Bath className="h-4 w-4" />
+                    Number of Bathrooms
+                  </Label>
+                  <Input
+                    id="bathrooms"
+                    type="number"
+                    placeholder="e.g., 2"
+                    value={propertyRequirements.bathrooms}
+                    onChange={(e) => setPropertyRequirements(prev => ({ ...prev, bathrooms: e.target.value }))}
+                    min="0"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="guests" className="flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Number of Guests
+                  </Label>
+                  <Input
+                    id="guests"
+                    type="number"
+                    placeholder="e.g., 6"
+                    value={propertyRequirements.guests}
+                    onChange={(e) => setPropertyRequirements(prev => ({ ...prev, guests: e.target.value }))}
+                    min="0"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Desired Amenities Section */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <Sparkles className="h-4 w-4" />
+                Desired Amenities/Features
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                {availableAmenities.map((amenity) => (
+                  <Button
+                    key={amenity}
+                    type="button"
+                    variant={desiredAmenities.includes(amenity) ? "default" : "outline"}
+                    className={`justify-start ${
+                      desiredAmenities.includes(amenity)
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-yellow-50 dark:bg-yellow-950/20 text-gray-700 dark:text-gray-300 hover:bg-yellow-100 dark:hover:bg-yellow-950/30"
+                    }`}
+                    onClick={() => toggleAmenity(amenity)}
+                  >
+                    {amenity}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Additional Recommendations (Optional) */}
+            <div className="space-y-2">
+              <Label htmlFor="recommendations">
+                Additional Recommendations (Optional)
+              </Label>
+              <Textarea
+                id="recommendations"
+                placeholder="Any other wishes or recommendations..."
+                value={recommendations}
+                onChange={(e) => setRecommendations(e.target.value)}
+                className="min-h-[80px] resize-none"
+                maxLength={500}
+              />
+              <p className="text-xs text-muted-foreground">
+                {recommendations.length}/500 characters
+              </p>
+            </div>
+
+            <div className="flex gap-2 justify-end pt-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setWishlistDialogOpen(false);
+                  setBookingForWishlist(null);
+                  setRecommendations("");
+                  setPropertyRequirements({ beds: '', bedrooms: '', bathrooms: '', guests: '' });
+                  setDesiredAmenities([]);
+                }}
+                className="bg-yellow-50 dark:bg-yellow-950/20 text-gray-700 dark:text-gray-300 hover:bg-yellow-100 dark:hover:bg-yellow-950/30"
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleSaveWishlistWithRecommendations} className="bg-primary hover:bg-primary/90">
+                Add to Wishlist
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Review Dialog */}
+      <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Leave a Review</DialogTitle>
+            <DialogDescription>
+              Share your experience with this booking
+            </DialogDescription>
+          </DialogHeader>
+          {bookingToReview && bookingToReview.listingId && (
+            <ReviewForm
+              listingId={bookingToReview.listingId}
+              bookingId={bookingToReview.id}
+              onSuccess={handleReviewSuccess}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>

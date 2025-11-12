@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Calendar, Loader2, Gift, Megaphone, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import LoadingScreen from "@/components/ui/loading-screen";
+import { BackButton } from "@/components/shared/BackButton";
 
 const CreateEvent = () => {
   const navigate = useNavigate();
@@ -103,10 +104,7 @@ const CreateEvent = () => {
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
-          <Button variant="ghost" onClick={() => navigate('/admin/dashboard')}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
+          <BackButton to="/admin/dashboard" label="Back to Dashboard" />
           <div>
             <h1 className="text-3xl font-bold">Create Platform Event</h1>
             <p className="text-muted-foreground">Create events and notify users (e.g., coupon codes, announcements)</p>

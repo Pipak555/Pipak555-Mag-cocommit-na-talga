@@ -96,7 +96,7 @@ interface AuthContextType {
   loading: boolean;
   hasRole: (role: 'host' | 'guest' | 'admin') => boolean;
   signIn: (email: string, password: string, role: 'host' | 'guest' | 'admin') => Promise<void>;
-  signInWithGoogle: (role: 'host' | 'guest' | 'admin') => Promise<void>;
+  signInWithGoogle: (role: 'host' | 'guest' | 'admin', policyData?: { policyAccepted: boolean; policyAcceptedDate: string }) => Promise<void>;
   signUp: (email: string, password: string, fullName: string, role: 'host' | 'guest' | 'admin', policyData?: { policyAccepted: boolean; policyAcceptedDate: string }) => Promise<void>;
   signOut: () => Promise<void>;
   sendVerificationEmail: () => Promise<void>;
@@ -194,16 +194,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           throw new Error('Admin access denied. This account does not have admin privileges.');
         }
       } else {
-        // Guest and host cannot be admin
-        if (userRoles.includes('admin')) {
-          if (import.meta.env.DEV) {
-            console.error(`[Auth] Admin account trying to sign in as ${role}`);
-          }
-          await firebaseSignOut(auth);
-          throw new Error('Admin accounts cannot sign in as guest or host. Please use the admin login page.');
-        }
-        
         // Check if user has this role - if not, they need to sign up for it
+        // Allow admins to also sign in as guest or host if they have those roles
         if (!userRoles.includes(role)) {
           if (import.meta.env.DEV) {
             console.error(`[Auth] User does not have ${role} role. User roles:`, userRoles);
@@ -260,7 +252,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const signInWithGoogle = async (role: 'host' | 'guest' | 'admin') => {
+  const signInWithGoogle = async (role: 'host' | 'guest' | 'admin', policyData?: { policyAccepted: boolean; policyAcceptedDate: string }) => {
     try {
       const provider = new GoogleAuthProvider();
       provider.addScope('email');
@@ -279,9 +271,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           throw new Error('Popup was blocked or closed. Please allow popups and try again.');
         }
         // Check for domain authorization error
-        if (popupError.message?.includes('not authorized for OAuth') || popupError.code === 'auth/unauthorized-domain') {
+        if (popupError.message?.includes('not authorized for OAuth') || 
+            popupError.code === 'auth/unauthorized-domain' ||
+            popupError.code === 'auth/operation-not-allowed') {
           const currentDomain = window.location.hostname;
-          throw new Error(`This domain (${currentDomain}) is not authorized for Google sign-in. Please add it to Firebase Console > Authentication > Settings > Authorized domains, or contact support.`);
+          const currentPort = window.location.port ? `:${window.location.port}` : '';
+          const fullDomain = `${currentDomain}${currentPort}`;
+          
+          const errorMessage = `This domain (${fullDomain}) is not authorized for Google sign-in.\n\n` +
+            `To fix this:\n` +
+            `1. Go to Firebase Console (https://console.firebase.google.com)\n` +
+            `2. Select your project\n` +
+            `3. Go to Authentication > Settings > Authorized domains\n` +
+            `4. Click "Add domain"\n` +
+            `5. Add: ${currentDomain}\n` +
+            `6. If using a port, also add: ${fullDomain}\n` +
+            `7. Wait a few minutes for changes to take effect\n\n` +
+            `Note: For local development, you can also use 'localhost' which is usually pre-authorized.`;
+          
+          console.error('Google OAuth Domain Error:', errorMessage);
+          throw new Error(errorMessage);
         }
         throw popupError;
       }
@@ -303,13 +312,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             throw new Error('Admin access denied. This account does not have admin privileges.');
           }
         } else {
-          // Guest and host cannot be admin
-          if (userRoles.includes('admin')) {
-            await firebaseSignOut(auth);
-            throw new Error('Admin accounts cannot sign in as guest or host. Please use the admin login page.');
-          }
-          
           // Check if user has this role - if not, they need to sign up for it
+          // Allow admins to also sign in as guest or host if they have those roles
           if (!userRoles.includes(role)) {
             await firebaseSignOut(auth);
             const roleName = role === 'guest' ? 'guest' : 'host';
@@ -353,20 +357,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const fullName = user.displayName || user.email?.split('@')[0] || 'User';
         
         // For hosts, check if policy was accepted
-        let policyData = undefined;
+        let finalPolicyData = policyData;
         if (role === 'host') {
-          const policyAccepted = sessionStorage.getItem('hostPolicyAccepted');
-          if (policyAccepted) {
-            const policyAcceptedDate = sessionStorage.getItem('hostPolicyAcceptedDate');
-            policyData = {
-              policyAccepted: true,
-              policyAcceptedDate: policyAcceptedDate || new Date().toISOString()
-            };
-            sessionStorage.removeItem('hostPolicyAccepted');
-            sessionStorage.removeItem('hostPolicyAcceptedDate');
-          } else {
-            await firebaseSignOut(auth);
-            throw new Error('To create a host account, you must first read and accept our policies and compliance terms. Please go back and accept them before signing up.');
+          // Use provided policyData if available, otherwise check sessionStorage
+          if (!finalPolicyData) {
+            const policyAccepted = sessionStorage.getItem('hostPolicyAccepted');
+            if (policyAccepted) {
+              const policyAcceptedDate = sessionStorage.getItem('hostPolicyAcceptedDate');
+              finalPolicyData = {
+                policyAccepted: true,
+                policyAcceptedDate: policyAcceptedDate || new Date().toISOString()
+              };
+              sessionStorage.removeItem('hostPolicyAccepted');
+              sessionStorage.removeItem('hostPolicyAcceptedDate');
+            } else {
+              await firebaseSignOut(auth);
+              throw new Error('To create a host account, you must first read and accept our policies and compliance terms. Please go back and accept them before signing up.');
+            }
           }
         }
         
@@ -394,9 +401,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           userData.photoURL = user.photoURL;
         }
         
-        if (policyData) {
-          userData.policyAccepted = policyData.policyAccepted;
-          userData.policyAcceptedDate = policyData.policyAcceptedDate;
+        if (finalPolicyData) {
+          userData.policyAccepted = finalPolicyData.policyAccepted;
+          userData.policyAcceptedDate = finalPolicyData.policyAcceptedDate;
         }
         
         await setDoc(doc(db, 'users', user.uid), userData);
@@ -707,15 +714,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const userData = userDoc.data();
     const userRoles = userData.roles || (userData.role ? [userData.role] : []);
 
-    // Admin cannot be guest or host, and vice versa
+    // Admin role cannot be added through this method
     if (role === 'admin') {
       throw new Error('Admin role cannot be added through this method. Admin access must be granted by the system administrator.');
-    } else {
-      // Guest and host cannot be admin
-      if (userRoles.includes('admin')) {
-        throw new Error('Admin accounts cannot add guest or host roles. Please use a different account.');
-      }
     }
+    // Allow admins to also be hosts or guests
 
     // Check if user already has this role
     if (userRoles.includes(role)) {

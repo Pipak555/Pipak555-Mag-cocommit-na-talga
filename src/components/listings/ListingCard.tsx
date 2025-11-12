@@ -2,7 +2,7 @@ import React, { memo, useCallback } from 'react';
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Heart, MapPin, Star, Users, Bookmark } from "lucide-react";
+import { Heart, MapPin, Star, Users } from "lucide-react";
 import type { Listing } from "@/types";
 import { formatPHP } from "@/lib/currency";
 
@@ -21,16 +21,18 @@ export const ListingCard = memo(({ listing, onView, onFavorite, onWishlist, isFa
     onFavorite?.();
   }, [onFavorite]);
 
-  const handleWishlistClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    onWishlist?.();
-  }, [onWishlist]);
 
   const handleViewClick = useCallback(() => {
     onView?.();
   }, [onView]);
 
-  const formattedPrice = formatPHP(listing.price);
+  const discountedPrice = listing.discount && listing.discount > 0
+    ? listing.price * (1 - listing.discount / 100)
+    : listing.price;
+  const formattedPrice = formatPHP(discountedPrice);
+  const originalPrice = listing.discount && listing.discount > 0
+    ? formatPHP(listing.price)
+    : null;
   const rating = listing.averageRating && listing.averageRating > 0 
     ? listing.averageRating.toFixed(1) 
     : 'New';
@@ -52,41 +54,54 @@ export const ListingCard = memo(({ listing, onView, onFavorite, onWishlist, isFa
         
         {/* Action Buttons */}
         <div className="absolute top-2 sm:top-3 right-2 sm:right-3 flex gap-1.5 sm:gap-2 z-10">
-          {/* Wishlist Button */}
-          {onWishlist && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="bg-white/90 backdrop-blur-sm hover:bg-white hover:scale-110 active:scale-95 transition-all duration-300 shadow-lg h-8 w-8 sm:h-10 sm:w-10 touch-manipulation"
-              onClick={handleWishlistClick}
-              title={isInWishlist ? "Remove from wishlist" : "Add to wishlist"}
-            >
-              <Bookmark className={`h-4 w-4 sm:h-5 sm:w-5 transition-all ${isInWishlist ? "fill-blue-500 text-blue-500 scale-110" : "text-gray-700"}`} />
-            </Button>
-          )}
-          {/* Favorite Button */}
+          {/* Favorite Button - Shopee Style */}
           {onFavorite && (
             <Button
               variant="ghost"
               size="icon"
-              className="bg-white/90 backdrop-blur-sm hover:bg-white hover:scale-110 active:scale-95 transition-all duration-300 shadow-lg h-8 w-8 sm:h-10 sm:w-10 touch-manipulation"
+              className={`backdrop-blur-sm hover:scale-110 active:scale-95 transition-all duration-300 shadow-lg h-9 w-9 sm:h-11 sm:w-11 touch-manipulation ${
+                isFavorite 
+                  ? "bg-red-500/20 hover:bg-red-500/30" 
+                  : "bg-white/90 hover:bg-white"
+              }`}
               onClick={handleFavoriteClick}
               title={isFavorite ? "Remove from favorites" : "Add to favorites"}
             >
-              <Heart className={`h-4 w-4 sm:h-5 sm:w-5 transition-all ${isFavorite ? "fill-red-500 text-red-500 scale-110" : "text-gray-700"}`} />
+              <Heart className={`h-5 w-5 sm:h-6 sm:w-6 transition-all ${
+                isFavorite 
+                  ? "fill-red-500 text-red-500 scale-110 drop-shadow-lg" 
+                  : "text-gray-700 fill-white"
+              }`} />
             </Button>
           )}
         </div>
         
         {/* Category Badge */}
-        <Badge className="absolute top-2 sm:top-3 left-2 sm:left-3 bg-white/95 backdrop-blur-sm text-gray-900 font-semibold shadow-lg capitalize z-10 border border-white/20 px-2 sm:px-3 py-0.5 sm:py-1 text-xs sm:text-sm">
-          {listing.category}
-        </Badge>
+        <div className="absolute top-2 sm:top-3 left-2 sm:left-3 flex flex-col gap-1.5 z-10">
+          <Badge className="bg-white/95 backdrop-blur-sm text-gray-900 font-semibold shadow-lg capitalize border border-white/20 px-2 sm:px-3 py-0.5 sm:py-1 text-xs sm:text-sm">
+            {listing.category}
+          </Badge>
+          {listing.promo && (
+            <Badge className="bg-primary/90 backdrop-blur-sm text-white font-medium shadow-lg border border-primary/20 px-2 sm:px-3 py-0.5 sm:py-1 text-[10px] sm:text-xs line-clamp-1 max-w-[120px] sm:max-w-[150px]">
+              {listing.promo}
+            </Badge>
+          )}
+        </div>
         
         {/* Price Badge */}
-        <div className="absolute bottom-2 sm:bottom-3 right-2 sm:right-3 bg-white/95 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-full shadow-lg z-10 border border-white/20">
-          <span className="text-base sm:text-lg font-bold text-gray-900">{formattedPrice}</span>
-          <span className="text-[10px] sm:text-xs text-gray-700 font-medium">/night</span>
+        <div className="absolute bottom-2 sm:bottom-3 right-2 sm:right-3 bg-white/95 backdrop-blur-sm px-2 sm:px-3 py-1 sm:py-1.5 rounded-full shadow-lg z-10 border border-white/20 flex flex-col items-end">
+          {listing.discount && listing.discount > 0 && (
+            <Badge className="bg-red-500 text-white text-[9px] sm:text-xs mb-0.5 px-1.5 py-0">
+              -{listing.discount}%
+            </Badge>
+          )}
+          <div className="flex items-center gap-1">
+            {originalPrice && (
+              <span className="text-[10px] sm:text-xs line-through text-gray-500">{originalPrice}</span>
+            )}
+            <span className="text-base sm:text-lg font-bold text-gray-900">{formattedPrice}</span>
+            <span className="text-[10px] sm:text-xs text-gray-700 font-medium">/night</span>
+          </div>
         </div>
       </div>
       
@@ -135,13 +150,13 @@ export const ListingCard = memo(({ listing, onView, onFavorite, onWishlist, isFa
   return (
     prevProps.listing.id === nextProps.listing.id &&
     prevProps.listing.price === nextProps.listing.price &&
+    prevProps.listing.discount === nextProps.listing.discount &&
+    prevProps.listing.promo === nextProps.listing.promo &&
     prevProps.listing.averageRating === nextProps.listing.averageRating &&
     prevProps.listing.reviewCount === nextProps.listing.reviewCount &&
     prevProps.isFavorite === nextProps.isFavorite &&
-    prevProps.isInWishlist === nextProps.isInWishlist &&
     prevProps.onView === nextProps.onView &&
-    prevProps.onFavorite === nextProps.onFavorite &&
-    prevProps.onWishlist === nextProps.onWishlist
+    prevProps.onFavorite === nextProps.onFavorite
   );
 });
 

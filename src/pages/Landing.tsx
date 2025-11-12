@@ -47,7 +47,7 @@ const Landing = () => {
         
         {/* Content */}
         <div className="relative z-20 container mx-auto px-4 sm:px-6 lg:px-8 h-full flex flex-col justify-center animate-fadeInUp py-20 sm:py-24 md:py-32">
-          <div className="max-w-3xl">
+          <div className="max-w-3xl text-left">
             {/* Title with better contrast */}
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold mb-4 sm:mb-6 leading-tight text-foreground dark:text-white drop-shadow-2xl">
               Welcome to{' '}
@@ -62,7 +62,7 @@ const Landing = () => {
             </p>
             
             {/* Buttons */}
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start justify-start">
               <Button size="lg" asChild className="shadow-2xl hover:shadow-2xl hover:scale-105 transition-all h-12 sm:h-14 px-6 sm:px-8 text-base sm:text-lg bg-primary hover:bg-primary/90 w-full sm:w-auto">
                 <Link to="/guest/login">Browse Listings</Link>
               </Button>

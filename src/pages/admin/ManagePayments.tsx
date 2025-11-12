@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, DollarSign, CheckCircle, XCircle, Clock, AlertCircle, CreditCard, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
+import { BackButton } from "@/components/shared/BackButton";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -235,10 +236,7 @@ const ManagePayments = () => {
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
-          <Button variant="ghost" onClick={() => navigate('/admin/dashboard')}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
+          <BackButton to="/admin/dashboard" label="Back to Dashboard" />
           <div>
             <h1 className="text-3xl font-bold">Payment Management</h1>
             <p className="text-muted-foreground">Review and manage all platform transactions</p>

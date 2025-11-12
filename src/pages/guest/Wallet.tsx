@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Wallet as WalletIcon, TrendingUp, TrendingDown, CreditCard, CheckCircle2, XCircle, AlertCircle, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+import { BackButton } from "@/components/shared/BackButton";
 import { CouponManager } from "@/components/coupons/CouponManager";
 import { PayPalButton } from "@/components/payments/PayPalButton";
 import PayPalIdentity from "@/components/payments/PayPalIdentity";
@@ -172,11 +173,7 @@ const Wallet = () => {
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6">
       <div className="max-w-6xl mx-auto">
-        <Button variant="ghost" onClick={() => navigate('/guest/dashboard')} className="mb-4 sm:mb-6 h-10 sm:h-auto">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          <span className="hidden sm:inline">Back to Dashboard</span>
-          <span className="sm:hidden">Back</span>
-        </Button>
+        <BackButton to="/guest/dashboard" label="Back to Dashboard" className="mb-4 sm:mb-6" />
 
         <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6">E-Wallet</h1>
 
@@ -313,7 +310,10 @@ const Wallet = () => {
                       <p className={`font-semibold ${
                         tx.type === 'deposit' || tx.type === 'reward' ? 'text-green-500' : 'text-red-500'
                       }`}>
-                        {tx.type === 'deposit' || tx.type === 'reward' ? '+' : '-'}{formatPHP(tx.amount)}
+                        {tx.type === 'reward' 
+                          ? `+${tx.amount} points`
+                          : `${tx.type === 'deposit' ? '+' : '-'}${formatPHP(tx.amount)}`
+                        }
                       </p>
                     </div>
                   ))}

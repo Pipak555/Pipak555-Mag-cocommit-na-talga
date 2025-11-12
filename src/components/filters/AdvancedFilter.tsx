@@ -61,34 +61,35 @@ export const AdvancedFilter = ({ onFilterChange, initialFilters }: AdvancedFilte
 
   return (
     <Card>
-      <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
-        <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+      <CardHeader className="px-3 sm:px-4 md:px-6 pt-3 sm:pt-4 md:pt-6 pb-2 sm:pb-3 md:pb-4">
+        <CardTitle className="flex items-center gap-2 text-sm sm:text-base md:text-lg">
           <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
           Search Filters
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4 px-4 sm:px-6 pb-4 sm:pb-6">
+      <CardContent className="space-y-3 sm:space-y-4 px-3 sm:px-4 md:px-6 pb-3 sm:pb-4 md:pb-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
           <div>
-            <Label htmlFor="location">Where</Label>
+            <Label htmlFor="location" className="text-sm sm:text-base">Where</Label>
             <Input
               id="location"
               placeholder="Location"
               value={filters.location}
               onChange={(e) => setFilters({ ...filters, location: e.target.value })}
+              className="h-11 sm:h-10 md:h-auto text-base sm:text-sm mt-1"
             />
           </div>
 
           <div>
-            <Label>Check-in</Label>
+            <Label className="text-sm sm:text-base">Check-in</Label>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full justify-start">
+                <Button variant="outline" className="w-full justify-start h-11 sm:h-10 md:h-auto text-base sm:text-sm mt-1 touch-manipulation">
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {filters.checkIn ? format(filters.checkIn, "PP") : "Select date"}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
+              <PopoverContent className="w-auto p-0" align="start">
                 <Calendar
                   mode="single"
                   selected={filters.checkIn}
@@ -100,15 +101,15 @@ export const AdvancedFilter = ({ onFilterChange, initialFilters }: AdvancedFilte
           </div>
 
           <div>
-            <Label>Check-out</Label>
+            <Label className="text-sm sm:text-base">Check-out</Label>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full justify-start">
+                <Button variant="outline" className="w-full justify-start h-11 sm:h-10 md:h-auto text-base sm:text-sm mt-1 touch-manipulation">
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {filters.checkOut ? format(filters.checkOut, "PP") : "Select date"}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
+              <PopoverContent className="w-auto p-0" align="start">
                 <Calendar
                   mode="single"
                   selected={filters.checkOut}
@@ -129,7 +130,7 @@ export const AdvancedFilter = ({ onFilterChange, initialFilters }: AdvancedFilte
               min="1"
               value={filters.guests}
               onChange={(e) => setFilters({ ...filters, guests: Number(e.target.value) })}
-              className="h-11 sm:h-auto text-base sm:text-sm"
+              className="h-11 sm:h-10 md:h-auto text-base sm:text-sm mt-1"
             />
           </div>
 
@@ -139,7 +140,7 @@ export const AdvancedFilter = ({ onFilterChange, initialFilters }: AdvancedFilte
               value={filters.category}
               onValueChange={(value) => setFilters({ ...filters, category: value })}
             >
-              <SelectTrigger className="h-11 sm:h-auto text-base sm:text-sm">
+              <SelectTrigger className="h-11 sm:h-10 md:h-auto text-base sm:text-sm mt-1 touch-manipulation">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -161,9 +162,9 @@ export const AdvancedFilter = ({ onFilterChange, initialFilters }: AdvancedFilte
         </Button>
 
         {showAdvanced && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pt-4 border-t">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pt-3 sm:pt-4 border-t">
             <div>
-              <Label htmlFor="minPrice">Min Price (₱)</Label>
+              <Label htmlFor="minPrice" className="text-sm sm:text-base">Min Price (₱)</Label>
               <Input
                 id="minPrice"
                 type="number"
@@ -171,10 +172,11 @@ export const AdvancedFilter = ({ onFilterChange, initialFilters }: AdvancedFilte
                 value={filters.minPrice || ''}
                 onChange={(e) => setFilters({ ...filters, minPrice: Number(e.target.value) })}
                 placeholder="0"
+                className="h-11 sm:h-10 md:h-auto text-base sm:text-sm mt-1"
               />
             </div>
             <div>
-              <Label htmlFor="maxPrice">Max Price (₱)</Label>
+              <Label htmlFor="maxPrice" className="text-sm sm:text-base">Max Price (₱)</Label>
               <Input
                 id="maxPrice"
                 type="number"
@@ -182,6 +184,7 @@ export const AdvancedFilter = ({ onFilterChange, initialFilters }: AdvancedFilte
                 value={filters.maxPrice || ''}
                 onChange={(e) => setFilters({ ...filters, maxPrice: Number(e.target.value) })}
                 placeholder="No limit"
+                className="h-11 sm:h-10 md:h-auto text-base sm:text-sm mt-1"
               />
             </div>
           </div>

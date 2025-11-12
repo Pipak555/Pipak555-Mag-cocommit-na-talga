@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getPlanById, getUserSubscription } from '@/lib/billingService';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle2, ArrowRight, Home } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { HostPlan } from '@/types';
 
@@ -161,21 +161,14 @@ const HostPaymentSuccess = () => {
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            {/* Action Button */}
+            <div className="flex justify-center">
               <Button
                 onClick={() => navigate('/host/dashboard')}
                 className="min-w-[200px]"
+                size="lg"
               >
                 Go to Dashboard
-                <ArrowRight className="h-4 w-4 ml-2" />
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => navigate('/host/dashboard')}
-              >
-                <Home className="h-4 w-4 mr-2" />
-                Back to Dashboard
               </Button>
             </div>
 

@@ -188,16 +188,16 @@ const AdminPayPalSettings = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-screen bg-background p-3 sm:p-4 md:p-6">
       <div className="max-w-2xl mx-auto">
-        <div className="flex items-center gap-4 mb-6">
-          <Button variant="ghost" onClick={() => navigate('/admin/dashboard')}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
+          <Button variant="ghost" onClick={() => navigate('/admin/dashboard')} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation self-start">
+            <ArrowLeft className="h-4 w-4 mr-1.5 sm:mr-2" />
             Back
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold">Admin PayPal Account</h1>
-            <p className="text-muted-foreground">Configure the PayPal account that will receive all platform revenue</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold">Admin PayPal Account</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">Configure the PayPal account that will receive all platform revenue</p>
           </div>
         </div>
 

@@ -35,21 +35,25 @@ const PayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified }: Pay
   const clientId = import.meta.env.VITE_PAYPAL_CLIENT_ID || '';
   const paypalEnv = import.meta.env.VITE_PAYPAL_ENV || 'sandbox';
   const isSandbox = paypalEnv !== 'production';
-  const baseUrl = window.location.origin;
   
-  // Build redirect URI - use the current origin
+  // Get base URL from environment variable or use current origin
+  // In production, use VITE_APP_URL to ensure consistent redirect URIs
+  const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
+  const baseUrl = import.meta.env.PROD ? appUrl : window.location.origin;
+  
+  // Build redirect URI - use the configured URL
   // IMPORTANT: This exact URI must be added to PayPal app's allowed redirect URIs
   let redirectUri = `${baseUrl}/paypal-callback`;
   
-  // For localhost, try both localhost and 127.0.0.1
+  // For localhost development, try both localhost and 127.0.0.1
   // PayPal sandbox sometimes prefers one over the other
-  if (baseUrl.includes('localhost')) {
+  if (baseUrl.includes('localhost') && !import.meta.env.PROD) {
     // Try 127.0.0.1 first as it's more reliable with PayPal
     redirectUri = redirectUri.replace('localhost', '127.0.0.1');
   }
   
-  // Note: If using IP address (like 10.56.170.176), PayPal sandbox may not accept it
-  // In that case, try using localhost/127.0.0.1 instead
+  // Note: In production, ensure VITE_APP_URL is set correctly in .env.production
+  // Example: VITE_APP_URL=https://your-project-id.web.app
 
   const handleOAuthCallback = useCallback(async (authCode: string) => {
     setVerifying(true);

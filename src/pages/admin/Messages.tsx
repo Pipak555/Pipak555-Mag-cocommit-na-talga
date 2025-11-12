@@ -1,7 +1,6 @@
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 import { Messages as MessagesComponent } from "@/components/shared/Messages";
-import { ArrowLeft } from "lucide-react";
+import { BackButton } from "@/components/shared/BackButton";
 
 const Messages = () => {
   const navigate = useNavigate();
@@ -9,10 +8,7 @@ const Messages = () => {
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-6xl mx-auto">
-        <Button variant="ghost" onClick={() => navigate('/admin/dashboard')} className="mb-6">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Dashboard
-        </Button>
+        <BackButton to="/admin/dashboard" label="Back to Dashboard" className="mb-6" />
 
         <h1 className="text-3xl font-bold mb-6">Messages</h1>
         

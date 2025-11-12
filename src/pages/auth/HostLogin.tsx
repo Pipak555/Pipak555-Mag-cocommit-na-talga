@@ -241,7 +241,7 @@ const HostLogin = () => {
           
           <CardContent className="relative z-10 px-4 sm:px-6 pb-4 sm:pb-6">
             <Tabs defaultValue={shouldShowSignup ? "signup" : "signin"} onValueChange={(value) => setActiveTab(value as 'signin' | 'signup')} className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6 sm:mb-8 bg-muted/50 p-1 rounded-xl relative overflow-hidden">
+              <TabsList className="grid w-full grid-cols-2 mb-6 sm:mb-8 bg-muted/50 p-1 rounded-xl relative overflow-hidden h-auto">
                 <div 
                   className="absolute inset-y-1 bg-gradient-to-r from-secondary to-secondary/80 rounded-lg transition-all duration-300 ease-in-out"
                   style={{
@@ -250,11 +250,11 @@ const HostLogin = () => {
                     width: 'calc(50% - 4px)',
                   }}
                 />
-                <TabsTrigger value="signin" className="text-sm sm:text-base font-semibold text-foreground/90 dark:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-300 ease-in-out relative z-10 h-10 sm:h-auto touch-manipulation">
-                  Sign In
+                <TabsTrigger value="signin" className="!flex !items-center !justify-center text-sm sm:text-base font-semibold text-foreground/90 dark:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-300 ease-in-out relative z-10 !h-10 sm:!h-12 touch-manipulation !py-0 !px-4 leading-none">
+                  <span className="flex items-center justify-center h-full">Sign In</span>
                 </TabsTrigger>
-                <TabsTrigger value="signup" className="text-sm sm:text-base font-semibold text-foreground/90 dark:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-300 ease-in-out relative z-10 h-10 sm:h-auto touch-manipulation">
-                  Sign Up
+                <TabsTrigger value="signup" className="!flex !items-center !justify-center text-sm sm:text-base font-semibold text-foreground/90 dark:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-300 ease-in-out relative z-10 !h-10 sm:!h-12 touch-manipulation !py-0 !px-4 leading-none">
+                  <span className="flex items-center justify-center h-full">Sign Up</span>
                 </TabsTrigger>
               </TabsList>
               

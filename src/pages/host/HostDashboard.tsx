@@ -343,13 +343,13 @@ const HostDashboard = () => {
 
           <Card 
             className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer"
-            onClick={() => navigate('/host/settings?tab=rewards')}
+            onClick={() => navigate('/host/rewards')}
           >
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-yellow-500 via-yellow-400 to-yellow-300" />
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
                 <Award className="h-4 w-4" />
-                Host Points
+                Points
               </CardTitle>
             </CardHeader>
             <CardContent>

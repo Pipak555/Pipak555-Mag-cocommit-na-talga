@@ -10,8 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { ArrowLeft, User, Bell, CreditCard, Calendar, Ticket, Mail, Smartphone, Info, AlertTriangle, Loader2, Award } from "lucide-react";
-import { HostPointsDisplay } from "@/components/rewards/HostPointsDisplay";
+import { ArrowLeft, User, Bell, CreditCard, Calendar, Ticket, Mail, Smartphone, Info, AlertTriangle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getBookings } from "@/lib/firestore";
@@ -218,7 +217,7 @@ const HostAccountSettings = () => {
         <h1 className="text-3xl font-bold mb-6">Account Settings</h1>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="profile">
               <User className="h-4 w-4 mr-2" />
               Profile
@@ -230,10 +229,6 @@ const HostAccountSettings = () => {
             <TabsTrigger value="coupons">
               <Ticket className="h-4 w-4 mr-2" />
               Coupons
-            </TabsTrigger>
-            <TabsTrigger value="rewards">
-              <Award className="h-4 w-4 mr-2" />
-              Rewards
             </TabsTrigger>
             <TabsTrigger value="notifications">
               <Bell className="h-4 w-4 mr-2" />
@@ -350,20 +345,6 @@ const HostAccountSettings = () => {
                 />
               </CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="rewards">
-            <HostPointsDisplay 
-              points={profile?.hostPoints || 0}
-              userId={user?.uid || ''}
-              onRedeem={(discountAmount) => {
-                // Refresh profile to update points
-                if (user) {
-                  refreshUserProfile();
-                }
-                toast.info(`You've earned ${formatPHP(discountAmount)} discount! Use it on your next subscription purchase.`);
-              }}
-            />
           </TabsContent>
 
           <TabsContent value="notifications">

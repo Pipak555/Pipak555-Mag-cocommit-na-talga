@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { ArrowLeft, TrendingUp, TrendingDown, Star, DollarSign } from "lucide-react";
 import type { Listing, Review, Booking } from "@/types";
 import { formatPHP } from "@/lib/currency";
+import { BackButton } from "@/components/shared/BackButton";
 
 interface TopRatedListing {
   id: string;
@@ -54,27 +55,40 @@ const Analytics = () => {
     setLoading(true);
     try {
       // Fetch all data in parallel
-      const [usersSnap, listingsSnap, bookingsSnap, reviewsSnap] = await Promise.all([
+      const [usersSnap, listingsSnap, bookingsSnap, reviewsSnap, transactionsSnap] = await Promise.all([
         getDocs(collection(db, 'users')),
         getDocs(collection(db, 'listing')),
         getDocs(collection(db, 'bookings')),
-        getDocs(collection(db, 'reviews'))
+        getDocs(collection(db, 'reviews')),
+        getDocs(query(collection(db, 'transactions'), where('paymentMethod', '==', 'service_fee')))
       ]);
 
       const users = usersSnap.docs.map(doc => doc.data());
-      const hosts = users.filter(u => u.role === 'host').length;
-      const guests = users.filter(u => u.role === 'guest').length;
+      // Check both role and roles array for compatibility
+      const hosts = users.filter(u => 
+        u.role === 'host' || (u.roles && Array.isArray(u.roles) && u.roles.includes('host'))
+      ).length;
+      const guests = users.filter(u => 
+        u.role === 'guest' || (u.roles && Array.isArray(u.roles) && u.roles.includes('guest'))
+      ).length;
 
       const listings = listingsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Listing));
+      // Only count approved listings
+      const approvedListings = listings.filter(l => l.status === 'approved');
       const bookings = bookingsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
       const reviews = reviewsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Review));
+      const transactions = transactionsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+
+      // Calculate service fees from actual transactions (more accurate)
+      const serviceFeeTransactions = transactions.filter(t => 
+        t.status === 'completed' || t.status === 'pending' // Include pending as they're still revenue
+      );
+      const serviceFee = serviceFeeTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
 
       // Calculate revenue
       const confirmedBookings = bookings.filter(b => 
         b.status === 'confirmed' || b.status === 'completed'
       );
-      const revenue = confirmedBookings.reduce((sum, b) => sum + (b.totalPrice || 0), 0);
-      const serviceFee = revenue * 0.1;
 
       // Calculate average rating
       const avgRating = reviews.length > 0
@@ -94,7 +108,7 @@ const Analytics = () => {
 
       const topListings: TopRatedListing[] = Array.from(listingRatings.entries())
         .map(([listingId, data]) => {
-          const listing = listings.find(l => l.id === listingId);
+          const listing = approvedListings.find(l => l.id === listingId);
           if (!listing) return null;
           
           return {
@@ -115,10 +129,10 @@ const Analytics = () => {
 
       setTopRatedListings(topListings);
 
-      // Calculate lowest rated listings
+      // Calculate lowest rated listings (only approved listings)
       const lowestListings: TopRatedListing[] = Array.from(listingRatings.entries())
         .map(([listingId, data]) => {
-          const listing = listings.find(l => l.id === listingId);
+          const listing = approvedListings.find(l => l.id === listingId);
           if (!listing) return null;
           
           return {
@@ -139,31 +153,34 @@ const Analytics = () => {
 
       setLowestRatedListings(lowestListings);
 
-      // Calculate revenue trends (last 30 days)
+      // Calculate revenue trends (last 30 days) using actual service fee transactions
       const now = new Date();
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       
       const weeklyRevenue: WeeklyRevenue[] = [];
-      const maxRevenue = Math.max(...confirmedBookings.map(b => b.totalPrice || 0), 1);
+      const maxRevenue = Math.max(...serviceFeeTransactions.map(t => t.amount || 0), 1);
 
       for (let week = 0; week < 4; week++) {
         const weekStart = new Date(thirtyDaysAgo);
         weekStart.setDate(weekStart.getDate() + week * 7);
+        weekStart.setHours(0, 0, 0, 0);
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekEnd.getDate() + 7);
+        weekEnd.setHours(0, 0, 0, 0);
 
-        const weekBookings = confirmedBookings.filter(b => {
-          const bookingDate = new Date(b.createdAt);
-          return bookingDate >= weekStart && bookingDate < weekEnd;
+        // Get service fee transactions for this week
+        const weekTransactions = serviceFeeTransactions.filter(t => {
+          const transactionDate = new Date(t.createdAt);
+          transactionDate.setHours(0, 0, 0, 0);
+          return transactionDate >= weekStart && transactionDate < weekEnd;
         });
 
-        const weekRev = weekBookings.reduce((sum, b) => sum + (b.totalPrice || 0), 0);
-        const serviceFeeRev = weekRev * 0.1;
+        const weekRev = weekTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
         const percentage = maxRevenue > 0 ? (weekRev / maxRevenue) * 100 : 0;
 
         weeklyRevenue.push({
           week: `Week ${week + 1}`,
-          revenue: serviceFeeRev,
+          revenue: weekRev,
           percentage: Math.min(percentage, 100)
         });
       }
@@ -187,14 +204,14 @@ const Analytics = () => {
         ? ((secondHalfBookings - firstHalfBookings) / firstHalfBookings) * 100
         : 0;
 
-      // Calculate listing changes (comparing first half vs second half)
-      const firstHalfListings = listings.filter(l => {
+      // Calculate listing changes (comparing first half vs second half) - only approved listings
+      const firstHalfListings = approvedListings.filter(l => {
         const listingDate = new Date(l.createdAt);
         const daysAgo = (now.getTime() - listingDate.getTime()) / (1000 * 60 * 60 * 24);
         return daysAgo <= 30 && daysAgo > 15;
       }).length;
 
-      const secondHalfListings = listings.filter(l => {
+      const secondHalfListings = approvedListings.filter(l => {
         const listingDate = new Date(l.createdAt);
         const daysAgo = (now.getTime() - listingDate.getTime()) / (1000 * 60 * 60 * 24);
         return daysAgo <= 15;
@@ -208,9 +225,9 @@ const Analytics = () => {
         totalUsers: usersSnap.size,
         totalHosts: hosts,
         totalGuests: guests,
-        totalListings: listingsSnap.size,
+        totalListings: approvedListings.length, // Only count approved listings
         totalBookings: bookingsSnap.size,
-        totalRevenue: serviceFee,
+        totalRevenue: serviceFee, // Real service fees from transactions
         avgRating: avgRating,
       });
 
@@ -249,10 +266,7 @@ const Analytics = () => {
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto">
-        <Button variant="ghost" onClick={() => navigate('/admin/dashboard')} className="mb-6">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Dashboard
-        </Button>
+        <BackButton to="/admin/dashboard" label="Back to Dashboard" className="mb-6" />
 
         <h1 className="text-3xl font-bold mb-6">Platform Analytics</h1>
 

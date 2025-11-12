@@ -116,7 +116,7 @@ service cloud.firestore {
     match /users/{userId} {
       // Allow read for: own document, admins, or any authenticated user (for booking emails, etc.)
       allow read: if isSignedIn();
-      // Allow write for: own document, payment processing, or admin PayPal fields
+      // Allow write for: own document, payment processing, host points, or admin PayPal fields
       allow write: if isSignedIn() && (
         // Users can always write their own document (for profile updates, admin PayPal linking, etc.)
         request.auth.uid == userId ||
@@ -132,7 +132,12 @@ service cloud.firestore {
          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['walletBalance', 'points', 'coupons'])) &&
         // Ensure walletBalance is a number if it's being updated
         (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['walletBalance']) || 
-         request.resource.data.walletBalance is number)
+         request.resource.data.walletBalance is number) ||
+        // Allow updating hostPoints when awarding points for reviews, bookings, or listing approvals
+        // Only allow updating hostPoints field (and ensure it's a number)
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostPoints']) &&
+         request.resource.data.hostPoints is number &&
+         request.resource.data.hostPoints >= 0)
       );
 
       // Conversations under a user
@@ -275,7 +280,13 @@ service cloud.firestore {
         // This is needed for the payment service to create payment, deposit, and reward transactions
         (request.resource.data.bookingId != null &&
          request.resource.data.type in ['payment', 'deposit', 'reward'] &&
-         request.resource.data.status == 'completed')
+         request.resource.data.status == 'completed') ||
+        // Allow creating reward transactions for hosts when awarding host points (for reviews, bookings, listing approvals)
+        // This allows guests to create reward transactions for hosts when submitting reviews
+        (request.resource.data.type == 'reward' &&
+         request.resource.data.status == 'completed' &&
+         request.resource.data.amount is number &&
+         request.resource.data.amount > 0)
       );
       
       // Only admins can update transactions (e.g., confirm, refund)

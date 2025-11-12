@@ -9,8 +9,6 @@ import {
   Calendar as CalendarIcon, 
   ChevronLeft, 
   ChevronRight, 
-  Home, 
-  MessageSquare,
   X,
   Filter,
   Grid3x3,
@@ -18,6 +16,7 @@ import {
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
+import { BackButton } from '@/components/shared/BackButton';
 import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Booking, Listing } from '@/types';
@@ -297,47 +296,32 @@ const HostCalendar = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-8">
-              <Logo size="sm" />
-              <nav className="hidden md:flex items-center gap-6">
-                <Button variant="ghost" onClick={() => navigate('/host/dashboard')}>
-                  <Home className="h-4 w-4 mr-2" />
-                  Dashboard
-                </Button>
-                <Button variant="ghost" onClick={() => navigate('/host/listings')}>
-                  <Grid3x3 className="h-4 w-4 mr-2" />
-                  Listings
-                </Button>
-                <Button variant="default">
-                  <CalendarIcon className="h-4 w-4 mr-2" />
-                  Calendar
-                </Button>
-                <Button variant="ghost" onClick={() => navigate('/host/messages')}>
-                  <MessageSquare className="h-4 w-4 mr-2" />
-                  Messages
-                </Button>
-              </nav>
-            </div>
-            <div className="flex items-center gap-4">
-              <NotificationBell />
-              <ThemeToggle />
-              <Button variant="outline" onClick={() => setSignOutDialogOpen(true)}>
-                Sign Out
-              </Button>
-            </div>
+      <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-soft">
+        <div className="container mx-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4 flex justify-between items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+            <BackButton to="/host/dashboard" label="Back to Dashboard" />
+            <Logo size="sm" />
+          </div>
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+            <NotificationBell />
+            <ThemeToggle />
+            <Button variant="outline" onClick={() => setSignOutDialogOpen(true)} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation">
+              <span className="hidden sm:inline">Sign Out</span>
+              <span className="sm:hidden">Out</span>
+            </Button>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-6 py-8">
+      <main className="container mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8">
+        {/* Back Button */}
+        <BackButton to="/host/dashboard" label="Back to Dashboard" className="mb-4 sm:mb-6" />
+        
         {/* Page Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Booking Calendar</h1>
-          <p className="text-muted-foreground">
+        <div className="mb-4 sm:mb-6 md:mb-8">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2">Booking Calendar</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">
             Manage your bookings and availability
           </p>
         </div>

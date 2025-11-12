@@ -2,8 +2,16 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 
-// Production optimizations
+
+// Validate environment variables
+
+
+// In production, ensure all required configs are set
 if (import.meta.env.PROD) {
+  if (!isProductionConfigured()) {
+    console.error('❌ Production environment is not properly configured. Please check your .env.production file.');
+  }
+  
   // Disable React DevTools in production
   if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__) {
     window.__REACT_DEVTOOLS_GLOBAL_HOOK__.renderers.clear();

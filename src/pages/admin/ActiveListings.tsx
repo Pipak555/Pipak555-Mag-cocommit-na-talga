@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Mail, User, MapPin, DollarSign, Users, Home, Bed, Bath, Trash2, X, ChevronLeft, ChevronRight, ZoomIn } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { BackButton } from "@/components/shared/BackButton";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
@@ -147,15 +148,7 @@ const ActiveListings = () => {
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6">
       <div className="max-w-7xl mx-auto">
-        <Button
-          variant="ghost"
-          onClick={() => navigate('/admin/dashboard')}
-          className="mb-4 sm:mb-6 h-10 sm:h-auto"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          <span className="hidden sm:inline">Back to Dashboard</span>
-          <span className="sm:hidden">Back</span>
-        </Button>
+        <BackButton to="/admin/dashboard" label="Back to Dashboard" className="mb-4 sm:mb-6" />
 
         <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6">Active Listings</h1>
 

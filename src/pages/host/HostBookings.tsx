@@ -535,7 +535,7 @@ const HostBookings = () => {
                     )}
                     
                     {/* Booking Details */}
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                       <div>
                         <p className="text-sm text-muted-foreground">Check-in</p>
                         <p className="font-medium">{new Date(booking.checkIn).toLocaleDateString()}</p>
@@ -543,6 +543,10 @@ const HostBookings = () => {
                       <div>
                         <p className="text-sm text-muted-foreground">Check-out</p>
                         <p className="font-medium">{new Date(booking.checkOut).toLocaleDateString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Guests</p>
+                        <p className="font-medium">{booking.guests || 1} guest{(booking.guests || 1) > 1 ? 's' : ''}</p>
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">Total</p>

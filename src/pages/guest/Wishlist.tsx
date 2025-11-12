@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { toggleFavorite, toggleWishlist } from "@/lib/firestore";
 import type { UserProfile, Listing } from "@/types";
 import LoadingScreen from "@/components/ui/loading-screen";
+import { BackButton } from "@/components/shared/BackButton";
 
 const Wishlist = () => {
   const navigate = useNavigate();
@@ -19,7 +20,7 @@ const Wishlist = () => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [wishlistListings, setWishlistListings] = useState<Listing[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
-  const [wishlist, setWishlist] = useState<string[]>([]);
+  const [wishlist, setWishlist] = useState<string[] | any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -78,8 +79,12 @@ const Wishlist = () => {
     }
     try {
       const { getListing } = await import('@/lib/firestore');
+      // Handle both old format (string[]) and new format (WishlistItem[])
+      const listingIds = profile.wishlist.map(item => 
+        typeof item === 'string' ? item : item.listingId
+      );
       const wishlistDetails = await Promise.all(
-        profile.wishlist.map(id => getListing(id))
+        listingIds.map(id => getListing(id))
       );
       setWishlistListings(wishlistDetails.filter((l): l is Listing => l !== null));
     } catch (error) {
@@ -126,16 +131,7 @@ const Wishlist = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <Button
-            variant="ghost"
-            onClick={() => navigate('/guest/dashboard')}
-            className="flex items-center gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Dashboard
-          </Button>
-        </div>
+        <BackButton to="/guest/dashboard" label="Back to Dashboard" className="mb-4 sm:mb-6" />
 
         <h1 className="text-3xl font-bold mb-6">Your Wishlist</h1>
 
@@ -158,17 +154,57 @@ const Wishlist = () => {
               />
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {wishlistListings.map((listing) => (
-                  <ListingCard
-                    key={listing.id}
-                    listing={listing}
-                    onView={() => navigate(`/guest/listing/${listing.id}`)}
-                    onFavorite={() => handleFavorite(listing.id)}
-                    onWishlist={() => handleWishlist(listing.id)}
-                    isFavorite={favorites.includes(listing.id)}
-                    isInWishlist={wishlist.includes(listing.id)}
-                  />
-                ))}
+                {wishlistListings.map((listing) => {
+                  const wishlistItem = wishlist.find(item => 
+                    (typeof item === 'string' ? item === listing.id : item.listingId === listing.id)
+                  );
+                  const recommendations = typeof wishlistItem === 'object' && wishlistItem?.recommendations;
+                  const isInWishlist = wishlist.some(item => 
+                    (typeof item === 'string' ? item === listing.id : item.listingId === listing.id)
+                  );
+                  
+                  return (
+                    <div key={listing.id} className="space-y-2">
+                      <ListingCard
+                        listing={listing}
+                        onView={() => navigate(`/guest/listing/${listing.id}`)}
+                        onFavorite={() => handleFavorite(listing.id)}
+                        onWishlist={() => handleWishlist(listing.id)}
+                        isFavorite={favorites.includes(listing.id)}
+                        isInWishlist={isInWishlist}
+                      />
+                      {(recommendations || (typeof wishlistItem === 'object' && wishlistItem?.propertyRequirements) || (typeof wishlistItem === 'object' && wishlistItem?.desiredAmenities)) && (
+                        <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+                          <CardContent className="p-3 space-y-2">
+                            {typeof wishlistItem === 'object' && wishlistItem?.propertyRequirements && Object.keys(wishlistItem.propertyRequirements).length > 0 && (
+                              <div>
+                                <p className="text-xs font-semibold text-blue-900 dark:text-blue-100 mb-1">Requirements:</p>
+                                <div className="text-xs text-blue-800 dark:text-blue-200 space-y-1">
+                                  {wishlistItem.propertyRequirements.beds && <p>• Beds: {wishlistItem.propertyRequirements.beds}</p>}
+                                  {wishlistItem.propertyRequirements.bedrooms && <p>• Bedrooms: {wishlistItem.propertyRequirements.bedrooms}</p>}
+                                  {wishlistItem.propertyRequirements.bathrooms && <p>• Bathrooms: {wishlistItem.propertyRequirements.bathrooms}</p>}
+                                  {wishlistItem.propertyRequirements.guests && <p>• Guests: {wishlistItem.propertyRequirements.guests}</p>}
+                                </div>
+                              </div>
+                            )}
+                            {typeof wishlistItem === 'object' && wishlistItem?.desiredAmenities && wishlistItem.desiredAmenities.length > 0 && (
+                              <div>
+                                <p className="text-xs font-semibold text-blue-900 dark:text-blue-100 mb-1">Desired Amenities:</p>
+                                <p className="text-xs text-blue-800 dark:text-blue-200">{wishlistItem.desiredAmenities.join(', ')}</p>
+                              </div>
+                            )}
+                            {recommendations && (
+                              <div>
+                                <p className="text-xs font-semibold text-blue-900 dark:text-blue-100 mb-1">Recommendations:</p>
+                                <p className="text-sm text-blue-800 dark:text-blue-200">{recommendations}</p>
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </CardContent>

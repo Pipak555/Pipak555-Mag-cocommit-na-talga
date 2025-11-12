@@ -184,11 +184,12 @@ const GuestLogin = () => {
       </div>
       
       <header className="relative z-10 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
-        <div className="container mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" onClick={() => navigate('/')}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Home
+        <div className="container mx-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4 flex justify-between items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 md:gap-4 min-w-0 flex-1">
+            <Button variant="ghost" onClick={() => navigate('/')} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation">
+              <ArrowLeft className="h-4 w-4 mr-1.5 sm:mr-2" />
+              <span className="hidden sm:inline">Back to Home</span>
+              <span className="sm:hidden">Back</span>
             </Button>
             <Logo size="sm" />
           </div>
@@ -196,7 +197,7 @@ const GuestLogin = () => {
         </div>
       </header>
       
-      <div className="relative z-10 flex-1 flex items-center justify-center p-4 sm:p-6">
+      <div className="relative z-10 flex-1 flex items-center justify-center p-3 sm:p-4 md:p-6">
         <Card className="w-full max-w-md shadow-2xl border-2 border-primary/20 bg-card/95 backdrop-blur-md relative overflow-hidden">
           {/* Decorative gradient overlay */}
           <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5 pointer-events-none" />
@@ -217,7 +218,7 @@ const GuestLogin = () => {
           
           <CardContent className="relative z-10 px-4 sm:px-6 pb-4 sm:pb-6">
             <Tabs defaultValue="signin" onValueChange={(value) => setActiveTab(value as 'signin' | 'signup')} className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6 sm:mb-8 bg-muted/50 p-1 rounded-xl relative overflow-hidden">
+              <TabsList className="grid w-full grid-cols-2 mb-6 sm:mb-8 bg-muted/50 p-1 rounded-xl relative overflow-hidden h-auto">
                 <div 
                   className="absolute inset-y-1 bg-gradient-to-r from-primary to-primary/80 rounded-lg transition-all duration-300 ease-in-out"
                   style={{
@@ -226,11 +227,11 @@ const GuestLogin = () => {
                     width: 'calc(50% - 4px)',
                   }}
                 />
-                <TabsTrigger value="signin" className="text-sm sm:text-base font-semibold text-foreground/90 dark:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-300 ease-in-out relative z-10 h-10 sm:h-auto touch-manipulation">
-                  Sign In
+                <TabsTrigger value="signin" className="!flex !items-center !justify-center text-sm sm:text-base font-semibold text-foreground/90 dark:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-300 ease-in-out relative z-10 !h-10 sm:!h-12 touch-manipulation !py-0 !px-4 leading-none">
+                  <span className="flex items-center justify-center h-full">Sign In</span>
                 </TabsTrigger>
-                <TabsTrigger value="signup" className="text-sm sm:text-base font-semibold text-foreground/90 dark:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-300 ease-in-out relative z-10 h-10 sm:h-auto touch-manipulation">
-                  Sign Up
+                <TabsTrigger value="signup" className="!flex !items-center !justify-center text-sm sm:text-base font-semibold text-foreground/90 dark:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-300 ease-in-out relative z-10 !h-10 sm:!h-12 touch-manipulation !py-0 !px-4 leading-none">
+                  <span className="flex items-center justify-center h-full">Sign Up</span>
                 </TabsTrigger>
               </TabsList>
               

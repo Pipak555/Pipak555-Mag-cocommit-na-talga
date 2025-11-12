@@ -15,6 +15,7 @@ import { ArrowLeft, Search } from "lucide-react";
 import { toast } from "sonner";
 import type { Listing, Booking } from "@/types";
 import { isListingAvailableForDates } from "@/lib/availabilityUtils";
+import { BackButton } from "@/components/shared/BackButton";
 
 const BrowseListings = () => {
   const navigate = useNavigate();
@@ -268,22 +269,14 @@ const BrowseListings = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
-        <Button
-          variant="ghost"
-          onClick={() => navigate('/guest/dashboard')}
-          className="mb-4 sm:mb-6 h-10 sm:h-auto"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          <span className="hidden sm:inline">Back to Dashboard</span>
-          <span className="sm:hidden">Back</span>
-        </Button>
+      <div className="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-6 lg:py-8">
+            <BackButton to="/guest/dashboard" label="Back to Dashboard" className="mb-3 sm:mb-4 md:mb-6" />
 
-        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4 sm:mb-6">Browse Listings</h1>
+        <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4 md:mb-6">Browse Listings</h1>
 
         {/* Search Bar with Autocomplete */}
-        <Card className="mb-6 shadow-md">
-          <CardContent className="pt-6">
+        <Card className="mb-4 sm:mb-5 md:mb-6 shadow-md">
+          <CardContent className="pt-4 sm:pt-5 md:pt-6 px-3 sm:px-4 md:px-6">
             <SearchAutocomplete
               onSearch={(query) => {
                 setSearchQuery(query);
@@ -295,11 +288,11 @@ const BrowseListings = () => {
         </Card>
 
         {/* Category Chips/Tabs */}
-        <div className="mb-4 sm:mb-6 flex flex-wrap gap-2">
+        <div className="mb-3 sm:mb-4 md:mb-6 flex flex-wrap gap-2">
           {['all','home','experience','service'].map((cat) => (
             <button
               key={cat}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-medium border-2 transition-all touch-manipulation ${
+              className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium border-2 transition-all touch-manipulation min-h-[36px] sm:min-h-[40px] ${
                 (filters.category === cat)
                   ? 'bg-primary text-primary-foreground border-primary shadow-md'
                   : 'bg-background border-border text-foreground hover:bg-muted hover:border-primary/50 active:bg-muted'
@@ -311,7 +304,7 @@ const BrowseListings = () => {
           ))}
         </div>
 
-        <div className="mb-8">
+        <div className="mb-6 sm:mb-8">
           <AdvancedFilter 
             onFilterChange={handleFilterChange} 
             initialFilters={filters} // Pass current filters

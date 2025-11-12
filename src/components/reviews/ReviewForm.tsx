@@ -76,8 +76,9 @@ export const ReviewForm = ({ listingId, bookingId, onSuccess }: ReviewFormProps)
 
       toast.success("Review submitted! You earned 20 points.");
       onSuccess();
-    } catch (error) {
-      toast.error("Failed to submit review");
+    } catch (error: any) {
+      const errorMessage = error?.message || "Failed to submit review";
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }

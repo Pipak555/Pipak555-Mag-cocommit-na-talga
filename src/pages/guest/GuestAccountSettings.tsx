@@ -10,7 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { ArrowLeft, User, Bell, Shield, Calendar, Mail, Smartphone, X } from "lucide-react";
+import { ArrowLeft, User, Bell, Shield, Calendar, Mail, Smartphone, X, Gift } from "lucide-react";
+import { PointsDisplay } from "@/components/rewards/PointsDisplay";
+import { redeemPointsForCoupon } from "@/lib/pointsService";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getBookings, updateBooking } from "@/lib/firestore";
@@ -261,41 +263,47 @@ const GuestAccountSettings = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8 max-w-4xl">
-        <div className="flex items-center justify-between mb-6">
-          <Button variant="ghost" onClick={handleBack}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Dashboard
+      <div className="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-6 lg:py-8 max-w-4xl">
+        <div className="flex items-center justify-between mb-4 sm:mb-6 gap-2 sm:gap-4">
+          <Button variant="ghost" onClick={handleBack} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation">
+            <ArrowLeft className="h-4 w-4 mr-1.5 sm:mr-2" />
+            <span className="hidden sm:inline">Back to Dashboard</span>
+            <span className="sm:hidden">Back</span>
           </Button>
-          <Button variant="outline" onClick={() => setLogoutDialogOpen(true)}>
-            Sign Out
+          <Button variant="outline" onClick={() => setLogoutDialogOpen(true)} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation">
+            <span className="hidden sm:inline">Sign Out</span>
+            <span className="sm:hidden">Out</span>
           </Button>
         </div>
 
-        <h1 className="text-3xl font-bold mb-6">Account Settings</h1>
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6">Account Settings</h1>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 relative">
-            <TabsTrigger value="profile">
-              <User className="h-4 w-4 mr-2" />
-              Profile
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
+          <TabsList className="grid w-full grid-cols-5 relative overflow-x-auto">
+            <TabsTrigger value="profile" className="text-xs sm:text-sm touch-manipulation min-h-[44px] sm:min-h-0">
+              <User className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Profile</span>
             </TabsTrigger>
-            <TabsTrigger value="bookings">
-              <Calendar className="h-4 w-4 mr-2" />
-              Bookings
+            <TabsTrigger value="bookings" className="text-xs sm:text-sm touch-manipulation min-h-[44px] sm:min-h-0">
+              <Calendar className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Bookings</span>
             </TabsTrigger>
-            <TabsTrigger value="notifications">
-              <Bell className="h-4 w-4 mr-2" />
-              Notifications
+            <TabsTrigger value="rewards" className="text-xs sm:text-sm touch-manipulation min-h-[44px] sm:min-h-0">
+              <Gift className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Rewards</span>
             </TabsTrigger>
-            <TabsTrigger value="security">
-              <Shield className="h-4 w-4 mr-2" />
-              Security
+            <TabsTrigger value="notifications" className="text-xs sm:text-sm touch-manipulation min-h-[44px] sm:min-h-0">
+              <Bell className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Notifications</span>
+            </TabsTrigger>
+            <TabsTrigger value="security" className="text-xs sm:text-sm touch-manipulation min-h-[44px] sm:min-h-0">
+              <Shield className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Security</span>
             </TabsTrigger>
           </TabsList>
 
-          <div className="h-[600px] relative">
-            <TabsContent value="profile" className="mt-0 absolute inset-0 w-full overflow-y-auto">
+          <div className="h-[500px] sm:h-[600px] relative">
+            <TabsContent value="profile" className="mt-0 absolute inset-0 w-full overflow-y-auto px-1 sm:px-0">
               <Card className="h-full flex flex-col">
               <CardHeader>
                 <CardTitle>Profile Information</CardTitle>
@@ -406,13 +414,43 @@ const GuestAccountSettings = () => {
             </Card>
           </TabsContent>
 
-            <TabsContent value="notifications" className="mt-0 absolute inset-0 w-full overflow-y-auto">
-              <Card className="h-full flex flex-col">
-              <CardHeader>
-                <CardTitle>Notification Preferences</CardTitle>
-                <CardDescription>Manage how you receive updates</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
+          <TabsContent value="rewards" className="mt-6">
+            <PointsDisplay
+              points={profile?.points || 0}
+              onRedeem={async (pointsToRedeem) => {
+                if (!user) {
+                  toast.error("You must be logged in to redeem points");
+                  return;
+                }
+
+                try {
+                  const { couponCode, discountAmount } = await redeemPointsForCoupon(
+                    user.uid,
+                    pointsToRedeem
+                  );
+                  
+                  toast.success(
+                    `Successfully redeemed ${pointsToRedeem} points! ` +
+                    `Coupon code: ${couponCode} (${formatPHP(discountAmount)} discount). ` +
+                    `You can use this coupon when booking a listing.`
+                  );
+                  
+                  // Refresh profile to update points
+                  await loadProfile();
+                } catch (error: any) {
+                  toast.error(`Failed to redeem points: ${error.message || 'Unknown error'}`);
+                }
+              }}
+            />
+          </TabsContent>
+
+            <TabsContent value="notifications" className="mt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Notification Preferences</CardTitle>
+                  <CardDescription>Manage how you receive updates</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
                 {/* Email Notifications */}
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 pb-2 border-b">
@@ -500,22 +538,6 @@ const GuestAccountSettings = () => {
                         }
                       />
                     </div>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <Label htmlFor="email-promotional-offers">Promotional Offers</Label>
-                        <p className="text-xs text-muted-foreground">Receive promotional emails and special offers</p>
-                      </div>
-                      <Switch
-                        id="email-promotional-offers"
-                        checked={notificationPrefs.email.promotionalOffers}
-                        onCheckedChange={(checked) =>
-                          setNotificationPrefs(prev => ({
-                            ...prev,
-                            email: { ...prev.email, promotionalOffers: checked }
-                          }))
-                        }
-                      />
-                    </div>
                   </div>
                 </div>
 
@@ -570,22 +592,6 @@ const GuestAccountSettings = () => {
                           setNotificationPrefs(prev => ({
                             ...prev,
                             inApp: { ...prev.inApp, paymentNotifications: checked }
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <Label htmlFor="inapp-system-alerts">System Alerts</Label>
-                        <p className="text-xs text-muted-foreground">Receive important system notifications</p>
-                      </div>
-                      <Switch
-                        id="inapp-system-alerts"
-                        checked={notificationPrefs.inApp.systemAlerts}
-                        onCheckedChange={(checked) =>
-                          setNotificationPrefs(prev => ({
-                            ...prev,
-                            inApp: { ...prev.inApp, systemAlerts: checked }
                           }))
                         }
                       />

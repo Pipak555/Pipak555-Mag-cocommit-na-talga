@@ -8,8 +8,10 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/compone
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ArrowLeft, MapPin, Users, Heart, Bookmark, User, Ticket, X, ChevronLeft, ChevronRight, Calendar as CalendarIcon, ZoomIn } from "lucide-react";
 import { toast } from "sonner";
+import { BackButton } from "@/components/shared/BackButton";
 import { ReviewList } from "@/components/reviews/ReviewList";
 import { SocialShare } from "@/components/shared/SocialShare";
 import { ListingCard } from "@/components/listings/ListingCard";
@@ -39,11 +41,14 @@ const ListingDetails = () => {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxImageIndex, setLightboxImageIndex] = useState(0);
   const [confirmedBookings, setConfirmedBookings] = useState<any[]>([]);
+  const [reviewRefreshTrigger, setReviewRefreshTrigger] = useState(0);
 
   useEffect(() => {
     if (id) {
       loadListing();
       setCurrentImageIndex(0); // Reset image index when listing changes
+      // Scroll to top when navigating to a new listing
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
     if (user) {
       loadFavorites();
@@ -90,6 +95,9 @@ const ListingDetails = () => {
       };
       
       setListing(listingWithRating);
+      
+      // Trigger review refresh when listing loads
+      setReviewRefreshTrigger(prev => prev + 1);
       
       console.log('📋 Listing loaded:', {
         id: data.id,
@@ -204,13 +212,13 @@ const ListingDetails = () => {
     const dateOnly = new Date(date);
     dateOnly.setHours(0, 0, 0, 0);
     
-    // Disable past dates
+    // Disable past dates (dates before today)
     if (dateOnly < today) return true;
     
     // Disable if not in available dates
     if (!isDateAvailable(dateOnly)) return true;
     
-    // Disable if booked
+    // Disable if booked (but keep showing as "booked" via modifiers)
     if (isDateBooked(dateOnly)) return true;
     
     return false;
@@ -251,12 +259,26 @@ const ListingDetails = () => {
     const days = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
     const basePrice = days * listing.price;
     
-    // Apply coupon discount if available
-    if (appliedCoupon && basePrice >= (appliedCoupon.minSpend || 0)) {
-      return Math.max(0, basePrice - appliedCoupon.discount);
+    // Apply listing discount first (percentage discount)
+    let priceAfterListingDiscount = basePrice;
+    if (listing.discount && listing.discount > 0) {
+      const discountAmount = (basePrice * listing.discount) / 100;
+      priceAfterListingDiscount = Math.max(0, basePrice - discountAmount);
     }
     
-    return basePrice;
+    // Then apply coupon discount if available
+    if (appliedCoupon && priceAfterListingDiscount >= (appliedCoupon.minSpend || 0)) {
+      return Math.max(0, priceAfterListingDiscount - appliedCoupon.discount);
+    }
+    
+    return priceAfterListingDiscount;
+  };
+
+  const calculateListingDiscountAmount = () => {
+    if (!checkIn || !checkOut || !listing || !listing.discount || listing.discount <= 0) return 0;
+    const days = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+    const basePrice = days * listing.price;
+    return (basePrice * listing.discount) / 100;
   };
 
   const handleApplyCoupon = () => {
@@ -301,6 +323,16 @@ const ListingDetails = () => {
       return;
     }
 
+    if (!guests || guests < 1) {
+      toast.error("Please enter the number of guests (minimum 1)");
+      return;
+    }
+
+    if (guests > listing.maxGuests) {
+      toast.error(`Maximum ${listing.maxGuests} guest${listing.maxGuests > 1 ? 's' : ''} allowed for this listing`);
+      return;
+    }
+
     if (!listing.hostId) {
       toast.error("Listing error: Missing host information. Please contact support.");
       console.error('Listing missing hostId:', listing);
@@ -309,7 +341,13 @@ const ListingDetails = () => {
 
     setLoading(true);
     try {
-      const basePrice = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)) * listing.price;
+      const days = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+      const basePrice = days * listing.price;
+      const listingDiscountAmount = listing.discount && listing.discount > 0 
+        ? (basePrice * listing.discount) / 100 
+        : 0;
+      const priceAfterListingDiscount = basePrice - listingDiscountAmount;
+      const couponDiscountAmount = appliedCoupon ? appliedCoupon.discount : 0;
       const finalPrice = calculateTotal();
       
       const bookingData: any = {
@@ -321,7 +359,9 @@ const ListingDetails = () => {
         guests,
         totalPrice: finalPrice,
         originalPrice: basePrice,
-        discountAmount: appliedCoupon ? basePrice - finalPrice : 0,
+        listingDiscount: listing.discount || 0,
+        listingDiscountAmount: listingDiscountAmount,
+        discountAmount: listingDiscountAmount + couponDiscountAmount,
         status: 'pending' as const, // Booking is pending host approval
       };
 
@@ -412,11 +452,7 @@ const ListingDetails = () => {
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6">
       <div className="max-w-7xl mx-auto">
-        <Button variant="ghost" onClick={() => navigate('/guest/browse')} className="mb-4 h-10 sm:h-auto">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          <span className="hidden sm:inline">Back to Browse</span>
-          <span className="sm:hidden">Back</span>
-        </Button>
+        <BackButton to="/guest/browse" label="Back to Browse" className="mb-4" />
 
         <div className="grid lg:grid-cols-12 gap-4 sm:gap-6 lg:gap-8">
           <div className="lg:col-span-7 space-y-3">
@@ -526,7 +562,7 @@ const ListingDetails = () => {
 
           </div>
 
-          <div className="lg:col-span-5 flex flex-col">
+          <div className="lg:col-span-5 flex flex-col relative">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-3 sm:mb-2 gap-2 sm:gap-0">
               <Badge className="text-xs sm:text-sm">{listing.category}</Badge>
               <div className="flex items-center gap-2 flex-wrap">
@@ -662,17 +698,19 @@ const ListingDetails = () => {
                         classNames={{
                           months: "w-full",
                           month: "w-full space-y-3",
-                          caption: "w-full mb-4",
-                          caption_label: "w-full text-center text-base font-semibold",
-                          nav: "w-full justify-between px-1",
-                          nav_button: "h-8 w-8",
+                          caption: "flex justify-center pt-1 relative items-center mb-4",
+                          caption_label: "text-base font-semibold",
+                          nav: "space-x-1 flex items-center",
+                          nav_button: "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 absolute",
+                          nav_button_previous: "left-1",
+                          nav_button_next: "right-1",
                           table: "w-full border-collapse",
                           head_row: "w-full flex justify-between mb-2",
                           head_cell: "flex-1 text-center text-sm font-medium text-muted-foreground",
                           row: "w-full flex justify-between my-1",
                           cell: "flex-1 text-center h-10",
                           day: "w-full h-full flex items-center justify-center text-sm font-medium rounded-md hover:bg-accent transition-colors",
-                          day_disabled: "bg-orange-500/20 text-orange-600 dark:text-orange-400 opacity-100 cursor-not-allowed relative after:content-['booked'] after:absolute after:bottom-0 after:left-1/2 after:-translate-x-1/2 after:text-[7px] after:leading-tight after:opacity-80 after:whitespace-nowrap after:pointer-events-none",
+                          day_disabled: "text-muted-foreground opacity-50 cursor-not-allowed pointer-events-none",
                         }}
                       />
                     </div>
@@ -723,17 +761,19 @@ const ListingDetails = () => {
                         classNames={{
                           months: "w-full",
                           month: "w-full space-y-3",
-                          caption: "w-full mb-4",
-                          caption_label: "w-full text-center text-base font-semibold",
-                          nav: "w-full justify-between px-1",
-                          nav_button: "h-8 w-8",
+                          caption: "flex justify-center pt-1 relative items-center mb-4",
+                          caption_label: "text-base font-semibold",
+                          nav: "space-x-1 flex items-center",
+                          nav_button: "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 absolute",
+                          nav_button_previous: "left-1",
+                          nav_button_next: "right-1",
                           table: "w-full border-collapse",
                           head_row: "w-full flex justify-between mb-2",
                           head_cell: "flex-1 text-center text-sm font-medium text-muted-foreground",
                           row: "w-full flex justify-between my-1",
                           cell: "flex-1 text-center h-10",
                           day: "w-full h-full flex items-center justify-center text-sm font-medium rounded-md hover:bg-accent transition-colors",
-                          day_disabled: "bg-orange-500/20 text-orange-600 dark:text-orange-400 opacity-100 cursor-not-allowed relative after:content-['booked'] after:absolute after:bottom-0 after:left-1/2 after:-translate-x-1/2 after:text-[7px] after:leading-tight after:opacity-80 after:whitespace-nowrap after:pointer-events-none",
+                          day_disabled: "text-muted-foreground opacity-50 cursor-not-allowed pointer-events-none",
                         }}
                       />
                     </div>
@@ -745,14 +785,66 @@ const ListingDetails = () => {
         </Card>
 
         {/* Booking Card */}
-        <Card className="mt-6 sm:mt-8 shadow-lg sticky top-4 lg:top-8">
+        <Card className="mt-6 sm:mt-8 shadow-lg bg-card">
                 <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6">
                   <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 sm:gap-0">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        {listing.discount && listing.discount > 0 ? (
+                          <>
+                            <span className="text-xl sm:text-2xl line-through text-muted-foreground">
+                              {formatPHP(listing.price)}
+                            </span>
+                            <span className="text-2xl sm:text-3xl text-primary font-bold">
+                              {formatPHP(listing.price * (1 - listing.discount / 100))}
+                            </span>
+                            <Badge className="bg-red-500 text-white">
+                              -{listing.discount}%
+                            </Badge>
+                          </>
+                        ) : (
                     <span className="text-2xl sm:text-3xl">{formatPHP(listing.price)}</span>
+                        )}
+                      </div>
+                      {listing.promo && (
+                        <p className="text-xs sm:text-sm text-primary font-medium">{listing.promo}</p>
+                      )}
+                    </div>
                     <span className="text-xs sm:text-sm font-normal text-muted-foreground">per night</span>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4 px-4 sm:px-6 pb-4 sm:pb-6">
+                {/* Number of Guests */}
+                <div className="space-y-2">
+                  <Label htmlFor="guests" className="text-sm font-medium flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Number of Guests
+                  </Label>
+                  <Input
+                    id="guests"
+                    type="number"
+                    min="1"
+                    max={listing.maxGuests}
+                    value={guests}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value) || 1;
+                      if (value >= 1 && value <= listing.maxGuests) {
+                        setGuests(value);
+                      } else if (value > listing.maxGuests) {
+                        setGuests(listing.maxGuests);
+                        toast.error(`Maximum ${listing.maxGuests} guest${listing.maxGuests > 1 ? 's' : ''} allowed`);
+                      } else if (value < 1) {
+                        setGuests(1);
+                      }
+                    }}
+                    placeholder="Enter number of guests"
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Maximum {listing.maxGuests} guest{listing.maxGuests > 1 ? 's' : ''} allowed
+                  </p>
+                </div>
+
                 {/* Coupon Application */}
                 <div className="pt-4 border-t">
                   {!appliedCoupon ? (
@@ -799,15 +891,36 @@ const ListingDetails = () => {
 
                 {checkIn && checkOut && (
                   <div className="pt-4 border-t space-y-2">
-                    {appliedCoupon && (
+                    {(() => {
+                      const days = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+                      const basePrice = days * listing.price;
+                      const listingDiscountAmount = calculateListingDiscountAmount();
+                      const priceAfterListingDiscount = basePrice - listingDiscountAmount;
+                      const showBreakdown = listingDiscountAmount > 0 || appliedCoupon;
+                      
+                      return (
+                        <>
+                          {showBreakdown && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Subtotal</span>
-                        <span>{formatPHP(Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)) * listing.price)}</span>
+                              <span className="text-muted-foreground">Subtotal ({days} {days === 1 ? 'night' : 'nights'})</span>
+                              <span>{formatPHP(basePrice)}</span>
+                            </div>
+                          )}
+                          {listingDiscountAmount > 0 && (
+                            <div className="flex justify-between text-sm text-primary">
+                              <span>Listing Discount ({listing.discount}%)</span>
+                              <span>-{formatPHP(listingDiscountAmount)}</span>
+                            </div>
+                          )}
+                          {listingDiscountAmount > 0 && (appliedCoupon || !showBreakdown) && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-muted-foreground">After Discount</span>
+                              <span>{formatPHP(priceAfterListingDiscount)}</span>
                       </div>
                     )}
                     {appliedCoupon && (
                       <div className="flex justify-between text-sm text-primary">
-                        <span>Discount ({appliedCoupon.code})</span>
+                              <span>Coupon Discount ({appliedCoupon.code})</span>
                         <span>-{formatPHP(appliedCoupon.discount)}</span>
                       </div>
                     )}
@@ -815,13 +928,16 @@ const ListingDetails = () => {
                       <span>Total</span>
                       <span>{formatPHP(calculateTotal())}</span>
                     </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
 
                 <Button 
                   className="w-full h-12 sm:h-auto text-base sm:text-sm touch-manipulation" 
                   onClick={handleBooking}
-                  disabled={!checkIn || !checkOut || loading}
+                  disabled={!checkIn || !checkOut || !guests || guests < 1 || guests > listing.maxGuests || loading}
                 >
                   {loading ? "Booking..." : "Request to Book"}
                 </Button>
@@ -927,12 +1043,14 @@ const ListingDetails = () => {
         </Dialog>
 
         {/* Reviews Section */}
-        <div className="mt-12">
-          <ReviewList listingId={listing.id} />
+        <div className="mt-12 relative z-0">
+          <ReviewList listingId={listing.id} refreshTrigger={reviewRefreshTrigger} />
         </div>
 
         {/* Similar Listings Recommendations */}
-        <SimilarListings listingId={listing.id} />
+        <div className="relative z-0">
+          <SimilarListings listingId={listing.id} />
+        </div>
       </div>
     </div>
   );
@@ -1047,7 +1165,10 @@ const SimilarListings = ({ listingId }: { listingId: string }) => {
           <ListingCard
             key={similarListing.id}
             listing={similarListing}
-            onView={() => navigate(`/guest/listing/${similarListing.id}`)}
+            onView={() => {
+              navigate(`/guest/listing/${similarListing.id}`);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
             onFavorite={() => handleFavorite(similarListing.id)}
             onWishlist={() => handleWishlist(similarListing.id)}
             isFavorite={favorites.includes(similarListing.id)}

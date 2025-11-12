@@ -36,6 +36,7 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
   const [{ isPending, isResolved, isRejected }] = usePayPalScriptReducer();
   const [sdkError, setSdkError] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [redirectFlowFailed, setRedirectFlowFailed] = useState(false);
 
   useEffect(() => {
     // Check if PayPal SDK is available after a delay
@@ -111,14 +112,35 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
     try {
       const paypal = (window as any).paypal;
       
+      // Check if Buttons API is available
+      if (!paypal.Buttons) {
+        throw new Error('PayPal Buttons API not available');
+      }
+      
       // Create order using PayPal SDK's order API
       // We need to use the SDK's order creation which requires the actions object
       // Since we can't access actions directly, we'll create a temporary button
       const tempContainer = document.createElement('div');
-      tempContainer.style.display = 'none';
+      tempContainer.id = 'paypal-temp-button-container';
+      tempContainer.style.cssText = 'position: absolute; left: -9999px; opacity: 0; pointer-events: none;';
       document.body.appendChild(tempContainer);
 
       return new Promise<void>((resolve, reject) => {
+        let buttonRendered = false;
+        let timeoutId: NodeJS.Timeout;
+        
+        // Set a timeout to prevent hanging
+        timeoutId = setTimeout(() => {
+          if (!buttonRendered) {
+            if (document.body.contains(tempContainer)) {
+              document.body.removeChild(tempContainer);
+            }
+            setProcessing(false);
+            reject(new Error('PayPal button creation timed out. Please try again.'));
+          }
+        }, 10000); // 10 second timeout
+
+        try {
         paypal.Buttons({
           createOrder: (data: any, actions: any) => {
             return actions.order.create({
@@ -143,36 +165,87 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
             // The actual processing happens after redirect
           },
           onError: (err: any) => {
+              clearTimeout(timeoutId);
+              if (document.body.contains(tempContainer)) {
             document.body.removeChild(tempContainer);
+              }
+              setProcessing(false);
             reject(err);
           }
         }).render(tempContainer).then((buttonInstance: any) => {
-          // Trigger the button click programmatically
-          const button = tempContainer.querySelector('button');
-          if (button) {
-            button.click();
+            buttonRendered = true;
+            clearTimeout(timeoutId);
             
-            // Wait a bit for the order to be created and popup/redirect to start
+            // Wait a bit for the button to be fully rendered in the DOM
             setTimeout(() => {
-              // Check if we got redirected or if popup opened
-              // If popup opened, we can't force redirect from here
-              // The user will need to complete in popup
+              // Try multiple selectors to find the button
+              const button = tempContainer.querySelector('button') || 
+                           tempContainer.querySelector('[role="button"]') ||
+                           tempContainer.querySelector('a[href*="paypal"]');
+              
+              if (button) {
+                // Trigger the button click programmatically
+                (button as HTMLElement).click();
+                
+                // Wait a bit for the order to be created and popup/redirect to start
+                setTimeout(() => {
+                  // Clean up the temporary container
+                  if (document.body.contains(tempContainer)) {
+                    document.body.removeChild(tempContainer);
+                  }
+                  setProcessing(false);
+                  resolve();
+                }, 1000);
+              } else {
+                // Button not found, try to find any clickable element
+                const clickableElements = tempContainer.querySelectorAll('button, a, [role="button"], [onclick]');
+                if (clickableElements.length > 0) {
+                  (clickableElements[0] as HTMLElement).click();
+                  setTimeout(() => {
+                    if (document.body.contains(tempContainer)) {
+                      document.body.removeChild(tempContainer);
+                    }
+                    setProcessing(false);
+                    resolve();
+                  }, 1000);
+                } else {
+                  // Fallback: use regular PayPal button flow instead
+                  if (document.body.contains(tempContainer)) {
+                    document.body.removeChild(tempContainer);
+                  }
+                  setProcessing(false);
+                  toast.error("Could not initiate redirect flow. Please use the PayPal button below.");
+                  reject(new Error('PayPal button element not found. Please use the standard PayPal button.'));
+                }
+              }
+            }, 500); // Wait 500ms for button to render
+          }).catch((err: any) => {
+            clearTimeout(timeoutId);
+            buttonRendered = true;
+            if (document.body.contains(tempContainer)) {
               document.body.removeChild(tempContainer);
+            }
               setProcessing(false);
-            }, 1000);
-          } else {
+            console.error('PayPal button render error:', err);
+            toast.error("Failed to create PayPal button. Please try again or use the standard button.");
+            reject(err);
+          });
+        } catch (renderError: any) {
+          clearTimeout(timeoutId);
+          if (document.body.contains(tempContainer)) {
             document.body.removeChild(tempContainer);
-            reject(new Error('Could not create PayPal button'));
           }
-        }).catch((err: any) => {
-          document.body.removeChild(tempContainer);
-          reject(err);
-        });
+          setProcessing(false);
+          console.error('PayPal button creation error:', renderError);
+          toast.error("Failed to initialize PayPal. Please try again.");
+          reject(renderError);
+        }
       });
     } catch (error: any) {
       console.error('Redirect flow error:', error);
-      toast.error("Failed to initiate payment. Please try again.");
+      toast.error(error?.message || "Failed to initiate payment. Please try again.");
       setProcessing(false);
+      throw error;
     }
   };
 
@@ -225,7 +298,7 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
           if (result.isScheduled) {
             toast.success("Payment successful! Your new plan will start when your current subscription expires.");
           } else {
-            toast.success("Payment successful! Your subscription is now active.");
+          toast.success("Payment successful! Your subscription is now active.");
           }
           
           // Call onSuccess callback which will handle navigation
@@ -370,11 +443,51 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
   }
 
   // Use redirect flow if requested (avoids popup issues)
+  // Note: Redirect flow is complex and may not work in all browsers
+  // If it fails, we'll fall back to the regular PayPal button
   if (useRedirectFlow) {
+    const handleRedirectClick = async () => {
+      try {
+        await handleRedirectFlow();
+      } catch (error: any) {
+        // Error is already handled in handleRedirectFlow with toast messages
+        // Fall back to regular button if redirect flow fails
+        if (import.meta.env.DEV) {
+          console.warn('Redirect flow failed, falling back to regular PayPal button:', error);
+        }
+        setRedirectFlowFailed(true);
+      }
+    };
+
+    // If redirect flow failed, show regular button instead
+    if (redirectFlowFailed) {
+      return (
+        <div className="w-full">
+          <div className="paypal-button-wrapper">
+            <PayPalButtons
+              createOrder={createOrder}
+              onApprove={onApprove}
+              onError={onError}
+              style={{ 
+                layout: "vertical",
+                color: "gold",
+                shape: "rect",
+                label: "paypal",
+                height: 50
+              }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground text-center mt-2">
+            Using standard PayPal checkout
+          </p>
+        </div>
+      );
+    }
+
     return (
       <div className="w-full">
         <Button
-          onClick={handleRedirectFlow}
+          onClick={handleRedirectClick}
           disabled={processing || !isResolved}
           className="w-full h-12 bg-[#FFC439] hover:bg-[#FFB300] text-[#003087] font-semibold"
         >

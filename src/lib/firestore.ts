@@ -361,6 +361,12 @@ export const getBookings = async (filters?: { guestId?: string; hostId?: string;
 
 // ⭐ Reviews
 export const createReview = async (data: Omit<Review, 'id' | 'createdAt'>) => {
+  // Check if review already exists for this booking and guest
+  const existingReview = await getBookingReview(data.bookingId, data.guestId);
+  if (existingReview) {
+    throw new Error('You have already reviewed this booking');
+  }
+
   const docRef = await addDoc(collection(db, 'reviews'), {
     ...data,
     createdAt: new Date().toISOString(),
@@ -388,13 +394,55 @@ export const createReview = async (data: Omit<Review, 'id' | 'createdAt'>) => {
 };
 
 export const getListingReviews = async (listingId: string) => {
-  const q = query(
-    collection(db, 'reviews'), 
-    where('listingId', '==', listingId),
-    orderBy('createdAt', 'desc')
-  );
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Review));
+  try {
+    // Try with orderBy first (requires index)
+    try {
+      const q = query(
+        collection(db, 'reviews'), 
+        where('listingId', '==', listingId),
+        orderBy('createdAt', 'desc')
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Review));
+    } catch (orderByError: any) {
+      // If orderBy fails (missing index), fallback to query without orderBy
+      console.warn('OrderBy query failed, using fallback:', orderByError);
+      const q = query(
+        collection(db, 'reviews'), 
+        where('listingId', '==', listingId)
+      );
+      const snapshot = await getDocs(q);
+      // Sort manually by createdAt
+      const reviews = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Review));
+      return reviews.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+    }
+  } catch (error: any) {
+    console.error('Error getting listing reviews:', error);
+    // Return empty array on error instead of throwing
+    return [];
+  }
+};
+
+// Get review for a specific booking
+export const getBookingReview = async (bookingId: string, guestId: string): Promise<Review | null> => {
+  try {
+    const q = query(
+      collection(db, 'reviews'),
+      where('bookingId', '==', bookingId),
+      where('guestId', '==', guestId)
+    );
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) {
+      return null;
+    }
+    const reviewDoc = snapshot.docs[0];
+    return { id: reviewDoc.id, ...reviewDoc.data() } as Review;
+  } catch (error) {
+    console.error('Error getting booking review:', error);
+    return null;
+  }
 };
 
 // Get average rating and review count for a listing
@@ -661,13 +709,85 @@ export const toggleFavorite = async (userId: string, listingId: string, favorite
 };
 
 // 🌟 Wishlist (separate from favorites - for future plans)
-export const toggleWishlist = async (userId: string, listingId: string, wishlist: string[]) => {
-  const newWishlist = wishlist.includes(listingId)
-    ? wishlist.filter(id => id !== listingId)
-    : [...wishlist, listingId];
+export const toggleWishlist = async (userId: string, listingId: string, wishlist: string[] | any[], recommendations?: string, bookingId?: string, propertyRequirements?: any, desiredAmenities?: string[]) => {
+  // Handle both old format (string[]) and new format (WishlistItem[])
+  const isOldFormat = wishlist.length > 0 && typeof wishlist[0] === 'string';
   
-  await updateDoc(doc(db, 'users', userId), { wishlist: newWishlist });
-  return newWishlist;
+  if (isOldFormat) {
+    // Old format - convert to new format
+    const oldWishlist = wishlist as string[];
+    if (oldWishlist.includes(listingId)) {
+      // Remove from wishlist
+      const newWishlist = oldWishlist.filter(id => id !== listingId);
+      await updateDoc(doc(db, 'users', userId), { wishlist: newWishlist });
+      return newWishlist;
+    } else {
+      // Add to wishlist with recommendations if provided
+      const newItem: any = {
+        listingId,
+        addedAt: new Date().toISOString(),
+        ...(recommendations && { recommendations }),
+        ...(bookingId && { addedFromBooking: bookingId }),
+        ...(propertyRequirements && Object.keys(propertyRequirements).length > 0 && { propertyRequirements }),
+        ...(desiredAmenities && desiredAmenities.length > 0 && { desiredAmenities })
+      };
+      const newWishlist = [...oldWishlist.map(id => ({ listingId: id, addedAt: new Date().toISOString() })), newItem];
+      await updateDoc(doc(db, 'users', userId), { wishlist: newWishlist });
+      return newWishlist;
+    }
+  } else {
+    // New format - array of objects
+    const wishlistItems = wishlist as any[];
+    const existingIndex = wishlistItems.findIndex(item => 
+      (typeof item === 'string' ? item === listingId : item.listingId === listingId)
+    );
+    
+    if (existingIndex >= 0) {
+      // Remove from wishlist
+      const newWishlist = wishlistItems.filter((item, index) => index !== existingIndex);
+      await updateDoc(doc(db, 'users', userId), { wishlist: newWishlist });
+      return newWishlist;
+    } else {
+      // Add to wishlist with recommendations if provided
+      const newItem: any = {
+        listingId,
+        addedAt: new Date().toISOString(),
+        ...(recommendations && { recommendations }),
+        ...(bookingId && { addedFromBooking: bookingId }),
+        ...(propertyRequirements && Object.keys(propertyRequirements).length > 0 && { propertyRequirements }),
+        ...(desiredAmenities && desiredAmenities.length > 0 && { desiredAmenities })
+      };
+      const newWishlist = [...wishlistItems, newItem];
+      await updateDoc(doc(db, 'users', userId), { wishlist: newWishlist });
+      return newWishlist;
+    }
+  }
+};
+
+// Update wishlist item recommendations
+export const updateWishlistRecommendations = async (userId: string, listingId: string, recommendations: string, wishlist: any[]) => {
+  const wishlistItems = wishlist.map(item => {
+    if (typeof item === 'string') {
+      // Old format - convert to new format
+      if (item === listingId) {
+        return {
+          listingId: item,
+          recommendations,
+          addedAt: new Date().toISOString()
+        };
+      }
+      return { listingId: item, addedAt: new Date().toISOString() };
+    } else {
+      // New format
+      if (item.listingId === listingId) {
+        return { ...item, recommendations };
+      }
+      return item;
+    }
+  });
+  
+  await updateDoc(doc(db, 'users', userId), { wishlist: wishlistItems });
+  return wishlistItems;
 };
 
 // 🔐 OTP Verification Functions

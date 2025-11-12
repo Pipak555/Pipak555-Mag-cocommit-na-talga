@@ -24,6 +24,7 @@ export const VideoBackground = ({
 
   useEffect(() => {
     const checkMobile = () => {
+      // Allow videos on mobile but use lighter loading strategy
       setIsMobile(window.innerWidth < 768);
     };
     
@@ -35,14 +36,14 @@ export const VideoBackground = ({
 
   // Intersection Observer to load video only when in viewport
   useEffect(() => {
-    if (isMobile || videoError) return;
+    if (videoError) return;
     
     if (!containerRef.current) {
       // If container not ready yet, check again after a short delay
       const timer = setTimeout(() => {
         if (containerRef.current) {
           const rect = containerRef.current.getBoundingClientRect();
-          const isVisible = rect.top < window.innerHeight + 50 && rect.bottom > -50;
+          const isVisible = rect.top < window.innerHeight + 200 && rect.bottom > -200;
           if (isVisible) {
             setIsInView(true);
           }
@@ -51,9 +52,9 @@ export const VideoBackground = ({
       return () => clearTimeout(timer);
     }
 
-    // Check if element is already in viewport
+    // Check if element is already in viewport (with larger threshold for hero sections)
     const rect = containerRef.current.getBoundingClientRect();
-    const isVisible = rect.top < window.innerHeight + 50 && rect.bottom > -50;
+    const isVisible = rect.top < window.innerHeight + 200 && rect.bottom > -200;
     
     if (isVisible) {
       setIsInView(true);
@@ -69,36 +70,75 @@ export const VideoBackground = ({
           }
         });
       },
-      { rootMargin: '50px' } // Start loading 50px before entering viewport
+      { rootMargin: isMobile ? '100px' : '200px' } // Start loading earlier for hero sections
     );
 
     observer.observe(containerRef.current);
 
     return () => observer.disconnect();
-  }, [isMobile, videoError]);
+  }, [videoError, isMobile]);
 
   useEffect(() => {
-    if (videoRef.current && !isMobile && !videoError && isInView) {
+    if (videoRef.current && !videoError && isInView) {
       const video = videoRef.current;
       
-      // Set playback rate
-      video.playbackRate = 0.8;
+      // Set playback rate (slightly slower for smoother playback)
+      video.playbackRate = isMobile ? 1.0 : 0.8;
       
       // Load video when in view
       video.load();
       
       // Play when ready
       const handleCanPlay = () => {
-        video.play().catch(() => {
-          // Auto-play might fail, that's okay
-        });
-        setIsLoaded(true);
+        const playPromise = video.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              setIsLoaded(true);
+            })
+            .catch((error) => {
+              console.warn('Video autoplay failed:', error);
+              // Still show video even if autoplay fails
+              setIsLoaded(true);
+            });
+        } else {
+          setIsLoaded(true);
+        }
+      };
+      
+      const handleLoadedData = () => {
+        const playPromise = video.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              setIsLoaded(true);
+            })
+            .catch(() => {
+              setIsLoaded(true);
+            });
+        } else {
+          setIsLoaded(true);
+        }
       };
       
       video.addEventListener('canplay', handleCanPlay, { once: true });
+      video.addEventListener('loadeddata', handleLoadedData, { once: true });
+      
+      // Also try to play immediately if video is already loaded
+      if (video.readyState >= 2) {
+        const playPromise = video.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => setIsLoaded(true))
+            .catch(() => setIsLoaded(true));
+        } else {
+          setIsLoaded(true);
+        }
+      }
       
       return () => {
         video.removeEventListener('canplay', handleCanPlay);
+        video.removeEventListener('loadeddata', handleLoadedData);
       };
     }
   }, [isMobile, videoError, isInView]);
@@ -107,8 +147,8 @@ export const VideoBackground = ({
     setVideoError(true);
   };
 
-  // On mobile or if video fails to load, show fallback image
-  if (isMobile || videoError) {
+  // If video fails to load, show fallback image
+  if (videoError) {
     return (
       <div 
         className={`absolute inset-0 bg-cover bg-center bg-no-repeat ${className}`}
@@ -171,6 +211,13 @@ export const VideoBackground = ({
           preload="metadata"
           poster={fallbackImage}
           onError={handleVideoError}
+          onLoadedMetadata={() => {
+            if (videoRef.current) {
+              videoRef.current.play().catch(() => {
+                // Auto-play might fail, that's okay
+              });
+            }
+          }}
         >
           <source src={src} type="video/mp4" />
           Your browser does not support the video tag.

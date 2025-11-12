@@ -436,42 +436,45 @@ const AdminDashboard = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-soft">
-        <div className="container mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
+        <div className="container mx-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4 flex justify-between items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <Logo size="sm" />
-            <div className="p-2 rounded-lg bg-accent/10">
+            <div className="hidden sm:block p-2 rounded-lg bg-accent/10">
               <Shield className="w-5 h-5 text-accent" />
             </div>
-            <div>
-              <h1 className="text-lg font-bold">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-sm sm:text-base md:text-lg font-bold truncate">
                 Welcome, {userProfile?.fullName || 'Admin'}!
               </h1>
-              <p className="text-xs text-muted-foreground">Platform management</p>
+              <p className="text-xs text-muted-foreground hidden sm:block">Platform management</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             <NotificationBell />
             <ThemeToggle />
-            <Button variant="outline" onClick={() => setLogoutDialogOpen(true)}>Sign Out</Button>
+            <Button variant="outline" onClick={() => setLogoutDialogOpen(true)} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation">
+              <span className="hidden sm:inline">Sign Out</span>
+              <span className="sm:hidden">Out</span>
+            </Button>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8">
         {/* Welcome Section */}
-        <div className="mb-8 p-6 rounded-xl bg-gradient-accent text-white">
-          <h2 className="text-3xl font-bold mb-2">Platform Overview</h2>
-          <p className="text-white/90">Welcome back, {userProfile?.fullName || 'Admin'}!</p>
+        <div className="mb-4 sm:mb-6 md:mb-8 p-4 sm:p-5 md:p-6 rounded-xl bg-gradient-accent text-white">
+          <h2 className="text-xl sm:text-2xl md:text-3xl font-bold mb-2">Platform Overview</h2>
+          <p className="text-sm sm:text-base text-white/90">Welcome back, {userProfile?.fullName || 'Admin'}!</p>
         </div>
 
         {/* Platform Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
           <Card className="shadow-soft">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Users</CardTitle>
+            <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Total Users</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalUsers}</div>
+            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+              <div className="text-xl sm:text-2xl font-bold">{stats.totalUsers}</div>
               <p className="text-xs text-muted-foreground mt-1">
                 {stats.totalHosts} hosts, {stats.totalGuests} guests{stats.totalAdmins > 0 ? `, ${stats.totalAdmins} admin${stats.totalAdmins > 1 ? 's' : ''}` : ''}
               </p>
@@ -479,36 +482,36 @@ const AdminDashboard = () => {
           </Card>
 
           <Card 
-            className="shadow-soft cursor-pointer hover:shadow-medium transition-shadow"
+            className="shadow-soft cursor-pointer hover:shadow-medium transition-shadow touch-manipulation"
             onClick={() => navigate('/admin/active-listings')}
           >
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Active Listings</CardTitle>
+            <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Active Listings</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.activeListings}</div>
+            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+              <div className="text-xl sm:text-2xl font-bold">{stats.activeListings}</div>
               <p className="text-xs text-muted-foreground mt-1">Click to manage</p>
             </CardContent>
           </Card>
 
           <Card className="shadow-soft">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Bookings</CardTitle>
+            <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Total Bookings</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalBookings}</div>
+            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+              <div className="text-xl sm:text-2xl font-bold">{stats.totalBookings}</div>
             </CardContent>
           </Card>
 
           <Card 
-            className="shadow-soft cursor-pointer hover:shadow-medium transition-shadow"
+            className="shadow-soft cursor-pointer hover:shadow-medium transition-shadow touch-manipulation"
             onClick={handleViewEarningsBreakdown}
           >
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Earnings</CardTitle>
+            <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Total Earnings</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-accent">{formatPHP(stats.totalEarnings)}</div>
+            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+              <div className="text-xl sm:text-2xl font-bold text-accent">{formatPHP(stats.totalEarnings)}</div>
               <p className="text-xs text-muted-foreground mt-1">
                 Subscriptions: {formatPHP(stats.subscriptionRevenue)} • Service Fees: {formatPHP(stats.serviceFees)}
               </p>
@@ -518,82 +521,82 @@ const AdminDashboard = () => {
         </div>
 
         {/* Admin Tools */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/admin/users')}>
-            <CardHeader>
-              <Users className="w-8 h-8 text-primary mb-2" />
-              <CardTitle>User Management</CardTitle>
-              <CardDescription>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/users')}>
+            <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+              <Users className="w-6 h-6 sm:w-8 sm:h-8 text-primary mb-2" />
+              <CardTitle className="text-base sm:text-lg">User Management</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
                 Manage hosts, guests, and permissions
               </CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/admin/listings')}>
-            <CardHeader>
-              <Home className="w-8 h-8 text-primary mb-2" />
-              <CardTitle>Listings Review</CardTitle>
-              <CardDescription>
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/listings')}>
+            <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+              <Home className="w-6 h-6 sm:w-8 sm:h-8 text-primary mb-2" />
+              <CardTitle className="text-base sm:text-lg">Listings Review</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
                 Approve and moderate listings
               </CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/admin/payments')}>
-            <CardHeader>
-              <DollarSign className="w-8 h-8 text-accent mb-2" />
-              <CardTitle>Payment Management</CardTitle>
-              <CardDescription>
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/payments')}>
+            <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+              <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-accent mb-2" />
+              <CardTitle className="text-base sm:text-lg">Payment Management</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
                 Review and confirm payments
               </CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/admin/paypal-settings')}>
-            <CardHeader>
-              <CreditCard className="w-8 h-8 text-primary mb-2" />
-              <CardTitle>PayPal Settings</CardTitle>
-              <CardDescription>
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/paypal-settings')}>
+            <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+              <CreditCard className="w-6 h-6 sm:w-8 sm:h-8 text-primary mb-2" />
+              <CardTitle className="text-base sm:text-lg">PayPal Settings</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
                 Configure PayPal account for subscriptions
               </CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/admin/analytics')}>
-            <CardHeader>
-              <TrendingUp className="w-8 h-8 text-secondary mb-2" />
-              <CardTitle>Analytics</CardTitle>
-              <CardDescription>
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/analytics')}>
+            <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+              <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-secondary mb-2" />
+              <CardTitle className="text-base sm:text-lg">Analytics</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
                 View platform performance metrics
               </CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/admin/reports')}>
-            <CardHeader>
-              <FileText className="w-8 h-8 text-secondary mb-2" />
-              <CardTitle>Reports</CardTitle>
-              <CardDescription>
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/reports')}>
+            <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+              <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-secondary mb-2" />
+              <CardTitle className="text-base sm:text-lg">Reports</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
                 Generate platform reports
               </CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/admin/policies')}>
-            <CardHeader>
-              <Settings className="w-8 h-8 text-muted-foreground mb-2" />
-              <CardTitle>Policies & Settings</CardTitle>
-              <CardDescription>
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/policies')}>
+            <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+              <Settings className="w-6 h-6 sm:w-8 sm:h-8 text-muted-foreground mb-2" />
+              <CardTitle className="text-base sm:text-lg">Policies & Settings</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
                 Manage platform policies
               </CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/admin/messages')}>
-            <CardHeader>
-              <MessageSquare className="w-8 h-8 text-primary mb-2" />
-              <CardTitle>Messages</CardTitle>
-              <CardDescription>
+          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/messages')}>
+            <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+              <MessageSquare className="w-6 h-6 sm:w-8 sm:h-8 text-primary mb-2" />
+              <CardTitle className="text-base sm:text-lg">Messages</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
                 View and respond to messages
               </CardDescription>
             </CardHeader>
@@ -622,13 +625,13 @@ const AdminDashboard = () => {
 
       {/* Total Earnings Breakdown Dialog */}
       <Dialog open={earningsBreakdownOpen} onOpenChange={setEarningsBreakdownOpen}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5" />
+        <DialogContent className="max-w-[95vw] sm:max-w-6xl max-h-[90vh] overflow-y-auto p-3 sm:p-6">
+          <DialogHeader className="px-0 sm:px-0">
+            <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
+              <DollarSign className="h-4 w-4 sm:h-5 sm:w-5" />
               Total Earnings Breakdown
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-xs sm:text-sm">
               Detailed breakdown of all platform earnings (subscription payments + service fees)
             </DialogDescription>
           </DialogHeader>
@@ -644,13 +647,13 @@ const AdminDashboard = () => {
               <p className="text-muted-foreground">No earnings recorded yet</p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4 px-0 sm:px-0">
               {/* Summary */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
                 <Card>
-                  <CardContent className="pt-6">
-                    <p className="text-sm text-muted-foreground">Total Earnings</p>
-                    <p className="text-2xl font-bold text-accent">
+                  <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
+                    <p className="text-xs sm:text-sm text-muted-foreground">Total Earnings</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-accent">
                       {formatPHP(
                         allEarningsTransactions.reduce((sum, t) => sum + (t.amount || 0), 0)
                       )}
@@ -658,9 +661,9 @@ const AdminDashboard = () => {
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardContent className="pt-6">
-                    <p className="text-sm text-muted-foreground">Subscription Revenue</p>
-                    <p className="text-2xl font-bold text-primary">
+                  <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
+                    <p className="text-xs sm:text-sm text-muted-foreground">Subscription Revenue</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-primary">
                       {formatPHP(
                         allEarningsTransactions
                           .filter(t => t.earningsType === 'subscription')
@@ -670,9 +673,9 @@ const AdminDashboard = () => {
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardContent className="pt-6">
-                    <p className="text-sm text-muted-foreground">Service Fees</p>
-                    <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                  <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
+                    <p className="text-xs sm:text-sm text-muted-foreground">Service Fees</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-green-600 dark:text-green-400">
                       {formatPHP(
                         allEarningsTransactions
                           .filter(t => t.earningsType === 'service_fee')
@@ -682,85 +685,159 @@ const AdminDashboard = () => {
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardContent className="pt-6">
-                    <p className="text-sm text-muted-foreground">Total Transactions</p>
-                    <p className="text-2xl font-bold">{allEarningsTransactions.length}</p>
+                  <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
+                    <p className="text-xs sm:text-sm text-muted-foreground">Total Transactions</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold">{allEarningsTransactions.length}</p>
                   </CardContent>
                 </Card>
               </div>
 
               {/* Transactions Table */}
-              <div className="border rounded-lg">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Booking ID</TableHead>
-                      <TableHead>Listing</TableHead>
-                      <TableHead>Host Name</TableHead>
-                      <TableHead>Host Email</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {allEarningsTransactions.map((transaction) => (
-                      <TableRow key={transaction.id}>
-                        <TableCell>
-                          {transaction.createdAt
-                            ? new Date(transaction.createdAt).toLocaleDateString('en-US', {
-                                year: 'numeric',
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })
-                            : 'N/A'}
-                        </TableCell>
-                        <TableCell>
-                          <Badge 
-                            variant={transaction.earningsType === 'subscription' ? 'default' : 'secondary'}
-                            className={
-                              transaction.earningsType === 'subscription' 
-                                ? 'bg-primary' 
-                                : 'bg-green-500'
-                            }
-                          >
-                            {transaction.earningsType === 'subscription' ? 'Subscription' : 'Service Fee'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {transaction.bookingId ? (
-                            <code className="text-xs bg-muted px-2 py-1 rounded">
+              <div className="border rounded-lg overflow-x-auto">
+                {/* Mobile Card View */}
+                <div className="block md:hidden divide-y">
+                  {allEarningsTransactions.map((transaction) => (
+                    <div key={transaction.id} className="p-3 sm:p-4 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-muted-foreground">
+                            {transaction.createdAt
+                              ? new Date(transaction.createdAt).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : 'N/A'}
+                          </p>
+                        </div>
+                        <Badge 
+                          variant={transaction.earningsType === 'subscription' ? 'default' : 'secondary'}
+                          className={
+                            transaction.earningsType === 'subscription' 
+                              ? 'bg-primary text-xs' 
+                              : 'bg-green-500 text-xs'
+                          }
+                        >
+                          {transaction.earningsType === 'subscription' ? 'Subscription' : 'Service Fee'}
+                        </Badge>
+                      </div>
+                      <div className="space-y-1 text-xs">
+                        {transaction.bookingId && (
+                          <div>
+                            <span className="text-muted-foreground">Booking ID: </span>
+                            <code className="bg-muted px-1.5 py-0.5 rounded text-xs">
                               {transaction.bookingId.slice(0, 8)}
                             </code>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="max-w-[200px] truncate">
-                          {transaction.listingTitle || '—'}
-                        </TableCell>
-                        <TableCell>{transaction.hostName || '—'}</TableCell>
-                        <TableCell>
-                          {transaction.hostEmail ? (
+                          </div>
+                        )}
+                        {transaction.listingTitle && (
+                          <div>
+                            <span className="text-muted-foreground">Listing: </span>
+                            <span className="truncate block">{transaction.listingTitle}</span>
+                          </div>
+                        )}
+                        {transaction.hostName && (
+                          <div>
+                            <span className="text-muted-foreground">Host: </span>
+                            <span>{transaction.hostName}</span>
+                          </div>
+                        )}
+                        {transaction.hostEmail && (
+                          <div>
+                            <span className="text-muted-foreground">Email: </span>
                             <a
                               href={`mailto:${transaction.hostEmail}`}
-                              className="text-primary hover:underline text-sm"
+                              className="text-primary hover:underline truncate block"
                             >
                               {transaction.hostEmail}
                             </a>
-                          ) : (
-                            '—'
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right font-semibold text-accent">
+                          </div>
+                        )}
+                      </div>
+                      <div className="pt-1">
+                        <p className="text-base font-semibold text-accent">
                           {formatPHP(transaction.amount || 0)}
-                        </TableCell>
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                {/* Desktop Table View */}
+                <div className="hidden md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Booking ID</TableHead>
+                        <TableHead>Listing</TableHead>
+                        <TableHead>Host Name</TableHead>
+                        <TableHead>Host Email</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {allEarningsTransactions.map((transaction) => (
+                        <TableRow key={transaction.id}>
+                          <TableCell>
+                            {transaction.createdAt
+                              ? new Date(transaction.createdAt).toLocaleDateString('en-US', {
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : 'N/A'}
+                          </TableCell>
+                          <TableCell>
+                            <Badge 
+                              variant={transaction.earningsType === 'subscription' ? 'default' : 'secondary'}
+                              className={
+                                transaction.earningsType === 'subscription' 
+                                  ? 'bg-primary' 
+                                  : 'bg-green-500'
+                              }
+                            >
+                              {transaction.earningsType === 'subscription' ? 'Subscription' : 'Service Fee'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {transaction.bookingId ? (
+                              <code className="text-xs bg-muted px-2 py-1 rounded">
+                                {transaction.bookingId.slice(0, 8)}
+                              </code>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="max-w-[200px] truncate">
+                            {transaction.listingTitle || '—'}
+                          </TableCell>
+                          <TableCell>{transaction.hostName || '—'}</TableCell>
+                          <TableCell>
+                            {transaction.hostEmail ? (
+                              <a
+                                href={`mailto:${transaction.hostEmail}`}
+                                className="text-primary hover:underline text-sm"
+                              >
+                                {transaction.hostEmail}
+                              </a>
+                            ) : (
+                              '—'
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right font-semibold text-accent">
+                            {formatPHP(transaction.amount || 0)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
             </div>
           )}

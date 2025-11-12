@@ -102,18 +102,19 @@ const ManageUsers = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-screen bg-background p-3 sm:p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
         <Button
           variant="ghost"
           onClick={() => navigate('/admin/dashboard')}
-          className="mb-6"
+          className="mb-3 sm:mb-4 md:mb-6 h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation"
         >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Dashboard
+          <ArrowLeft className="h-4 w-4 mr-1.5 sm:mr-2" />
+          <span className="hidden sm:inline">Back to Dashboard</span>
+          <span className="sm:hidden">Back</span>
         </Button>
 
-        <h1 className="text-3xl font-bold mb-6">User Management</h1>
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6">User Management</h1>
 
         {loading ? (
           <Card>
@@ -143,95 +144,174 @@ const ManageUsers = () => {
           </Card>
         ) : (
           <Card>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Full Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Points</TableHead>
-                  <TableHead>Wallet Balance</TableHead>
-                  <TableHead>Joined</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.map((userItem) => (
-                  <TableRow key={userItem.id}>
-                    <TableCell className="font-medium">{userItem.fullName || 'N/A'}</TableCell>
-                    <TableCell>{userItem.email}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {(() => {
-                          // Get all roles - check roles array first, fallback to role field
-                          const allRoles = userItem.roles && Array.isArray(userItem.roles) && userItem.roles.length > 0
-                            ? userItem.roles
-                            : userItem.role
-                              ? [userItem.role]
-                              : [];
-                          
-                          // Remove duplicates and sort (admin first, then host, then guest)
-                          const uniqueRoles = Array.from(new Set(allRoles)).sort((a, b) => {
-                            const order = { admin: 0, host: 1, guest: 2 };
-                            return (order[a as keyof typeof order] ?? 99) - (order[b as keyof typeof order] ?? 99);
-                          });
-                          
-                          return uniqueRoles.map((role) => (
-                            <Badge
-                              key={role}
-                              variant={
-                                role === 'admin' 
-                                  ? 'default' 
-                                  : role === 'host'
-                                  ? 'secondary'
-                                  : 'outline'
-                              }
-                              className={
-                                role === 'admin'
-                                  ? 'bg-orange-500 hover:bg-orange-600'
-                                  : role === 'host'
-                                  ? 'bg-blue-500 hover:bg-blue-600'
-                                  : 'bg-cyan-500 hover:bg-cyan-600'
-                              }
-                            >
-                              {role}
-                            </Badge>
-                          ));
-                        })()}
+            {/* Mobile Card View */}
+            <div className="block md:hidden divide-y">
+              {users.map((userItem) => {
+                const allRoles = userItem.roles && Array.isArray(userItem.roles) && userItem.roles.length > 0
+                  ? userItem.roles
+                  : userItem.role
+                    ? [userItem.role]
+                    : [];
+                const uniqueRoles = Array.from(new Set(allRoles)).sort((a, b) => {
+                  const order = { admin: 0, host: 1, guest: 2 };
+                  return (order[a as keyof typeof order] ?? 99) - (order[b as keyof typeof order] ?? 99);
+                });
+                
+                return (
+                  <div key={userItem.id} className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{userItem.fullName || 'N/A'}</p>
+                        <p className="text-xs text-muted-foreground truncate">{userItem.email}</p>
                       </div>
-                    </TableCell>
-                    <TableCell>{userItem.points || 0}</TableCell>
-                    <TableCell>{formatPHP(userItem.walletBalance || 0)}</TableCell>
-                    <TableCell>
-                      {userItem.createdAt ? new Date(userItem.createdAt).toLocaleDateString() : 'N/A'}
-                    </TableCell>
-                    <TableCell className="text-right">
                       <Button
-                        variant="outline"
                         size="sm"
+                        variant="outline"
                         onClick={() => handleOpenMessageDialog(userItem)}
-                        className="gap-2"
+                        className="h-8 text-xs touch-manipulation"
                       >
-                        <MessageSquare className="h-4 w-4" />
+                        <MessageSquare className="h-3 w-3 mr-1" />
                         Message
                       </Button>
-                    </TableCell>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {uniqueRoles.map((role) => (
+                        <Badge
+                          key={role}
+                          variant={
+                            role === 'admin' 
+                              ? 'default' 
+                              : role === 'host'
+                              ? 'secondary'
+                              : 'outline'
+                          }
+                          className={
+                            role === 'admin'
+                              ? 'bg-orange-500 hover:bg-orange-600 text-xs'
+                              : role === 'host'
+                              ? 'bg-blue-500 hover:bg-blue-600 text-xs'
+                              : 'bg-cyan-500 hover:bg-cyan-600 text-xs'
+                          }
+                        >
+                          {role}
+                        </Badge>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div>
+                        <p className="text-muted-foreground">Points</p>
+                        <p className="font-medium">{userItem.points || 0}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Wallet</p>
+                        <p className="font-medium">{formatPHP(userItem.walletBalance || 0)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Joined</p>
+                        <p className="font-medium">
+                          {userItem.createdAt 
+                            ? new Date(userItem.createdAt).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+                            : 'N/A'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Full Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Points</TableHead>
+                    <TableHead>Wallet Balance</TableHead>
+                    <TableHead>Joined</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {users.map((userItem) => (
+                    <TableRow key={userItem.id}>
+                      <TableCell className="font-medium">{userItem.fullName || 'N/A'}</TableCell>
+                      <TableCell>{userItem.email}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {(() => {
+                            // Get all roles - check roles array first, fallback to role field
+                            const allRoles = userItem.roles && Array.isArray(userItem.roles) && userItem.roles.length > 0
+                              ? userItem.roles
+                              : userItem.role
+                                ? [userItem.role]
+                                : [];
+                            
+                            // Remove duplicates and sort (admin first, then host, then guest)
+                            const uniqueRoles = Array.from(new Set(allRoles)).sort((a, b) => {
+                              const order = { admin: 0, host: 1, guest: 2 };
+                              return (order[a as keyof typeof order] ?? 99) - (order[b as keyof typeof order] ?? 99);
+                            });
+                            
+                            return uniqueRoles.map((role) => (
+                              <Badge
+                                key={role}
+                                variant={
+                                  role === 'admin' 
+                                    ? 'default' 
+                                    : role === 'host'
+                                    ? 'secondary'
+                                    : 'outline'
+                                }
+                                className={
+                                  role === 'admin'
+                                    ? 'bg-orange-500 hover:bg-orange-600'
+                                    : role === 'host'
+                                    ? 'bg-blue-500 hover:bg-blue-600'
+                                    : 'bg-cyan-500 hover:bg-cyan-600'
+                                }
+                              >
+                                {role}
+                              </Badge>
+                            ));
+                          })()}
+                        </div>
+                      </TableCell>
+                      <TableCell>{userItem.points || 0}</TableCell>
+                      <TableCell>{formatPHP(userItem.walletBalance || 0)}</TableCell>
+                      <TableCell>
+                        {userItem.createdAt ? new Date(userItem.createdAt).toLocaleDateString() : 'N/A'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenMessageDialog(userItem)}
+                          className="gap-2 touch-manipulation"
+                        >
+                          <MessageSquare className="h-4 w-4" />
+                          Message
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </Card>
         )}
 
         {/* Message Dialog */}
         <Dialog open={messageDialogOpen} onOpenChange={setMessageDialogOpen}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-[95vw] sm:max-w-2xl p-4 sm:p-6">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <MessageSquare className="h-5 w-5" />
+              <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5" />
                 Send Message
               </DialogTitle>
-              <DialogDescription>
+              <DialogDescription className="text-xs sm:text-sm">
                 Send a message to {selectedUser?.fullName || selectedUser?.email || 'this user'}
               </DialogDescription>
             </DialogHeader>
@@ -283,7 +363,7 @@ const ManageUsers = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="message-content" className="text-base font-semibold">
+                  <Label htmlFor="message-content" className="text-sm sm:text-base font-semibold">
                     Message <span className="text-destructive">*</span>
                   </Label>
                   <Textarea
@@ -291,17 +371,17 @@ const ManageUsers = () => {
                     placeholder="Type your message here..."
                     value={messageContent}
                     onChange={(e) => setMessageContent(e.target.value)}
-                    className="min-h-[150px]"
+                    className="min-h-[120px] sm:min-h-[150px] text-base sm:text-sm"
                     required
                   />
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-xs sm:text-sm text-muted-foreground">
                     This message will be sent through the messaging system and the user will receive a notification.
                   </p>
                 </div>
               </div>
             )}
 
-            <DialogFooter>
+            <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
               <Button
                 variant="outline"
                 onClick={() => {
@@ -310,13 +390,14 @@ const ManageUsers = () => {
                   setSelectedUser(null);
                 }}
                 disabled={sending}
+                className="w-full sm:w-auto h-11 sm:h-auto text-sm sm:text-base touch-manipulation"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSendMessage}
                 disabled={sending || !messageContent.trim()}
-                className="gap-2"
+                className="gap-2 w-full sm:w-auto h-11 sm:h-auto text-sm sm:text-base touch-manipulation"
               >
                 {sending ? (
                   <>

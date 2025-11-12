@@ -4,7 +4,7 @@
  * Multi-step registration: Choose Plan -> Create Account -> Payment
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { getAvailablePlans, getPlanById } from '@/lib/billingService';
@@ -26,6 +26,20 @@ const HostRegister = () => {
 
   const plans = getAvailablePlans();
 
+  // Check if policies have been accepted
+  useEffect(() => {
+    const policyAccepted = sessionStorage.getItem('hostPolicyAccepted');
+    if (!policyAccepted) {
+      // Redirect to policy acceptance page first
+      navigate('/host/policies', { 
+        state: { 
+          returnTo: '/host/register',
+          planId: new URLSearchParams(window.location.search).get('planId')
+        } 
+      });
+    }
+  }, [navigate]);
+
   const handlePlanSelect = (plan: HostPlan) => {
     setSelectedPlan(plan);
     setCurrentStep('account');
@@ -42,9 +56,31 @@ const HostRegister = () => {
   };
 
   const handleGoogleSignUp = async () => {
+    // Check if policies have been accepted
+    const policyAccepted = sessionStorage.getItem('hostPolicyAccepted');
+    if (!policyAccepted) {
+      toast.error('To create a host account, you must first read and accept our policies and compliance terms. Please review them and accept before continuing.');
+      navigate('/host/policies', { 
+        state: { 
+          returnTo: '/host/register',
+          planId: selectedPlan?.id
+        } 
+      });
+      return;
+    }
+
     setLoading(true);
     try {
-      await signInWithGoogle('host');
+      const policyAcceptedDate = sessionStorage.getItem('hostPolicyAcceptedDate') || new Date().toISOString();
+      await signInWithGoogle('host', {
+        policyAccepted: true,
+        policyAcceptedDate
+      });
+      
+      // Clear session storage after successful signup
+      sessionStorage.removeItem('hostPolicyAccepted');
+      sessionStorage.removeItem('hostPolicyAcceptedDate');
+      
       // After successful signup, proceed to payment
       handleAccountCreated();
     } catch (error: any) {

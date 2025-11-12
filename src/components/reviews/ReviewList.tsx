@@ -1,39 +1,109 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Star, ArrowUpDown, Clock, TrendingUp, ThumbsUp } from "lucide-react";
 import { getListingReviews } from "@/lib/firestore";
+import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import type { Review } from "@/types";
 
 interface ReviewListProps {
   listingId: string;
+  refreshTrigger?: number; // When this changes, reload reviews
 }
 
 type SortOption = 'newest' | 'highest' | 'lowest' | 'most_helpful';
 
-export const ReviewList = ({ listingId }: ReviewListProps) => {
+export const ReviewList = ({ listingId, refreshTrigger }: ReviewListProps) => {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [helpfulReviews, setHelpfulReviews] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    loadReviews();
-    loadHelpfulReviews();
-  }, [listingId]);
-
-  const loadReviews = async () => {
+  const loadReviews = useCallback(async () => {
     try {
+      setLoading(true);
+      console.log('Loading reviews for listing:', listingId);
       const data = await getListingReviews(listingId);
+      console.log('Reviews loaded:', data.length, data);
       setReviews(data);
     } catch (error) {
-      console.error(error);
+      console.error('Error loading reviews:', error);
+      setReviews([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [listingId]);
+
+  // Set up real-time listener for reviews
+  useEffect(() => {
+    if (!listingId) return;
+
+    console.log('Setting up real-time listener for reviews, listingId:', listingId);
+    
+    // Try with orderBy first (requires index)
+    let reviewsQuery;
+    let hasOrderBy = true;
+    try {
+      reviewsQuery = query(
+        collection(db, 'reviews'),
+        where('listingId', '==', listingId),
+        orderBy('createdAt', 'desc')
+      );
+    } catch (orderByError: any) {
+      // If orderBy fails (missing index), fallback to query without orderBy
+      console.warn('OrderBy query failed, using fallback:', orderByError);
+      hasOrderBy = false;
+      reviewsQuery = query(
+        collection(db, 'reviews'),
+        where('listingId', '==', listingId)
+      );
+    }
+
+    const unsubscribe = onSnapshot(
+      reviewsQuery,
+      (snapshot) => {
+        console.log('Real-time reviews update:', snapshot.docs.length, 'reviews');
+        let reviewsData = snapshot.docs.map(doc => ({ 
+          id: doc.id, 
+          ...doc.data() 
+        } as Review));
+        
+        // If we used fallback query, sort manually
+        if (!hasOrderBy) {
+          reviewsData = reviewsData.sort((a, b) => 
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+        }
+        
+        setReviews(reviewsData);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Error in reviews subscription:', error);
+        // Fallback to manual load on error
+        loadReviews();
+      }
+    );
+
+    return () => {
+      console.log('Cleaning up reviews listener');
+      unsubscribe();
+    };
+  }, [listingId, loadReviews]);
+
+  // Also load on refreshTrigger change (for manual refreshes)
+  useEffect(() => {
+    if (refreshTrigger !== undefined && refreshTrigger > 0) {
+      loadReviews();
+    }
+  }, [refreshTrigger, loadReviews]);
+
+  useEffect(() => {
+    loadHelpfulReviews();
+  }, [listingId]);
 
   const loadHelpfulReviews = () => {
     const stored = localStorage.getItem(`helpful_reviews_${listingId}`);

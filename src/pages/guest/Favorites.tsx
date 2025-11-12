@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { toggleFavorite, toggleWishlist } from "@/lib/firestore";
 import type { UserProfile, Listing } from "@/types";
 import LoadingScreen from "@/components/ui/loading-screen";
+import { BackButton } from "@/components/shared/BackButton";
 
 const Favorites = () => {
   const navigate = useNavigate();
@@ -126,16 +127,7 @@ const Favorites = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <Button
-            variant="ghost"
-            onClick={() => navigate('/guest/dashboard')}
-            className="flex items-center gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Dashboard
-          </Button>
-        </div>
+        <BackButton to="/guest/dashboard" label="Back to Dashboard" className="mb-4 sm:mb-6" />
 
         <h1 className="text-3xl font-bold mb-6">Your Favorites</h1>
 

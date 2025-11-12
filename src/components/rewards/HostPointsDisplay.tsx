@@ -55,13 +55,13 @@ export const HostPointsDisplay = ({ points, userId, onRedeem }: HostPointsDispla
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Award className="h-5 w-5 text-yellow-500" />
-          Host Points & Rewards
+          Points & Rewards
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="text-center p-4 bg-primary/10 rounded-lg">
           <div className="text-3xl font-bold text-primary">{points}</div>
-          <div className="text-sm text-muted-foreground">Total Host Points</div>
+          <div className="text-sm text-muted-foreground">Total Points</div>
         </div>
 
         <div className="space-y-2">
@@ -99,7 +99,7 @@ export const HostPointsDisplay = ({ points, userId, onRedeem }: HostPointsDispla
         </div>
 
         <div className="text-xs text-muted-foreground mt-4 p-3 bg-muted rounded">
-          <p className="font-semibold mb-1">How to earn host points:</p>
+          <p className="font-semibold mb-1">How to earn points:</p>
           <ul className="space-y-1">
             <li>• Complete a booking: 1 point per ₱100 (minimum 50 points)</li>
             <li>• Receive a 5-star rating: +25 bonus points</li>

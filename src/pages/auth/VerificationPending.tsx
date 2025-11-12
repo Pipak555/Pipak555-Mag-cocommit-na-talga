@@ -80,8 +80,15 @@ const VerificationPending = () => {
     }
   };
 
-  const handleSignOut = async () => {
-    navigate('/guest/login');
+  const handleCancel = async () => {
+    // Navigate back to login based on user role, or default to guest login
+    if (userRole === 'host') {
+      navigate('/host/login');
+    } else if (userRole === 'admin') {
+      navigate('/admin/login');
+    } else {
+      navigate('/guest/login');
+    }
   };
 
   return (
@@ -192,11 +199,11 @@ const VerificationPending = () => {
                   </Button>
 
                   <Button 
-                    onClick={handleSignOut}
+                    onClick={handleCancel}
                     variant="ghost"
                     className="w-full"
                   >
-                    Sign Out
+                    Cancel
                   </Button>
                 </div>
               </>

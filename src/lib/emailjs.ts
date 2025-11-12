@@ -37,16 +37,19 @@ export const sendOTPEmail = async (
       return false;
     }
 
-        const templateParams = {
+        // Get the app URL from environment variable or use current origin
+    const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
+    
+    const templateParams = {
       to_email: email,
       to_name: fullName,
       user_role: role.charAt(0).toUpperCase() + role.slice(1),
       otp_code: otpCode, // 6-digit OTP code
-      verification_link: `${window.location.origin}/verify-otp`, // Link to OTP verification page
+      verification_link: `${appUrl}/verify-otp`, // Link to OTP verification page
       platform_name: 'Mojo Dojo Casa House',
       support_email: 'johnpatrickrobles143@gmail.com',
       year: new Date().getFullYear().toString(),
-      logo_url: 'https://mojo-dojo-casa-house-f31a5.web.app/logo.png',
+      logo_url: `${appUrl}/logo.png`,
       logo_alt: 'Mojo Dojo Casa House Logo',
     };
 
@@ -97,12 +100,15 @@ export const sendWelcomeEmail = async (
       return false;
     }
 
+    // Get the app URL from environment variable or use current origin
+    const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
+    
     // Welcome email - no verification link, just a link to the dashboard
     const templateParams = {
       to_email: email,
       to_name: fullName,
       user_role: role.charAt(0).toUpperCase() + role.slice(1),
-      verification_link: `${window.location.origin}/${role === 'guest' ? 'guest/login' : role === 'host' ? 'host/login' : 'admin/login'}`, // Link to login instead
+      verification_link: `${appUrl}/${role === 'guest' ? 'guest/login' : role === 'host' ? 'host/login' : 'admin/login'}`, // Link to login instead
       platform_name: 'Mojo Dojo Casa House',
       support_email: 'johnpatrickrobles143@gmail.com',
       year: new Date().getFullYear().toString(),
@@ -186,6 +192,9 @@ export const sendBookingConfirmationEmail = async (
     // If the template has ${{total_price}}, update it to just {{total_price}} in EmailJS dashboard
     const formattedPrice = totalPrice ? formatPHP(totalPrice) : formatPHP(0);
     
+    // Get the app URL from environment variable or use current origin
+    const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
+    
     // Ensure all template parameters have valid values (no null/undefined)
     // These must match exactly what's in the EmailJS template variables
     const templateParams = {
@@ -198,11 +207,11 @@ export const sendBookingConfirmationEmail = async (
       guests: String(guestsText), // Already formatted: "1 guest" or "2 guests"
       total_price: String(formattedPrice), // Formatted with currency: "₱900.00"
       booking_id: String(bookingId || 'N/A'),
-      booking_link: String(`${window.location.origin}/guest/dashboard`),
+      booking_link: String(`${appUrl}/guest/dashboard`),
       platform_name: 'Mojo Dojo Casa House',
       support_email: 'johnpatrickrobles143@gmail.com',
       year: String(new Date().getFullYear()),
-      logo_url: 'https://mojo-dojo-casa-house-f31a5.web.app/logo.png',
+      logo_url: `${appUrl}/logo.png`,
     };
 
     console.log('📧 Sending booking confirmation email with params:', {
