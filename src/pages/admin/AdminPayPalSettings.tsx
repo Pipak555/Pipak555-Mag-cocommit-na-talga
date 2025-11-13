@@ -191,7 +191,7 @@ const AdminPayPalSettings = () => {
     <div className="min-h-screen bg-background p-3 sm:p-4 md:p-6">
       <div className="max-w-2xl mx-auto">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
-          <Button variant="ghost" onClick={() => navigate('/admin/dashboard')} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation self-start">
+          <Button variant="ghost" onClick={() => navigate('/admin/dashboard')} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation self-start hover:bg-role-admin/10 hover:text-role-admin">
             <ArrowLeft className="h-4 w-4 mr-1.5 sm:mr-2" />
             Back
           </Button>

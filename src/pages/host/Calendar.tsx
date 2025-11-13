@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
@@ -66,20 +66,28 @@ const HostCalendar = () => {
   const [signOutDialogOpen, setSignOutDialogOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
-  // Fetch listings
+  // Fetch listings - only show approved listings (exclude draft, pending, rejected)
   useEffect(() => {
     if (!user) return;
 
     const listingsQuery = query(
       collection(db, 'listing'),
-      where('hostId', '==', user.uid)
+      where('hostId', '==', user.uid),
+      where('status', '==', 'approved')
     );
 
     const unsubscribe = onSnapshot(listingsQuery, (snapshot) => {
-      const listingsData = snapshot.docs.map(doc => ({
+      const listingsData = snapshot.docs
+        .map(doc => ({
         id: doc.id,
         ...doc.data()
-      } as Listing));
+        } as Listing))
+        // Client-side safety filter: only include approved listings (exclude draft, pending, rejected)
+        .filter(listing => {
+          const status = listing.status?.toLowerCase();
+          // Only show approved listings - explicitly exclude draft, pending, and rejected
+          return status === 'approved';
+        });
       setListings(listingsData);
     });
 
@@ -135,17 +143,22 @@ const HostCalendar = () => {
 
   // Get status color
   const getStatusColor = (booking: BookingWithListing) => {
+    // Completed bookings - always green
+    if (booking.status === 'completed') {
+      return 'bg-green-500'; // Successful/Completed
+    }
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const checkOut = new Date(booking.checkOut);
     checkOut.setHours(0, 0, 0, 0);
 
-    // Completed bookings
+    // Confirmed bookings that have passed checkout date
     if (checkOut < today && booking.status === 'confirmed') {
       return 'bg-green-500'; // Successful
     }
 
-    // Upcoming bookings (including today)
+    // Upcoming confirmed bookings (including today)
     if (booking.status === 'confirmed') {
       return 'bg-blue-500'; // Upcoming
     }
@@ -165,17 +178,22 @@ const HostCalendar = () => {
 
   // Get status label
   const getStatusLabel = (booking: BookingWithListing) => {
+    // Completed bookings
+    if (booking.status === 'completed') {
+      return 'Completed';
+    }
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const checkOut = new Date(booking.checkOut);
     checkOut.setHours(0, 0, 0, 0);
 
-    // Completed bookings
+    // Confirmed bookings that have passed checkout date
     if (checkOut < today && booking.status === 'confirmed') {
       return 'Successful';
     }
 
-    // Upcoming bookings (including today)
+    // Upcoming confirmed bookings (including today)
     if (booking.status === 'confirmed') {
       return 'Upcoming';
     }
@@ -216,21 +234,27 @@ const HostCalendar = () => {
     return days;
   };
 
-  // Get bookings for a specific date
+  // Get bookings for a specific date - strictly uses database checkIn/checkOut dates
   const getBookingsForDate = (date: Date | null) => {
     if (!date) return [];
 
     const filteredBookings = getFilteredBookingsForCalendar();
-    const dateTime = date.getTime();
-    date.setHours(0, 0, 0, 0);
+    
+    // Get the calendar date string in YYYY-MM-DD format (use local date to match calendar display)
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
 
     return filteredBookings.filter(booking => {
-      const checkIn = new Date(booking.checkIn);
-      const checkOut = new Date(booking.checkOut);
-      checkIn.setHours(0, 0, 0, 0);
-      checkOut.setHours(0, 0, 0, 0);
+      // Extract date strings from ISO dates (UTC dates from database)
+      // The date part of an ISO string represents the UTC date
+      const checkInStr = booking.checkIn.split('T')[0];
+      const checkOutStr = booking.checkOut.split('T')[0];
 
-      return dateTime >= checkIn.getTime() && dateTime <= checkOut.getTime();
+      // Compare calendar date (local) with booking dates (UTC date strings)
+      // This ensures we're comparing the actual calendar day with the booking date range
+      return dateStr >= checkInStr && dateStr <= checkOutStr;
     });
   };
 
@@ -250,16 +274,21 @@ const HostCalendar = () => {
       });
     } else if (statusFilter === 'upcoming') {
       filtered = bookings.filter(booking => {
-        const checkIn = new Date(booking.checkIn);
+      const checkIn = new Date(booking.checkIn);
         checkIn.setHours(0, 0, 0, 0);
         return checkIn > today && booking.status === 'confirmed';
       });
     } else if (statusFilter === 'successful') {
       filtered = bookings.filter(booking => {
-        const checkOut = new Date(booking.checkOut);
-        checkOut.setHours(0, 0, 0, 0);
+        // Include completed bookings
+        if (booking.status === 'completed') {
+          return true;
+        }
+        // Include confirmed bookings that have passed checkout
+      const checkOut = new Date(booking.checkOut);
+      checkOut.setHours(0, 0, 0, 0);
         return checkOut < today && booking.status === 'confirmed';
-      });
+    });
     } else if (statusFilter === 'pending') {
       filtered = bookings.filter(booking => booking.status === 'pending');
     } else if (statusFilter === 'cancelled') {
@@ -268,12 +297,12 @@ const HostCalendar = () => {
       // 'all' - show all non-cancelled bookings
       filtered = bookings.filter(booking => booking.status !== 'cancelled');
     }
-    
+
     // Filter by selected listing
     if (selectedListing !== 'all') {
       filtered = filtered.filter(b => b.listingId === selectedListing);
     }
-    
+
     return filtered;
   };
 
@@ -282,58 +311,78 @@ const HostCalendar = () => {
     return getFilteredBookingsForCalendar().filter(booking => booking.status === 'confirmed');
   };
 
-  // Check if a date has bookings (based on current filter)
-  const isDateBooked = (date: Date): boolean => {
+  // Check if a date has bookings (based on current filter) - strictly uses database dates
+  const isDateBooked = useCallback((date: Date): boolean => {
     const filteredBookings = getFilteredBookingsForCalendar();
     if (!filteredBookings.length) return false;
     
-    const dateTime = date.getTime();
-    date.setHours(0, 0, 0, 0);
+    // Get the calendar date string in YYYY-MM-DD format (use local date to match calendar display)
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
     
     return filteredBookings.some(booking => {
-      const checkIn = new Date(booking.checkIn);
-      const checkOut = new Date(booking.checkOut);
-      checkIn.setHours(0, 0, 0, 0);
-      checkOut.setHours(0, 0, 0, 0);
+      // Extract date strings from ISO dates (UTC dates from database)
+      const checkInStr = booking.checkIn.split('T')[0];
+      const checkOutStr = booking.checkOut.split('T')[0];
       
-      return dateTime >= checkIn.getTime() && dateTime <= checkOut.getTime();
+      // Compare calendar date (local) with booking dates (UTC date strings)
+      return dateStr >= checkInStr && dateStr <= checkOutStr;
     });
-  };
+  }, [bookings, statusFilter, selectedListing]);
 
-  // Get booking status for a date (for styling)
-  const getDateBookingStatus = (date: Date): 'today' | 'upcoming' | 'successful' | 'pending' | 'cancelled' | null => {
+  // Get booking status for a date (for styling) - strictly uses database status
+  const getDateBookingStatus = useCallback((date: Date): 'today' | 'upcoming' | 'successful' | 'pending' | 'cancelled' | null => {
     const dateBookings = getBookingsForDate(date);
     if (dateBookings.length === 0) return null;
     
+    // Get date strings using local dates to match calendar display
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    date.setHours(0, 0, 0, 0);
+    const todayYear = today.getFullYear();
+    const todayMonth = String(today.getMonth() + 1).padStart(2, '0');
+    const todayDay = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${todayYear}-${todayMonth}-${todayDay}`;
+    
+    const dateYear = date.getFullYear();
+    const dateMonth = String(date.getMonth() + 1).padStart(2, '0');
+    const dateDay = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${dateYear}-${dateMonth}-${dateDay}`;
     
     // Check if today
-    if (date.getTime() === today.getTime()) {
+    if (dateStr === todayStr) {
       return 'today';
     }
     
-    // Check booking statuses
-    const hasPending = dateBookings.some(b => b.status === 'pending');
-    const hasCancelled = dateBookings.some(b => b.status === 'cancelled');
-    const hasConfirmed = dateBookings.some(b => b.status === 'confirmed');
+    // Use the booking status directly from the database
+    // Priority: completed > cancelled > pending > confirmed
+    const booking = dateBookings[0]; // Use first booking if multiple
     
-    if (hasCancelled) return 'cancelled';
-    if (hasPending) return 'pending';
-    if (hasConfirmed) {
-      // Check if successful (check-out has passed)
-      const checkOut = new Date(dateBookings[0].checkOut);
-      checkOut.setHours(0, 0, 0, 0);
-      if (checkOut < today) return 'successful';
-      return 'upcoming';
+    // Map database status to calendar status
+    if (booking.status === 'completed') {
+      return 'successful'; // Green
+    }
+    if (booking.status === 'cancelled') {
+      return 'cancelled'; // Gray
+    }
+    if (booking.status === 'pending') {
+      return 'pending'; // Orange
+    }
+    if (booking.status === 'confirmed') {
+      // For confirmed bookings, check if checkout has passed
+      // Compare booking checkout date (UTC string) with today's date (local string)
+      const checkOutStr = booking.checkOut.split('T')[0];
+      if (checkOutStr < todayStr) {
+        return 'successful'; // Past confirmed booking = successful (green)
+      }
+      return 'upcoming'; // Future confirmed booking = upcoming (blue)
     }
     
     return null;
-  };
+  }, [bookings, statusFilter, selectedListing]);
 
   // Check if a date is blocked (for selected listing)
-  const isDateBlocked = (date: Date): boolean => {
+  const isDateBlocked = useCallback((date: Date): boolean => {
     if (selectedListing === 'all') return false;
     
     const listing = listings.find(l => l.id === selectedListing);
@@ -343,7 +392,7 @@ const HostCalendar = () => {
     
     const dateStr = date.toISOString().split('T')[0];
     return listing.blockedDates.includes(dateStr);
-  };
+  }, [listings, selectedListing]);
 
   // Check if a date should be disabled
   const isDateDisabled = (date: Date): boolean => {
@@ -391,6 +440,23 @@ const HostCalendar = () => {
     }
   };
 
+  // Memoize modifiers to ensure they re-evaluate when bookings or filters change
+  const modifiers = useMemo(() => ({
+    booked: (date: Date) => isDateBooked(date),
+    blocked: (date: Date) => isDateBlocked(date),
+    today: (date: Date) => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const dateCopy = new Date(date);
+      dateCopy.setHours(0, 0, 0, 0);
+      return dateCopy.getTime() === today.getTime();
+    },
+    upcoming: (date: Date) => getDateBookingStatus(date) === 'upcoming',
+    successful: (date: Date) => getDateBookingStatus(date) === 'successful',
+    pending: (date: Date) => getDateBookingStatus(date) === 'pending',
+    cancelled: (date: Date) => getDateBookingStatus(date) === 'cancelled',
+  }), [isDateBooked, isDateBlocked, getDateBookingStatus]);
+
   const calendarDays = generateCalendarDays();
   const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const monthNumber = String(currentDate.getMonth() + 1).padStart(2, '0');
@@ -407,7 +473,7 @@ const HostCalendar = () => {
           <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             <NotificationBell />
             <ThemeToggle />
-            <Button variant="outline" onClick={() => setSignOutDialogOpen(true)} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation">
+            <Button variant="outline" onClick={() => setSignOutDialogOpen(true)} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation hover:bg-role-host/10 hover:text-role-host hover:border-role-host/30">
               <span className="hidden sm:inline">Sign Out</span>
               <span className="sm:hidden">Out</span>
             </Button>
@@ -434,16 +500,16 @@ const HostCalendar = () => {
             <div className="flex flex-col md:flex-row items-center justify-between gap-4">
               {/* Date Navigation */}
               <div className="flex items-center gap-4">
-                <Button variant="outline" size="icon" onClick={previousMonth}>
+                <Button variant="outline" size="icon" onClick={previousMonth} className="hover:bg-role-host/10 hover:text-role-host hover:border-role-host/30">
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <h2 className="text-xl font-semibold min-w-[200px] text-center">
                   {monthName}
                 </h2>
-                <Button variant="outline" size="icon" onClick={nextMonth}>
+                <Button variant="outline" size="icon" onClick={nextMonth} className="hover:bg-role-host/10 hover:text-role-host hover:border-role-host/30">
                   <ChevronRight className="h-4 w-4" />
                 </Button>
-                <Button variant="outline" onClick={goToToday}>
+                <Button variant="outline" onClick={goToToday} className="hover:bg-role-host/10 hover:text-role-host hover:border-role-host/30">
                   Today
                 </Button>
               </div>
@@ -544,67 +610,55 @@ const HostCalendar = () => {
         </Card>
 
         {/* Calendar View - Single Month */}
-        <Card className="shadow-lg">
-          <CardHeader className="pb-4 sm:pb-6 px-4 sm:px-6">
-            <CardTitle className="text-lg sm:text-xl font-bold flex items-center gap-2">
-              <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
-              Select Dates
-            </CardTitle>
-            <CardDescription className="text-xs sm:text-sm text-muted-foreground mt-1">
-              View booking availability calendar
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="px-4 sm:px-6 pb-4 sm:pb-6">
+          <Card className="shadow-lg">
+            <CardHeader className="pb-4 sm:pb-6 px-4 sm:px-6">
+              <CardTitle className="text-lg sm:text-xl font-bold flex items-center gap-2">
+                <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+                Select Dates
+              </CardTitle>
+              <CardDescription className="text-xs sm:text-sm text-muted-foreground mt-1">
+                View booking availability calendar
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="px-4 sm:px-6 pb-4 sm:pb-6">
             <div className="w-full flex justify-center">
-              <Calendar
+                <Calendar
+                key={`calendar-${currentDate.getFullYear()}-${currentDate.getMonth()}-${bookings.length}-${statusFilter}-${selectedListing}`}
                 mode="single"
                 month={currentDate}
                 onMonthChange={setCurrentDate}
-                disabled={isDateDisabled}
-                modifiers={{
-                  booked: (date) => isDateBooked(date),
-                  blocked: (date) => isDateBlocked(date),
-                  today: (date) => {
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    date.setHours(0, 0, 0, 0);
-                    return date.getTime() === today.getTime();
-                  },
-                  upcoming: (date) => getDateBookingStatus(date) === 'upcoming',
-                  successful: (date) => getDateBookingStatus(date) === 'successful',
-                  pending: (date) => getDateBookingStatus(date) === 'pending',
-                  cancelled: (date) => getDateBookingStatus(date) === 'cancelled',
-                }}
-                modifiersClassNames={{
+                  disabled={isDateDisabled}
+                modifiers={modifiers}
+                  modifiersClassNames={{
                   booked: "bg-blue-500/20 text-blue-600 dark:text-blue-400",
-                  blocked: "bg-red-500/20 text-red-600 dark:text-red-400",
+                    blocked: "bg-red-500/20 text-red-600 dark:text-red-400",
                   today: "bg-orange-500/20 text-orange-600 dark:text-orange-400 font-semibold",
                   upcoming: "bg-blue-500/20 text-blue-600 dark:text-blue-400",
                   successful: "bg-green-500/20 text-green-600 dark:text-green-400",
                   pending: "bg-orange-500/20 text-orange-600 dark:text-orange-400",
                   cancelled: "bg-gray-500/20 text-gray-600 dark:text-gray-400",
-                }}
-                classNames={{
+                  }}
+                  classNames={{
                   months: "flex flex-col",
-                  month: "space-y-4",
+                    month: "space-y-4",
                   caption: "flex justify-center pt-1 relative items-center mb-4",
                   caption_label: "text-lg font-bold uppercase tracking-wide",
-                  nav: "space-x-1 flex items-center",
-                  nav_button: "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
-                  nav_button_previous: "absolute left-1",
-                  nav_button_next: "absolute right-1",
-                  table: "w-full border-collapse space-y-1",
-                  head_row: "flex",
+                    nav: "space-x-1 flex items-center",
+                    nav_button: "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
+                    nav_button_previous: "absolute left-1",
+                    nav_button_next: "absolute right-1",
+                    table: "w-full border-collapse space-y-1",
+                    head_row: "flex",
                   head_cell: "text-muted-foreground rounded-md w-12 font-semibold text-sm uppercase tracking-wide",
-                  row: "flex w-full mt-2",
+                    row: "flex w-full mt-2",
                   cell: "h-12 w-12 text-center text-sm p-0 relative",
                   day: "h-12 w-12 p-0 font-normal aria-selected:opacity-100 rounded-md hover:bg-accent transition-colors",
-                  day_selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground rounded-md",
+                  day_selected: "bg-role-host text-role-host-foreground hover:bg-role-host hover:text-role-host-foreground focus:bg-role-host focus:text-role-host-foreground rounded-md",
                   day_today: "bg-accent text-accent-foreground font-semibold",
                   day_outside: "day-outside text-muted-foreground opacity-50",
-                  day_disabled: "text-muted-foreground opacity-50 cursor-not-allowed",
-                  day_hidden: "invisible",
-                }}
+                    day_disabled: "text-muted-foreground opacity-50 cursor-not-allowed",
+                    day_hidden: "invisible",
+                  }}
                 onDayClick={(date) => {
                   const bookings = getBookingsForDate(date);
                   if (bookings.length > 0) {
@@ -613,10 +667,10 @@ const HostCalendar = () => {
                   }
                 }}
                 numberOfMonths={1}
-              />
-            </div>
-          </CardContent>
-        </Card>
+                />
+              </div>
+            </CardContent>
+          </Card>
       </main>
 
       {/* Booking Details Dialog */}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { EmailVerificationBanner } from "@/components/guest/EmailVerificationBanner";
 import { getListing, createBooking, getListingRating, getBookings } from "@/lib/firestore";
 import { isListingAvailableForDates } from "@/lib/availabilityUtils";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,7 @@ import LoadingScreen from "@/components/ui/loading-screen";
 const ListingDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, userProfile } = useAuth();
   const [listing, setListing] = useState<Listing | null>(null);
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>();
   const [guests, setGuests] = useState(1);
@@ -157,9 +158,8 @@ const ListingDetails = () => {
   const loadConfirmedBookings = async () => {
     if (!id) return;
     try {
-      // Fetch all confirmed bookings for this listing
-      const allBookings = await getBookings({ status: 'confirmed' });
-      const listingBookings = allBookings.filter(booking => booking.listingId === id);
+      // Fetch confirmed bookings for this specific listing
+      const listingBookings = await getBookings({ listingId: id, status: 'confirmed' });
       setConfirmedBookings(listingBookings);
     } catch (error) {
       console.error('Error loading confirmed bookings:', error);
@@ -195,17 +195,21 @@ const ListingDetails = () => {
   };
 
   // Check if a date is in the listing's available dates
+  // This ensures guests can only select dates that are within the listing's available date range
   const isDateAvailable = (date: Date): boolean => {
     if (!listing?.availableDates || listing.availableDates.length === 0) {
       // If no available dates specified, all dates are available (except booked/blocked ones)
       return true;
     }
     
+    // Convert date to ISO string format (YYYY-MM-DD) to match availableDates format
     const dateStr = date.toISOString().split('T')[0];
+    // Only allow dates that are explicitly in the availableDates array
     return listing.availableDates.includes(dateStr);
   };
 
-  // Check if a date should be disabled
+  // Check if a date should be disabled in the date picker
+  // This prevents guests from selecting dates outside the listing's available range
   const isDateDisabled = (date: Date): boolean => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -219,6 +223,7 @@ const ListingDetails = () => {
     if (isDateBlocked(dateOnly)) return true;
     
     // Disable if not in available dates (if availableDates is specified)
+    // This is the key check: if listing has availableDates, only those dates can be selected
     if (!isDateAvailable(dateOnly)) return true;
     
     // Disable if booked (but keep showing as "booked" via modifiers)
@@ -310,6 +315,12 @@ const ListingDetails = () => {
     // Check if user is signed in
     if (!user) {
       toast.error("Please sign in to book this listing");
+      return;
+    }
+
+    // Check if email is verified
+    if (!userProfile?.emailVerified) {
+      toast.error("Please verify your email address to enable booking features. Check your inbox for a verification link.");
       return;
     }
 
@@ -490,6 +501,8 @@ const ListingDetails = () => {
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6">
       <div className="max-w-7xl mx-auto">
+        {/* Email Verification Banner */}
+        <EmailVerificationBanner />
         <BackButton to="/guest/browse" className="mb-4" />
 
         <div className="grid lg:grid-cols-12 gap-4 sm:gap-6 lg:gap-8">
@@ -504,17 +517,25 @@ const ListingDetails = () => {
                   {/* Slider Container */}
                   <div 
                     className="flex transition-transform duration-500 ease-in-out h-full"
-                    style={{ transform: `translateX(-${currentImageIndex * 100}%)` }}
+                    style={{ 
+                      width: `${listing.images.length * 100}%`,
+                      transform: `translateX(-${(currentImageIndex * 100) / listing.images.length}%)`
+                    }}
                   >
                     {listing.images.map((img, index) => (
                       <div 
                         key={index}
-                        className="min-w-full h-full flex-shrink-0 relative"
+                        className="relative flex-shrink-0"
+                        style={{ 
+                          width: `${100 / listing.images.length}%`,
+                          height: '100%'
+                        }}
                       >
                         <img 
                           src={img || '/placeholder.svg'} 
                           alt={`${listing.title} - Image ${index + 1}`}
                           className="w-full h-full object-cover"
+                          loading={index === 0 ? "eager" : "lazy"}
                         />
                       </div>
                     ))}
@@ -715,26 +736,27 @@ const ListingDetails = () => {
                   blocked: "bg-red-500/20 text-red-600 dark:text-red-400",
                 }}
                 classNames={{
-                  months: "flex flex-row space-x-4",
+                  months: "flex flex-row space-x-4 sm:space-x-6",
                   month: "space-y-4",
-                  caption: "flex justify-center pt-1 relative items-center",
-                  caption_label: "text-sm font-medium",
+                  caption: "flex justify-center pt-1 relative items-center mb-2",
+                  caption_label: "text-sm font-semibold",
                   nav: "space-x-1 flex items-center",
-                  nav_button: "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
+                  nav_button: "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 hover:bg-accent rounded-md transition-colors",
                   nav_button_previous: "absolute left-1",
                   nav_button_next: "absolute right-1",
                   table: "w-full border-collapse space-y-1",
-                  head_row: "flex",
+                  head_row: "flex mb-1",
                   head_cell: "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem]",
-                  row: "flex w-full mt-2",
-                  cell: "h-9 w-9 text-center text-sm p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
-                  day: "h-9 w-9 p-0 font-normal aria-selected:opacity-100 rounded-md hover:bg-accent transition-colors",
-                  day_range_end: "day-range-end",
-                  day_selected: "bg-green-500 text-white hover:bg-green-600 hover:text-white focus:bg-green-500 focus:text-white rounded-md",
-                  day_today: "bg-accent text-accent-foreground",
-                  day_outside: "day-outside text-muted-foreground opacity-50 aria-selected:bg-accent/50 aria-selected:text-muted-foreground aria-selected:opacity-30",
-                  day_disabled: "text-muted-foreground opacity-50 cursor-not-allowed",
-                  day_range_middle: "aria-selected:bg-green-100 dark:aria-selected:bg-green-900/30 aria-selected:text-green-900 dark:aria-selected:text-green-100",
+                  row: "flex w-full mt-1",
+                  cell: "h-9 w-9 text-center text-sm p-0 relative focus-within:relative focus-within:z-20 [&:has([aria-selected].day-range-start)]:rounded-l-md [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected])]:bg-role-guest/10 first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md",
+                  day: "h-9 w-9 p-0 font-normal rounded-md hover:bg-accent transition-all duration-200 relative z-10",
+                  day_range_start: "bg-role-guest text-role-guest-foreground hover:bg-role-guest hover:text-role-guest-foreground rounded-l-md",
+                  day_range_end: "bg-role-guest text-role-guest-foreground hover:bg-role-guest hover:text-role-guest-foreground rounded-r-md",
+                  day_selected: "bg-role-guest text-role-guest-foreground hover:bg-role-guest hover:text-role-guest-foreground rounded-md",
+                  day_today: "bg-accent/50 text-accent-foreground font-semibold",
+                  day_outside: "day-outside text-muted-foreground opacity-50 aria-selected:bg-role-guest/50 aria-selected:text-role-guest-foreground aria-selected:opacity-100",
+                  day_disabled: "text-muted-foreground opacity-30 cursor-not-allowed hover:bg-transparent",
+                  day_range_middle: "bg-role-guest/10 text-role-guest hover:bg-role-guest/20 rounded-none",
                   day_hidden: "invisible",
                 }}
                 numberOfMonths={2}
@@ -917,12 +939,12 @@ const ListingDetails = () => {
 
         {/* Lightbox/Modal for Full-Size Image Viewing */}
         <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
-          <DialogContent className="max-w-[98vw] max-h-[98vh] w-auto h-auto p-0 bg-black/95 border-none m-1">
+          <DialogContent className="w-[1600px] h-[1000px] max-w-[95vw] max-h-[95vh] p-0 bg-black/95 border-none m-0 rounded-lg">
             <DialogTitle className="sr-only">View Full Size Image</DialogTitle>
             <DialogDescription className="sr-only">
               Viewing image {lightboxImageIndex + 1} of {listing?.images?.length || 0} for {listing?.title}
             </DialogDescription>
-            <div className="relative w-full h-full flex items-center justify-center min-h-[400px]">
+            <div className="relative w-full h-full">
               {listing?.images && listing.images.length > 0 && (
                 <>
                   {/* Close Button */}
@@ -941,11 +963,13 @@ const ListingDetails = () => {
                   </div>
 
                   {/* Main Image */}
-                  <div className="w-full h-full flex items-center justify-center p-2 sm:p-4 pt-12 pb-20 sm:pb-24">
+                  <div className="absolute inset-0" style={{ paddingTop: '40px', paddingBottom: '80px' }}>
                     <img 
+                      key={lightboxImageIndex}
                       src={listing.images[lightboxImageIndex] || '/placeholder.svg'} 
                       alt={`${listing.title} - Image ${lightboxImageIndex + 1}`}
-                      className="max-w-full max-h-[calc(98vh-160px)] object-contain"
+                      className="w-full h-full object-cover"
+                      loading="eager"
                     />
                   </div>
 
@@ -977,7 +1001,7 @@ const ListingDetails = () => {
 
                   {/* Thumbnail Strip at Bottom for Navigation */}
                   {listing.images.length > 1 && (
-                    <div className="absolute bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-sm rounded-lg p-2 sm:p-3 z-50 max-w-[calc(98vw-32px)]">
+                    <div className="absolute bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-sm rounded-lg p-2 sm:p-3 z-50 max-w-[calc(80vw-32px)]">
                       <div className="flex gap-2 sm:gap-3 overflow-x-auto scrollbar-hide px-1">
                         {listing.images.map((img, i) => (
                           <button

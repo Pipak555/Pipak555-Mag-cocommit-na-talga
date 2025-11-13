@@ -5,19 +5,21 @@ import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { ArrowLeft, User, Bell, Shield, Calendar, Mail, Smartphone, X, Gift } from "lucide-react";
+import { ArrowLeft, User, Bell, Calendar, Mail, Smartphone, X, Gift, Bookmark } from "lucide-react";
 import { PointsDisplay } from "@/components/rewards/PointsDisplay";
 import { redeemPointsForCoupon } from "@/lib/pointsService";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/empty-state";
-import { getBookings, updateBooking } from "@/lib/firestore";
-import { processBookingRefund } from "@/lib/paymentService";
-import type { UserProfile, Booking, NotificationPreferences } from "@/types";
+import { getBookings, updateBooking, toggleWishlist, toggleFavorite, getListing } from "@/lib/firestore";
+import { createCancellationRequest } from "@/lib/cancellationRequestService";
+import { ListingCard } from "@/components/listings/ListingCard";
+import type { UserProfile, Booking, NotificationPreferences, Listing } from "@/types";
 import { formatPHP } from "@/lib/currency";
 import LoadingScreen from "@/components/ui/loading-screen";
 import {
@@ -38,11 +40,20 @@ const GuestAccountSettings = () => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [userBookings, setUserBookings] = useState<Booking[]>([]);
-  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'profile');
+  const [wishlistListings, setWishlistListings] = useState<Listing[]>([]);
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [wishlist, setWishlist] = useState<string[] | any[]>([]);
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = searchParams.get('tab');
+    // If security tab is requested, default to profile instead
+    if (tab === 'security') return 'profile';
+    return tab || 'profile';
+  });
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState('');
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>({
     email: {
       bookingConfirmations: true,
@@ -73,13 +84,19 @@ const GuestAccountSettings = () => {
   useEffect(() => {
     const tab = searchParams.get('tab');
     if (tab) {
-      setActiveTab(tab);
+      // If security tab is requested, default to profile instead
+      if (tab === 'security') {
+        setActiveTab('profile');
+      } else {
+        setActiveTab(tab);
+      }
     }
   }, [searchParams]);
 
   useEffect(() => {
     if (user && profile && userRole === 'guest') {
       loadBookings();
+      loadWishlistListings();
       // Load notification preferences
       if (profile.notifications) {
         setNotificationPrefs(profile.notifications);
@@ -94,6 +111,8 @@ const GuestAccountSettings = () => {
       if (docSnap.exists()) {
         const data = docSnap.data() as UserProfile;
         setProfile(data);
+        setFavorites(data.favorites || []);
+        setWishlist(data.wishlist || []);
       }
     } catch (error) {
       console.error(error);
@@ -107,6 +126,57 @@ const GuestAccountSettings = () => {
       setUserBookings(bookings);
     } catch (error) {
       console.error('Error loading bookings:', error);
+    }
+  };
+
+  const loadWishlistListings = async () => {
+    if (!user || !profile?.wishlist?.length) {
+      setWishlistListings([]);
+      return;
+    }
+    try {
+      // Handle both old format (string[]) and new format (WishlistItem[])
+      const listingIds = profile.wishlist.map(item => 
+        typeof item === 'string' ? item : item.listingId
+      );
+      const wishlistDetails = await Promise.all(
+        listingIds.map(id => getListing(id))
+      );
+      setWishlistListings(wishlistDetails.filter((l): l is Listing => l !== null));
+    } catch (error) {
+      console.error('Error loading wishlist listings:', error);
+      setWishlistListings([]);
+    }
+  };
+
+  const handleFavorite = async (listingId: string) => {
+    if (!user) {
+      toast.error("Please login to manage favorites");
+      return;
+    }
+    try {
+      const newFavorites = await toggleFavorite(user.uid, listingId, favorites);
+      setFavorites(newFavorites);
+      setProfile(prev => prev ? { ...prev, favorites: newFavorites } : null);
+      toast.success(newFavorites.includes(listingId) ? "Added to favorites" : "Removed from favorites");
+    } catch (error) {
+      toast.error("Failed to update favorites");
+    }
+  };
+
+  const handleWishlist = async (listingId: string) => {
+    if (!user) {
+      toast.error("Please login to manage wishlist");
+      return;
+    }
+    try {
+      const newWishlist = await toggleWishlist(user.uid, listingId, wishlist);
+      setWishlist(newWishlist);
+      setProfile(prev => prev ? { ...prev, wishlist: newWishlist } : null);
+      loadWishlistListings();
+      toast.success(newWishlist.some(item => (typeof item === 'string' ? item === listingId : item.listingId === listingId)) ? "Added to wishlist" : "Removed from wishlist");
+    } catch (error) {
+      toast.error("Failed to update wishlist");
     }
   };
 
@@ -157,6 +227,7 @@ const GuestAccountSettings = () => {
       toast.error('This booking cannot be cancelled');
       setCancelDialogOpen(false);
       setBookingToCancel(null);
+      setCancellationReason('');
       return;
     }
 
@@ -166,45 +237,25 @@ const GuestAccountSettings = () => {
       toast.error('Cannot cancel bookings with check-in dates in the past');
       setCancelDialogOpen(false);
       setBookingToCancel(null);
+      setCancellationReason('');
       return;
     }
     
     setCancelling(true);
     try {
-      // Update booking status to cancelled
-      await updateBooking(bookingToCancel.id, { status: 'cancelled' });
+      // Create cancellation request instead of immediate cancellation
+      await createCancellationRequest(bookingToCancel.id, cancellationReason.trim() || undefined);
       
-      // Process refund using payment service (if booking was confirmed or pending)
-      if (bookingToCancel.status === 'confirmed' || bookingToCancel.status === 'pending') {
-        try {
-          // Use payment service to process refund
-          const refundResult = await processBookingRefund(bookingToCancel, 'guest');
-          
-          if (refundResult.success) {
-            console.log('✅ Refund processed successfully:', refundResult);
-            const refundMessage = refundResult.refundAmount && refundResult.refundAmount > 0
-              ? `${formatPHP(refundResult.refundAmount)} has been refunded to your wallet.`
-              : 'No refund was processed for this booking.';
-            toast.success(`Booking cancelled successfully. ${refundMessage}`);
-          } else {
-            throw new Error('Refund processing failed');
-          }
-        } catch (refundError: any) {
-          console.error('Error processing refund:', refundError);
-          // Don't fail the cancellation if refund fails, but log it
-          toast.error(`Booking cancelled, but refund failed. Please contact support. Error: ${refundError.message}`);
-        }
-      } else {
-        toast.success('Booking cancelled successfully.');
-      }
+      toast.success('Cancellation request submitted successfully. An admin will review your request and process the refund if approved.');
       setCancelDialogOpen(false);
       setBookingToCancel(null);
-      // Reload bookings to reflect the cancellation
+      setCancellationReason('');
+      // Reload bookings to reflect the cancellation request
       loadBookings();
     } catch (error: any) {
-      console.error('Error cancelling booking:', error);
+      console.error('Error creating cancellation request:', error);
       const errorMessage = error.message || 'Unknown error occurred';
-      toast.error(`Failed to cancel booking: ${errorMessage}`);
+      toast.error(`Failed to submit cancellation request: ${errorMessage}`);
     } finally {
       setCancelling(false);
     }
@@ -282,6 +333,10 @@ const GuestAccountSettings = () => {
               <User className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
               <span className="hidden sm:inline">Profile</span>
             </TabsTrigger>
+            <TabsTrigger value="wishlist" className="text-xs sm:text-sm touch-manipulation min-h-[44px] sm:min-h-0">
+              <Bookmark className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Wishlist</span>
+            </TabsTrigger>
             <TabsTrigger value="bookings" className="text-xs sm:text-sm touch-manipulation min-h-[44px] sm:min-h-0">
               <Calendar className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
               <span className="hidden sm:inline">Bookings</span>
@@ -293,10 +348,6 @@ const GuestAccountSettings = () => {
             <TabsTrigger value="notifications" className="text-xs sm:text-sm touch-manipulation min-h-[44px] sm:min-h-0">
               <Bell className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
               <span className="hidden sm:inline">Notifications</span>
-            </TabsTrigger>
-            <TabsTrigger value="security" className="text-xs sm:text-sm touch-manipulation min-h-[44px] sm:min-h-0">
-              <Shield className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Security</span>
             </TabsTrigger>
           </TabsList>
 
@@ -346,6 +397,81 @@ const GuestAccountSettings = () => {
             </Card>
           </TabsContent>
 
+            <TabsContent value="wishlist" className="mt-0 absolute inset-0 w-full overflow-y-auto">
+              <Card className="h-full flex flex-col">
+                <CardHeader>
+                  <CardTitle>Your Wishlist</CardTitle>
+                  <CardDescription>Save property requirements and amenities from your past bookings to find similar properties in the future</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {wishlistListings.length === 0 ? (
+                    <EmptyState
+                      icon={<Bookmark className="h-10 w-10" />}
+                      title="No wishlist items yet"
+                      description="Add past bookings to your wishlist with their property requirements and amenities to find similar properties for future trips!"
+                      action={
+                        <Button onClick={() => navigate('/guest/bookings?filter=past')}>
+                          View Past Bookings
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {wishlistListings.map((listing) => {
+                        const wishlistItem = wishlist.find(item => 
+                          (typeof item === 'string' ? item === listing.id : item.listingId === listing.id)
+                        );
+                        const recommendations = typeof wishlistItem === 'object' && wishlistItem?.recommendations;
+                        const isInWishlist = wishlist.some(item => 
+                          (typeof item === 'string' ? item === listing.id : item.listingId === listing.id)
+                        );
+                        
+                        return (
+                          <div key={listing.id} className="space-y-2">
+                            <ListingCard
+                              listing={listing}
+                              onView={() => navigate(`/guest/listing/${listing.id}`)}
+                              onFavorite={() => handleFavorite(listing.id)}
+                              isFavorite={favorites.includes(listing.id)}
+                            />
+                            {(recommendations || (typeof wishlistItem === 'object' && wishlistItem?.propertyRequirements) || (typeof wishlistItem === 'object' && wishlistItem?.desiredAmenities)) && (
+                              <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+                                <CardContent className="p-3 space-y-2">
+                                  {typeof wishlistItem === 'object' && wishlistItem?.propertyRequirements && Object.keys(wishlistItem.propertyRequirements).length > 0 && (
+                                    <div>
+                                      <p className="text-xs font-semibold text-blue-900 dark:text-blue-100 mb-1">Requirements:</p>
+                                      <div className="text-xs text-blue-800 dark:text-blue-200 space-y-1">
+                                        {wishlistItem.propertyRequirements.beds && <p>• Beds: {wishlistItem.propertyRequirements.beds}</p>}
+                                        {wishlistItem.propertyRequirements.bedrooms && <p>• Bedrooms: {wishlistItem.propertyRequirements.bedrooms}</p>}
+                                        {wishlistItem.propertyRequirements.bathrooms && <p>• Bathrooms: {wishlistItem.propertyRequirements.bathrooms}</p>}
+                                        {wishlistItem.propertyRequirements.guests && <p>• Guests: {wishlistItem.propertyRequirements.guests}</p>}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {typeof wishlistItem === 'object' && wishlistItem?.desiredAmenities && wishlistItem.desiredAmenities.length > 0 && (
+                                    <div>
+                                      <p className="text-xs font-semibold text-blue-900 dark:text-blue-100 mb-1">Desired Amenities:</p>
+                                      <p className="text-xs text-blue-800 dark:text-blue-200">{wishlistItem.desiredAmenities.join(', ')}</p>
+                                    </div>
+                                  )}
+                                  {recommendations && (
+                                    <div>
+                                      <p className="text-xs font-semibold text-blue-900 dark:text-blue-100 mb-1">Recommendations:</p>
+                                      <p className="text-sm text-blue-800 dark:text-blue-200">{recommendations}</p>
+                                    </div>
+                                  )}
+                                </CardContent>
+                              </Card>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
             <TabsContent value="bookings" className="mt-0 absolute inset-0 w-full overflow-y-auto">
               <Card className="h-full flex flex-col">
               <CardHeader>
@@ -367,9 +493,10 @@ const GuestAccountSettings = () => {
                 ) : (
                   <div className="space-y-4">
                     {userBookings.map((booking) => {
-                      // Check if booking can be cancelled (pending or confirmed, and check-in hasn't passed)
+                      // Check if booking can be cancelled (pending or confirmed, and check-in hasn't passed, and no pending cancellation request)
                       const canCancel = (booking.status === 'pending' || booking.status === 'confirmed') && 
-                                        new Date(booking.checkIn) >= new Date();
+                                        new Date(booking.checkIn) >= new Date() &&
+                                        !booking.cancellationRequestId;
                       
                       return (
                         <div key={booking.id} className="p-4 border rounded-lg">
@@ -399,8 +526,20 @@ const GuestAccountSettings = () => {
                                 className="w-full"
                               >
                                 <X className="h-4 w-4 mr-2" />
-                                Cancel Booking
+                                Request Cancellation
                               </Button>
+                            </div>
+                          )}
+                          {booking.cancellationRequestId && (
+                            <div className="pt-4 mt-4 border-t">
+                              <div className="p-3 bg-yellow-500/10 border border-yellow-500/50 rounded-md">
+                                <p className="text-sm font-medium text-yellow-700 dark:text-yellow-400">
+                                  Cancellation Request Pending
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Your cancellation request is being reviewed by an admin. You will be notified once a decision is made.
+                                </p>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -604,32 +743,25 @@ const GuestAccountSettings = () => {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-
-            <TabsContent value="security" className="mt-0 absolute inset-0 w-full overflow-y-auto">
-              <Card className="h-full flex flex-col">
-                <CardHeader>
-                  <CardTitle>Security Settings</CardTitle>
-                  <CardDescription>Manage your account security</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground">Security settings coming soon</p>
-                </CardContent>
-              </Card>
             </TabsContent>
           </div>
         </Tabs>
       </div>
 
       {/* Cancel Booking Dialog */}
-      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+      <AlertDialog open={cancelDialogOpen} onOpenChange={(open) => {
+        setCancelDialogOpen(open);
+        if (!open) {
+          setCancellationReason('');
+        }
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Cancel Booking</AlertDialogTitle>
+            <AlertDialogTitle>Request Booking Cancellation</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to cancel this booking?
+              Submit a cancellation request for admin review. If approved, a refund will be processed automatically.
               {bookingToCancel && (
-                <div className="mt-3 space-y-2">
+                <div className="mt-3 space-y-3">
                   <div className="p-3 bg-muted rounded-md">
                     <p className="text-sm font-medium">Booking Details:</p>
                     <p className="text-sm text-muted-foreground">
@@ -643,22 +775,36 @@ const GuestAccountSettings = () => {
                     <div className="p-3 bg-primary/10 rounded-md border border-primary/20">
                       <p className="text-sm font-medium text-primary">Refund Information:</p>
                       <p className="text-sm text-muted-foreground">
-                        A refund of {formatPHP(bookingToCancel.totalPrice)} will be credited to your wallet balance.
+                        If approved, a refund of {formatPHP(bookingToCancel.totalPrice)} will be credited to your wallet balance.
                       </p>
                     </div>
                   )}
+                  <div className="space-y-2">
+                    <Label htmlFor="cancellation-reason">Reason for Cancellation (Optional)</Label>
+                    <Textarea
+                      id="cancellation-reason"
+                      placeholder="Please provide a reason for cancelling this booking..."
+                      value={cancellationReason}
+                      onChange={(e) => setCancellationReason(e.target.value)}
+                      className="min-h-[80px] resize-none"
+                      maxLength={500}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {cancellationReason.length}/500 characters
+                    </p>
+                  </div>
                 </div>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={cancelling}>Keep Booking</AlertDialogCancel>
+            <AlertDialogCancel disabled={cancelling} onClick={() => setCancellationReason('')}>Keep Booking</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmCancel}
               disabled={cancelling}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {cancelling ? 'Cancelling...' : 'Cancel Booking'}
+              {cancelling ? 'Submitting Request...' : 'Submit Cancellation Request'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

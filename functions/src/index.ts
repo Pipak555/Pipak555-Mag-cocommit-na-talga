@@ -15,7 +15,8 @@
 
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import { processHostPayout, processAdminPayout } from './paypalPayouts';
+import { processHostPayout, processAdminPayout, sendPayPalPayout } from './paypalPayouts';
+import { exchangePayPalOAuthCode, getPayPalUserInfo } from './paypalPayments';
 
 admin.initializeApp();
 
@@ -34,14 +35,16 @@ export const generateVerificationLink = functions.https.onRequest(async (req, re
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).send('Method Not Allowed');
+    res.status(405).send('Method Not Allowed');
+    return;
   }
 
   try {
     const { email, continueUrl } = req.body;
 
     if (!email) {
-      return res.status(400).json({ error: 'Email is required' });
+      res.status(400).json({ error: 'Email is required' });
+      return;
     }
 
     const actionCodeSettings = {
@@ -54,13 +57,13 @@ export const generateVerificationLink = functions.https.onRequest(async (req, re
       actionCodeSettings
     );
 
-    return res.status(200).json({ 
+    res.status(200).json({ 
       verificationLink,
       success: true
     });
   } catch (error: any) {
     console.error('Error generating verification link:', error);
-    return res.status(500).json({ 
+    res.status(500).json({ 
       error: error.message || 'Failed to generate verification link'
     });
   }
@@ -159,6 +162,8 @@ export const autoProcessHostPayout = functions.firestore
     const transactionId = context.params.transactionId;
 
     // Only process host earnings (type: 'deposit' for host, with bookingId)
+    // Only process if payoutMethod is 'paypal' (or not set for backward compatibility)
+    // Wallet deposits have payoutStatus: 'completed' and won't trigger this
     if (
       transaction.type === 'deposit' &&
       transaction.userId &&
@@ -166,7 +171,8 @@ export const autoProcessHostPayout = functions.firestore
       transaction.bookingId &&
       transaction.status === 'completed' &&
       transaction.payoutStatus === 'pending' &&
-      !transaction.payoutId // Don't process if already processed
+      !transaction.payoutId && // Don't process if already processed
+      (transaction.payoutMethod === 'paypal' || !transaction.payoutMethod) // Only process PayPal payouts (or legacy transactions)
     ) {
       try {
         const hostId = transaction.userId;
@@ -178,7 +184,7 @@ export const autoProcessHostPayout = functions.firestore
           return;
         }
 
-        console.log(`Processing automatic host payout for transaction ${transactionId}`);
+        console.log(`Processing automatic host payout for transaction ${transactionId} (PayPal)`);
         await processHostPayout(hostId, transactionId, amount, bookingId);
       } catch (error: any) {
         console.error(`Error in autoProcessHostPayout for transaction ${transactionId}:`, error);
@@ -227,4 +233,203 @@ export const autoProcessAdminPayout = functions.firestore
       }
     }
   });
+
+/**
+ * Request Host Withdrawal
+ * 
+ * Called when host requests withdrawal from wallet to PayPal
+ * Sends payout via PayPal Payouts API and deducts from wallet
+ */
+export const requestHostWithdrawal = functions.region('us-central1').https.onCall(async (data, context) => {
+  // Verify authentication
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  try {
+    const { amount } = data;
+
+    if (!amount || amount <= 0) {
+      throw new functions.https.HttpsError('invalid-argument', 'Invalid withdrawal amount');
+    }
+
+    const userId = context.auth.uid;
+    
+    // Get user's current wallet balance and PayPal info
+    const userDoc = await admin.firestore().collection('users').doc(userId).get();
+    if (!userDoc.exists) {
+      throw new functions.https.HttpsError('not-found', 'User not found');
+    }
+
+    const userData = userDoc.data();
+    const currentBalance = userData?.walletBalance || 0;
+    const paypalEmail = userData?.paypalEmail;
+    // Check for either paypalEmailVerified or paypalOAuthVerified
+    const paypalVerified = userData?.paypalEmailVerified || userData?.paypalOAuthVerified;
+
+    // Validate withdrawal
+    if (!paypalVerified) {
+      throw new functions.https.HttpsError('failed-precondition', 'Please link and verify your PayPal account first');
+    }
+
+    if (amount > currentBalance) {
+      throw new functions.https.HttpsError('failed-precondition', `Insufficient balance. Available: ₱${currentBalance.toFixed(2)}`);
+    }
+
+    // Calculate new balance
+    const newBalance = currentBalance - amount;
+
+    // Create transaction record first
+    const transactionRef = admin.firestore().collection('transactions').doc();
+    const transactionId = transactionRef.id;
+    
+    const transactionData = {
+      userId,
+      type: 'withdrawal',
+      amount,
+      description: `Withdrawal to PayPal${paypalEmail ? ` (${paypalEmail})` : ''}`,
+      status: 'pending', // Will be updated after payout
+      paymentMethod: 'paypal',
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    await transactionRef.set(transactionData);
+
+    try {
+      // Try to get email from PayPal if not stored but account is verified
+      let recipientEmail = paypalEmail;
+      if (!recipientEmail && userData?.paypalAccessToken) {
+        try {
+          const userInfo = await getPayPalUserInfo(userData.paypalAccessToken);
+          if (userInfo.email) {
+            recipientEmail = userInfo.email;
+            // Store the email for future use
+            await admin.firestore().collection('users').doc(userId).update({
+              paypalEmail: recipientEmail
+            });
+          }
+        } catch (emailError) {
+          console.warn('Could not retrieve PayPal email from access token:', emailError);
+        }
+      }
+
+      // Send payout to PayPal (only if email is available)
+      let payoutResult = null;
+      if (recipientEmail) {
+        payoutResult = await sendPayPalPayout(
+          recipientEmail,
+          amount,
+          'PHP',
+          `Withdrawal from wallet to ${recipientEmail}`,
+          transactionId
+        );
+      } else {
+        throw new Error('PayPal email not found. Please re-link your PayPal account to store your email.');
+      }
+
+      // Update transaction with payout info first
+      await transactionRef.update({
+        status: payoutResult.status === 'PENDING' ? 'pending' : 'completed',
+        payoutId: payoutResult.payoutId,
+        payoutStatus: payoutResult.status,
+        payoutBatchId: payoutResult.batchId,
+        payoutProcessedAt: admin.firestore.FieldValue.serverTimestamp(),
+        paymentId: payoutResult.payoutId,
+      });
+
+      // Only deduct from wallet after successful payout
+      await admin.firestore().collection('users').doc(userId).update({
+        walletBalance: newBalance
+      });
+
+      return {
+        success: true,
+        transactionId,
+        payoutId: payoutResult.payoutId,
+        message: `Withdrawal of ₱${amount.toFixed(2)} sent to PayPal. Payout ID: ${payoutResult.payoutId}`
+      };
+    } catch (payoutError: any) {
+      // If payout fails, mark transaction as failed (wallet not deducted yet)
+      await transactionRef.update({
+        status: 'failed',
+        payoutError: payoutError.message,
+        payoutProcessedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      throw new functions.https.HttpsError('internal', `PayPal payout failed: ${payoutError.message}`);
+    }
+  } catch (error: any) {
+    console.error('Error in requestHostWithdrawal:', error);
+    
+    // If it's already an HttpsError, re-throw it
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    
+    // Otherwise, wrap it in an HttpsError
+    throw new functions.https.HttpsError('internal', error.message || 'Failed to process withdrawal');
+  }
+});
+
+/**
+ * Exchange PayPal OAuth Code
+ * 
+ * Called when user links their PayPal account via OAuth flow
+ * Exchanges authorization code for access token and stores user info
+ */
+export const exchangePayPalOAuth = functions.region('us-central1').https.onCall(async (data, context) => {
+  // Verify authentication
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  try {
+    const { authCode, redirectUri } = data;
+
+    if (!authCode || !redirectUri) {
+      throw new functions.https.HttpsError('invalid-argument', 'Missing required fields: authCode and redirectUri');
+    }
+
+    // Exchange OAuth code for access token
+    const tokenData = await exchangePayPalOAuthCode(authCode, redirectUri);
+    
+    // Get user info from PayPal using access token
+    const userInfo = await getPayPalUserInfo(tokenData.access_token);
+
+    if (!userInfo.email) {
+      throw new functions.https.HttpsError('internal', 'Failed to retrieve PayPal email');
+    }
+
+    // Calculate token expiration time
+    const expiresAt = new Date();
+    expiresAt.setSeconds(expiresAt.getSeconds() + (tokenData.expires_in || 32400)); // Default 9 hours
+
+    // Store PayPal info in user document
+    const userRef = admin.firestore().collection('users').doc(context.auth.uid);
+    await userRef.update({
+      paypalEmail: userInfo.email,
+      paypalEmailVerified: true,
+      paypalAccessToken: tokenData.access_token,
+      paypalRefreshToken: tokenData.refresh_token || null,
+      paypalAccessTokenExpiresAt: expiresAt,
+      paypalLinkedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return {
+      success: true,
+      email: userInfo.email,
+      message: 'PayPal account linked successfully',
+    };
+  } catch (error: any) {
+    console.error('Error in exchangePayPalOAuth:', error);
+    
+    // If it's already an HttpsError, re-throw it
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    
+    // Otherwise, wrap it in an HttpsError
+    throw new functions.https.HttpsError('internal', error.message || 'Failed to exchange PayPal OAuth code');
+  }
+});
 

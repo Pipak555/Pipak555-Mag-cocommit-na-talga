@@ -41,6 +41,28 @@ All colors MUST be HSL.
     --input: 240 6% 90%;
     --ring: 25 95% 53%;
 
+    /* Role-based colors */
+    /* Admin - Green */
+    --role-admin: 142 76% 36%;
+    --role-admin-foreground: 0 0% 100%;
+    --role-admin-glow: 142 100% 45%;
+    --role-admin-light: 142 76% 95%;
+    --role-admin-lighter: 142 76% 98%;
+    
+    /* Host - Blue */
+    --role-host: 217 91% 60%;
+    --role-host-foreground: 0 0% 100%;
+    --role-host-glow: 217 100% 70%;
+    --role-host-light: 217 91% 95%;
+    --role-host-lighter: 217 91% 98%;
+    
+    /* Guest - Orange */
+    --role-guest: 25 95% 53%;
+    --role-guest-foreground: 0 0% 100%;
+    --role-guest-glow: 25 100% 60%;
+    --role-guest-light: 25 95% 95%;
+    --role-guest-lighter: 25 95% 98%;
+
     --radius: 0.75rem;
 
     /* Typography Scale */
@@ -112,6 +134,28 @@ All colors MUST be HSL.
     --border: 240 10% 20%;
     --input: 240 10% 20%;
     --ring: 25 95% 53%;
+
+    /* Role-based colors (dark mode) */
+    /* Admin - Green */
+    --role-admin: 142 76% 45%;
+    --role-admin-foreground: 0 0% 100%;
+    --role-admin-glow: 142 100% 55%;
+    --role-admin-light: 142 76% 20%;
+    --role-admin-lighter: 142 76% 15%;
+    
+    /* Host - Blue */
+    --role-host: 217 91% 65%;
+    --role-host-foreground: 0 0% 100%;
+    --role-host-glow: 217 100% 75%;
+    --role-host-light: 217 91% 20%;
+    --role-host-lighter: 217 91% 15%;
+    
+    /* Guest - Orange */
+    --role-guest: 25 95% 58%;
+    --role-guest-foreground: 0 0% 100%;
+    --role-guest-glow: 25 100% 65%;
+    --role-guest-light: 25 95% 20%;
+    --role-guest-lighter: 25 95% 15%;
   }
 }
 

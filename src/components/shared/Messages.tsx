@@ -412,12 +412,12 @@ export const Messages = () => {
 
       {/* Lightbox/Modal for Full-Size Image Viewing */}
       <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
-        <DialogContent className="max-w-[98vw] max-h-[98vh] w-auto h-auto p-0 bg-black/95 border-none m-1">
+        <DialogContent className="w-[1600px] h-[1000px] max-w-[95vw] max-h-[95vh] p-0 bg-black/95 border-none m-0 rounded-lg">
           <DialogTitle className="sr-only">View Full Size Image</DialogTitle>
           <DialogDescription className="sr-only">
             Viewing image {lightboxImageIndex + 1} of {lightboxImages.length}
           </DialogDescription>
-          <div className="relative w-full h-full flex items-center justify-center min-h-[400px]">
+          <div className="relative w-full h-full">
             {lightboxImages.length > 0 && (
               <>
                 {/* Close Button */}
@@ -436,11 +436,13 @@ export const Messages = () => {
                 </div>
 
                 {/* Main Image */}
-                <div className="w-full h-full flex items-center justify-center p-2 sm:p-4 pt-12 pb-20 sm:pb-24">
+                <div className="absolute inset-0" style={{ paddingTop: '40px', paddingBottom: '100px' }}>
                   <img 
+                    key={lightboxImageIndex}
                     src={lightboxImages[lightboxImageIndex] || '/placeholder.svg'} 
                     alt={`Image ${lightboxImageIndex + 1}`}
-                    className="max-w-full max-h-[calc(98vh-160px)] object-contain"
+                    className="w-full h-full object-cover"
+                    loading="eager"
                   />
                 </div>
 
@@ -472,7 +474,7 @@ export const Messages = () => {
 
                 {/* Thumbnail Strip at Bottom for Navigation */}
                 {lightboxImages.length > 1 && (
-                  <div className="absolute bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-sm rounded-lg p-2 sm:p-3 z-50 max-w-[calc(98vw-32px)]">
+                  <div className="absolute bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-sm rounded-lg p-2 sm:p-3 z-50 max-w-[calc(80vw-32px)]">
                     <div className="flex gap-2 sm:gap-3 overflow-x-auto scrollbar-hide px-1">
                       {lightboxImages.map((img, i) => (
                         <button

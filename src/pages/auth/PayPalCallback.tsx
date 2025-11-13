@@ -9,10 +9,12 @@
 import { useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 const PayPalCallback = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { userRole } = useAuth();
 
   useEffect(() => {
     // Get OAuth parameters
@@ -29,7 +31,8 @@ const PayPalCallback = () => {
         error,
         errorDescription,
         fullUrl: window.location.href,
-        allParams: Object.fromEntries(searchParams)
+        allParams: Object.fromEntries(searchParams),
+        userRole
       });
       
       if (error) {
@@ -60,17 +63,35 @@ const PayPalCallback = () => {
     if (error) params.set('error', error);
     if (errorDescription) params.set('error_description', errorDescription);
 
-    // Check if this is an admin PayPal linking (state starts with "admin-paypal-verify-")
-    // Otherwise, it's a guest PayPal linking
+    // Determine redirect based on state parameter
     if (state && state.startsWith('admin-paypal-verify-')) {
-      // Redirect to admin PayPal settings page
+      // Admin PayPal linking
       navigate(`/admin/paypal-settings?${params.toString()}`, { replace: true });
+    } else if (state && state.startsWith('host-subscription-paypal-verify-')) {
+      // Host PayPal linking for subscription payment - redirect back to payment page
+      // State format: host-subscription-paypal-verify-{planId}-{userId}
+      // Extract planId from state (everything between prefix and userId)
+      const prefix = 'host-subscription-paypal-verify-';
+      const afterPrefix = state.substring(prefix.length);
+      // Split by '-' and remove the last segment (userId), then rejoin for planId
+      const parts = afterPrefix.split('-');
+      if (parts.length > 1) {
+        // Remove userId (last part) and rejoin the rest as planId
+        const planId = parts.slice(0, -1).join('-');
+        // Redirect to payment page with planId
+        navigate(`/host/payment?planId=${planId}&${params.toString()}`, { replace: true });
+      } else {
+        // Fallback: redirect without planId (page will use default)
+        navigate(`/host/payment?${params.toString()}`, { replace: true });
+      }
+    } else if (state && state.startsWith('host-paypal-verify-')) {
+      // Host PayPal linking for general payments - redirect to host payments page
+      navigate(`/host/payments?${params.toString()}`, { replace: true });
     } else {
-      // Redirect to wallet page with OAuth params
-      // The PayPalIdentity component will handle the verification
+      // Default to guest wallet page
       navigate(`/guest/wallet?${params.toString()}`, { replace: true });
     }
-  }, [searchParams, navigate]);
+  }, [searchParams, navigate, userRole]);
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center">

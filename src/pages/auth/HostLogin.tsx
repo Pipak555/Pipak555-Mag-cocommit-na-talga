@@ -47,7 +47,7 @@ const HostLogin = () => {
       setActiveTab('signup');
     }
   }, [shouldShowSignup]);
-  
+
   // Restore saved form data when returning from policy acceptance
   useEffect(() => {
     const savedData = sessionStorage.getItem('hostSignUpData');
@@ -90,9 +90,10 @@ const HostLogin = () => {
     
     try {
       const sanitizedEmail = sanitizeEmail(data.email);
-      const sanitizedPassword = sanitizeString(data.password);
+      // Don't sanitize password - it's hashed and sanitization might alter special characters
+      const password = data.password.trim();
       
-      await signIn(sanitizedEmail, sanitizedPassword, 'host');
+      await signIn(sanitizedEmail, password, 'host');
       toast.success('Welcome back!');
       navigate('/host/dashboard');
     } catch (error: any) {
@@ -124,10 +125,11 @@ const HostLogin = () => {
     try {
       const sanitizedFullName = sanitizeString(data.fullName);
       const sanitizedEmail = sanitizeEmail(data.email);
-      const sanitizedPassword = sanitizeString(data.password);
+      // Don't sanitize password - it's hashed and sanitization might alter special characters
+      const password = data.password.trim();
       
       const policyAcceptedDate = sessionStorage.getItem('hostPolicyAcceptedDate');
-      await signUp(sanitizedEmail, sanitizedPassword, sanitizedFullName, 'host', {
+      await signUp(sanitizedEmail, password, sanitizedFullName, 'host', {
         policyAccepted: true,
         policyAcceptedDate: policyAcceptedDate || new Date().toISOString()
       });

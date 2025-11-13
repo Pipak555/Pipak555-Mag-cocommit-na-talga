@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { EmailVerificationBanner } from "@/components/guest/EmailVerificationBanner";
 import { getListings, toggleFavorite, toggleWishlist, getListingsRatings, getBookings } from "@/lib/firestore";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -270,6 +271,8 @@ const BrowseListings = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-6 lg:py-8">
+        {/* Email Verification Banner */}
+        <EmailVerificationBanner />
             <BackButton to="/guest/dashboard" className="mb-3 sm:mb-4 md:mb-6" />
 
         <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4 md:mb-6">Browse Listings</h1>
@@ -294,8 +297,8 @@ const BrowseListings = () => {
               key={cat}
               className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium border-2 transition-all touch-manipulation min-h-[36px] sm:min-h-[40px] ${
                 (filters.category === cat)
-                  ? 'bg-primary text-primary-foreground border-primary shadow-md'
-                  : 'bg-background border-border text-foreground hover:bg-muted hover:border-primary/50 active:bg-muted'
+                  ? 'bg-role-guest text-role-guest-foreground border-role-guest shadow-md'
+                  : 'bg-background border-border text-foreground hover:bg-muted hover:border-role-guest/50 active:bg-muted'
               }`}
               onClick={() => setFilters({ ...filters, category: cat as any })}
             >

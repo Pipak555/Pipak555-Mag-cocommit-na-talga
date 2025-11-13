@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { getListings, deleteListing, getListing } from "@/lib/firestore";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +32,7 @@ import type { Listing } from "@/types";
 const ManageListings = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -39,12 +40,52 @@ const ManageListings = () => {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
   const [loadingListing, setLoadingListing] = useState(false);
+  const [hasAutoOpened, setHasAutoOpened] = useState(false);
 
   useEffect(() => {
     if (user) {
       loadListings();
     }
   }, [user]);
+
+  // Auto-open listing detail dialog if listingId is in URL query params
+  useEffect(() => {
+    const listingId = searchParams.get('listingId');
+    if (listingId && listings.length > 0 && !hasAutoOpened && !loading) {
+      const listing = listings.find(l => l.id === listingId);
+      if (listing) {
+        // Auto-open the listing detail dialog
+        const openListing = async () => {
+          setLoadingListing(true);
+          setDetailDialogOpen(true);
+          try {
+            const listingData = await getListing(listingId);
+            if (listingData) {
+              setSelectedListing(listingData);
+            } else {
+              toast.error("Listing not found");
+              setDetailDialogOpen(false);
+            }
+          } catch (error: any) {
+            console.error("Error loading listing:", error);
+            toast.error(`Failed to load listing: ${error.message || 'Unknown error'}`);
+            setDetailDialogOpen(false);
+          } finally {
+            setLoadingListing(false);
+          }
+        };
+        
+        openListing();
+        setHasAutoOpened(true);
+        // Remove the query parameter from URL after opening
+        setSearchParams((prev) => {
+          const newParams = new URLSearchParams(prev);
+          newParams.delete('listingId');
+          return newParams;
+        }, { replace: true });
+      }
+    }
+  }, [listings, loading, hasAutoOpened, searchParams, setSearchParams]);
 
   const loadListings = async () => {
     if (!user) return;
@@ -120,8 +161,8 @@ const ManageListings = () => {
             <Button variant="ghost" size="icon" onClick={() => navigate('/host/dashboard')} className="h-9 w-9 sm:h-10 sm:w-10 touch-manipulation">
               <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
-            <div className="hidden sm:block p-2 rounded-lg bg-primary/10">
-              <Home className="w-5 h-5 text-primary" />
+            <div className="hidden sm:block p-2 rounded-lg bg-role-host/10">
+              <Home className="w-5 h-5 text-role-host" />
             </div>
             <div className="min-w-0 flex-1">
               <h1 className="text-base sm:text-lg font-bold truncate">My Listings</h1>
@@ -143,7 +184,7 @@ const ManageListings = () => {
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-role-host"></div>
           </div>
         ) : listings.length === 0 ? (
           <div className="text-center py-20">
@@ -177,7 +218,7 @@ const ManageListings = () => {
                   <Button 
                     variant="outline" 
                     size="sm" 
-                    className="flex-1 h-11 sm:h-auto text-sm sm:text-base hover:bg-primary hover:text-primary-foreground touch-manipulation"
+                    className="flex-1 h-11 sm:h-auto text-sm sm:text-base hover:bg-role-host hover:text-role-host-foreground touch-manipulation"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleEditListing(listing.id);

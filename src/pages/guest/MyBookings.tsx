@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { getBookings, updateBooking, getListing, getUserProfile, getBookingReview, toggleWishlist, updateWishlistRecommendations } from "@/lib/firestore";
-import { processBookingRefund } from "@/lib/paymentService";
+import { createCancellationRequest } from "@/lib/cancellationRequestService";
 import { collection, query, where, onSnapshot, doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
@@ -49,6 +49,7 @@ const MyBookings = () => {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState('');
   const [walletBalance, setWalletBalance] = useState(0);
   const [listingDialogOpen, setListingDialogOpen] = useState(false);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
@@ -437,6 +438,7 @@ const MyBookings = () => {
       toast.error('This booking cannot be cancelled');
       setCancelDialogOpen(false);
       setBookingToCancel(null);
+      setCancellationReason('');
       return;
     }
 
@@ -446,43 +448,23 @@ const MyBookings = () => {
       toast.error('Cannot cancel bookings with check-in dates in the past');
       setCancelDialogOpen(false);
       setBookingToCancel(null);
+      setCancellationReason('');
       return;
     }
     
     setCancelling(true);
     try {
-      // Update booking status to cancelled
-      await updateBooking(bookingToCancel.id, { status: 'cancelled' });
+      // Create cancellation request instead of immediate cancellation
+      await createCancellationRequest(bookingToCancel.id, cancellationReason.trim() || undefined);
       
-      // Process refund using payment service (if booking was confirmed)
-      if (bookingToCancel.status === 'confirmed' || bookingToCancel.status === 'pending') {
-        try {
-          // Use payment service to process refund
-          const refundResult = await processBookingRefund(bookingToCancel, 'guest');
-          
-          if (refundResult.success) {
-            console.log('✅ Refund processed successfully:', refundResult);
-            const refundMessage = refundResult.refundAmount && refundResult.refundAmount > 0
-              ? `${formatPHP(refundResult.refundAmount)} has been refunded to your wallet.`
-              : 'No refund was processed for this booking.';
-            toast.success(`Booking cancelled successfully. ${refundMessage}`);
-          } else {
-            throw new Error('Refund processing failed');
-          }
-        } catch (refundError: any) {
-          console.error('Error processing refund:', refundError);
-          // Don't fail the cancellation if refund fails, but log it
-          toast.error(`Booking cancelled, but refund failed. Please contact support. Error: ${refundError.message}`);
-        }
-      } else {
-        toast.success('Booking cancelled successfully.');
-      }
+      toast.success('Cancellation request submitted successfully. An admin will review your request and process the refund if approved.');
       setCancelDialogOpen(false);
       setBookingToCancel(null);
+      setCancellationReason('');
     } catch (error: any) {
-      console.error('Error cancelling booking:', error);
+      console.error('Error creating cancellation request:', error);
       const errorMessage = error.message || 'Unknown error occurred';
-      toast.error(`Failed to cancel booking: ${errorMessage}`);
+      toast.error(`Failed to submit cancellation request: ${errorMessage}`);
     } finally {
       setCancelling(false);
     }
@@ -493,7 +475,7 @@ const MyBookings = () => {
       <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-soft">
         <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center gap-2 sm:gap-3">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/guest/dashboard')} className="h-9 w-9 sm:h-10 sm:w-10 touch-manipulation">
+            <Button variant="ghost" size="icon" onClick={() => navigate('/guest/dashboard')} className="h-9 w-9 sm:h-10 sm:w-10 touch-manipulation hover:bg-role-guest/10 hover:text-role-guest">
               <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
             <div className="hidden sm:block p-2 rounded-lg bg-secondary/10">
@@ -539,9 +521,10 @@ const MyBookings = () => {
         ) : (
           <div className="space-y-4">
             {bookings.map((booking) => {
-              // Check if booking can be cancelled (pending or confirmed, and check-in hasn't passed)
+              // Check if booking can be cancelled (pending or confirmed, and check-in hasn't passed, and no pending cancellation request)
               const canCancel = (booking.status === 'pending' || booking.status === 'confirmed') && 
-                                new Date(booking.checkIn) >= new Date();
+                                new Date(booking.checkIn) >= new Date() &&
+                                !booking.cancellationRequestId;
               
               // Check if this is a past booking
               const checkOut = new Date(booking.checkOut);
@@ -746,8 +729,20 @@ const MyBookings = () => {
                           className="w-full"
                         >
                           <X className="h-4 w-4 mr-2" />
-                          Cancel Booking
+                          Request Cancellation
                         </Button>
+                      </div>
+                    )}
+                    {booking.cancellationRequestId && (
+                      <div className="pt-4 border-t">
+                        <div className="p-3 bg-yellow-500/10 border border-yellow-500/50 rounded-md">
+                          <p className="text-sm font-medium text-yellow-700 dark:text-yellow-400">
+                            Cancellation Request Pending
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Your cancellation request is being reviewed by an admin. You will be notified once a decision is made.
+                          </p>
+                        </div>
                       </div>
                     )}
                   </CardContent>
@@ -759,14 +754,19 @@ const MyBookings = () => {
       </div>
 
       {/* Cancel Booking Dialog */}
-      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+      <AlertDialog open={cancelDialogOpen} onOpenChange={(open) => {
+        setCancelDialogOpen(open);
+        if (!open) {
+          setCancellationReason('');
+        }
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Cancel Booking</AlertDialogTitle>
+            <AlertDialogTitle>Request Booking Cancellation</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to cancel this booking?
+              Submit a cancellation request for admin review. If approved, a refund will be processed automatically.
               {bookingToCancel && (
-                <div className="mt-3 space-y-2">
+                <div className="mt-3 space-y-3">
                   <div className="p-3 bg-muted rounded-md">
                     <p className="text-sm font-medium">Booking Details:</p>
                     <p className="text-sm text-muted-foreground">
@@ -780,22 +780,36 @@ const MyBookings = () => {
                     <div className="p-3 bg-primary/10 rounded-md border border-primary/20">
                       <p className="text-sm font-medium text-primary">Refund Information:</p>
                       <p className="text-sm text-muted-foreground">
-                        A refund of {formatPHP(bookingToCancel.totalPrice)} will be credited to your wallet balance.
+                        If approved, a refund of {formatPHP(bookingToCancel.totalPrice)} will be credited to your wallet balance.
                       </p>
                     </div>
                   )}
+                  <div className="space-y-2">
+                    <Label htmlFor="cancellation-reason">Reason for Cancellation (Optional)</Label>
+                    <Textarea
+                      id="cancellation-reason"
+                      placeholder="Please provide a reason for cancelling this booking..."
+                      value={cancellationReason}
+                      onChange={(e) => setCancellationReason(e.target.value)}
+                      className="min-h-[80px] resize-none"
+                      maxLength={500}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {cancellationReason.length}/500 characters
+                    </p>
+                  </div>
                 </div>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={cancelling}>Keep Booking</AlertDialogCancel>
+            <AlertDialogCancel disabled={cancelling} onClick={() => setCancellationReason('')}>Keep Booking</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmCancel}
               disabled={cancelling}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {cancelling ? 'Cancelling...' : 'Cancel Booking'}
+              {cancelling ? 'Submitting Request...' : 'Submit Cancellation Request'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -826,17 +840,25 @@ const MyBookings = () => {
                     {/* Slider Container */}
                     <div 
                       className="flex transition-transform duration-500 ease-in-out h-full"
-                      style={{ transform: `translateX(-${currentImageIndex * 100}%)` }}
+                      style={{ 
+                        width: `${selectedListing.images.length * 100}%`,
+                        transform: `translateX(-${(currentImageIndex * 100) / selectedListing.images.length}%)`
+                      }}
                     >
                       {selectedListing.images.map((img, index) => (
                         <div 
                           key={index}
-                          className="min-w-full h-full flex-shrink-0 relative"
+                          className="relative flex-shrink-0"
+                          style={{ 
+                            width: `${100 / selectedListing.images.length}%`,
+                            height: '100%'
+                          }}
                         >
                           <img 
                             src={img || '/placeholder.svg'} 
                             alt={`${selectedListing.title} - Image ${index + 1}`}
                             className="w-full h-full object-cover"
+                            loading={index === 0 ? "eager" : "lazy"}
                           />
                         </div>
                       ))}
@@ -1031,12 +1053,12 @@ const MyBookings = () => {
 
       {/* Lightbox/Modal for Full-Size Image Viewing */}
       <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
-        <DialogContent className="max-w-[98vw] max-h-[98vh] w-auto h-auto p-0 bg-black/95 border-none m-1">
+        <DialogContent className="w-[1600px] h-[1000px] max-w-[95vw] max-h-[95vh] p-0 bg-black/95 border-none m-0 rounded-lg">
           <DialogTitle className="sr-only">View Full Size Image</DialogTitle>
           <DialogDescription className="sr-only">
             Viewing image {lightboxImageIndex + 1} of {selectedListing?.images?.length || 0} for {selectedListing?.title}
           </DialogDescription>
-          <div className="relative w-full h-full flex items-center justify-center min-h-[400px]">
+          <div className="relative w-full h-full">
             {selectedListing?.images && selectedListing.images.length > 0 && (
               <>
                 {/* Close Button */}
@@ -1055,11 +1077,13 @@ const MyBookings = () => {
                 </div>
 
                 {/* Main Image */}
-                <div className="w-full h-full flex items-center justify-center p-2 sm:p-4 pt-12 pb-20 sm:pb-24">
+                <div className="absolute inset-0" style={{ paddingTop: '40px', paddingBottom: '100px' }}>
                   <img 
+                    key={lightboxImageIndex}
                     src={selectedListing.images[lightboxImageIndex] || '/placeholder.svg'} 
                     alt={`${selectedListing.title} - Image ${lightboxImageIndex + 1}`}
-                    className="max-w-full max-h-[calc(98vh-160px)] object-contain"
+                    className="w-full h-full object-cover"
+                    loading="eager"
                   />
                 </div>
 
@@ -1091,7 +1115,7 @@ const MyBookings = () => {
 
                 {/* Thumbnail Strip at Bottom for Navigation */}
                 {selectedListing.images.length > 1 && (
-                  <div className="absolute bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-sm rounded-lg p-2 sm:p-3 z-50 max-w-[calc(98vw-32px)]">
+                  <div className="absolute bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-sm rounded-lg p-2 sm:p-3 z-50 max-w-[calc(80vw-32px)]">
                     <div className="flex gap-2 sm:gap-3 overflow-x-auto scrollbar-hide px-1">
                       {selectedListing.images.map((img, i) => (
                         <button
@@ -1257,7 +1281,7 @@ const MyBookings = () => {
               >
                 Cancel
               </Button>
-              <Button onClick={handleSaveWishlistWithRecommendations} className="bg-primary hover:bg-primary/90">
+              <Button onClick={handleSaveWishlistWithRecommendations} variant="role-guest">
                 Add to Wishlist
               </Button>
             </div>

@@ -12,6 +12,9 @@ const badgeVariants = cva(
         secondary: "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
         destructive: "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
         outline: "text-foreground",
+        "role-admin": "border-transparent bg-role-admin text-role-admin-foreground hover:bg-role-admin/80",
+        "role-host": "border-transparent bg-role-host text-role-host-foreground hover:bg-role-host/80",
+        "role-guest": "border-transparent bg-role-guest text-role-guest-foreground hover:bg-role-guest/80",
       },
     },
     defaultVariants: {

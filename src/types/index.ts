@@ -38,7 +38,22 @@ export interface Booking {
   couponCode?: string; // Applied coupon code
   discountAmount?: number; // Total discount amount applied (listing + coupon)
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+  cancellationRequestId?: string; // ID of pending cancellation request
   createdAt: string;
+}
+
+export interface CancellationRequest {
+  id: string;
+  bookingId: string;
+  guestId: string;
+  hostId: string;
+  listingId: string;
+  reason?: string; // Optional reason provided by guest
+  status: 'pending' | 'approved' | 'rejected';
+  requestedAt: string;
+  reviewedAt?: string;
+  reviewedBy?: string; // Admin user ID who reviewed
+  adminNotes?: string; // Admin notes when reviewing
 }
 
 export interface Review {
@@ -155,6 +170,7 @@ export interface UserProfile {
   paypalEmail?: string;
   paypalEmailVerified?: boolean;
   adminPayPalEmail?: string;
+  earningsPayoutMethod?: 'wallet' | 'paypal'; // Host preference: where earnings should go
 }
 
 export interface Coupon {

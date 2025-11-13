@@ -54,13 +54,13 @@ export const HostPointsDisplay = ({ points, userId, onRedeem }: HostPointsDispla
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Award className="h-5 w-5 text-yellow-500" />
+          <Award className="h-5 w-5 text-role-host" />
           Points & Rewards
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="text-center p-4 bg-primary/10 rounded-lg">
-          <div className="text-3xl font-bold text-primary">{points}</div>
+        <div className="text-center p-4 bg-role-host/10 rounded-lg">
+          <div className="text-3xl font-bold text-role-host">{points}</div>
           <div className="text-sm text-muted-foreground">Total Points</div>
         </div>
 
@@ -72,7 +72,7 @@ export const HostPointsDisplay = ({ points, userId, onRedeem }: HostPointsDispla
               className="flex items-center justify-between p-3 border rounded-lg"
             >
               <div className="flex items-center gap-2">
-                <Gift className="h-4 w-4 text-primary" />
+                <Gift className="h-4 w-4 text-role-host" />
                 <div>
                   <div className="font-medium text-sm">{formatPHP(tier.discount)} subscription discount</div>
                   <div className="text-xs text-muted-foreground">
@@ -82,6 +82,7 @@ export const HostPointsDisplay = ({ points, userId, onRedeem }: HostPointsDispla
               </div>
               <Button
                 size="sm"
+                variant="role-host"
                 disabled={points < tier.points || redeeming === `${tier.points}`}
                 onClick={() => handleRedeem(tier.points, tier.discount)}
               >

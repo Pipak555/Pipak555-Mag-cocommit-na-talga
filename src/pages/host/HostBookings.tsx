@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { getBookings, updateBooking, getUserProfile } from "@/lib/firestore";
 import { processBookingPayment, processBookingRefund } from "@/lib/paymentService";
@@ -28,8 +28,11 @@ import LoadingScreen from "@/components/ui/loading-screen";
 
 const HostBookings = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const filter = searchParams.get('filter') || 'all'; // 'all', 'upcoming', 'pending', 'confirmed', 'cancelled'
   const { user } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [allBookings, setAllBookings] = useState<Booking[]>([]); // Store all bookings for filtering
   const [loading, setLoading] = useState(true);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [declineDialogOpen, setDeclineDialogOpen] = useState(false);
@@ -103,7 +106,7 @@ const HostBookings = () => {
           return matches;
         });
         
-        setBookings(filteredBookings);
+        setAllBookings(filteredBookings);
         setLoading(false);
         
         // Load guest information for all bookings
@@ -140,6 +143,49 @@ const HostBookings = () => {
 
     return () => unsubscribe();
   }, [user]);
+
+  // Filter bookings based on query parameter
+  useEffect(() => {
+    if (allBookings.length === 0) {
+      setBookings([]);
+      return;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let filtered: Booking[] = [];
+
+    switch (filter) {
+      case 'upcoming':
+        // Show only confirmed bookings with check-in date after today
+        filtered = allBookings.filter(booking => {
+          const checkIn = new Date(booking.checkIn);
+          checkIn.setHours(0, 0, 0, 0);
+          return booking.status === 'confirmed' && checkIn.getTime() > today.getTime();
+        });
+        // Sort by check-in date (ascending)
+        filtered.sort((a, b) => new Date(a.checkIn).getTime() - new Date(b.checkIn).getTime());
+        break;
+      case 'pending':
+        filtered = allBookings.filter(booking => booking.status === 'pending');
+        break;
+      case 'confirmed':
+        filtered = allBookings.filter(booking => booking.status === 'confirmed');
+        // Sort by check-in date (ascending)
+        filtered.sort((a, b) => new Date(a.checkIn).getTime() - new Date(b.checkIn).getTime());
+        break;
+      case 'cancelled':
+        filtered = allBookings.filter(booking => booking.status === 'cancelled');
+        break;
+      default:
+        // 'all' - show all bookings (already sorted by createdAt descending)
+        filtered = [...allBookings];
+        break;
+    }
+
+    setBookings(filtered);
+  }, [allBookings, filter]);
   
   // Debug function to fetch all bookings
   const getAllBookingsForDebug = async (hostUid: string) => {
@@ -230,7 +276,7 @@ const HostBookings = () => {
     if (!user) return;
     try {
       const data = await getBookings({ hostId: user.uid });
-      setBookings(data);
+      setAllBookings(data);
       console.log('📊 Bookings loaded (fallback):', data.length, 'bookings');
       loadGuestInfo(data);
     } catch (error: any) {
@@ -508,8 +554,20 @@ const HostBookings = () => {
               <Calendar className="w-5 h-5 text-secondary" />
             </div>
             <div>
-              <h1 className="text-lg font-bold">Booking Requests</h1>
-              <p className="text-xs text-muted-foreground">Manage reservations</p>
+              <h1 className="text-lg font-bold">
+                {filter === 'upcoming' ? 'Upcoming Bookings' : 
+                 filter === 'pending' ? 'Pending Requests' :
+                 filter === 'confirmed' ? 'Confirmed Bookings' :
+                 filter === 'cancelled' ? 'Cancelled Bookings' :
+                 'Booking Requests'}
+              </h1>
+              <p className="text-xs text-muted-foreground">
+                {filter === 'upcoming' ? 'View your confirmed upcoming reservations' :
+                 filter === 'pending' ? 'Review and respond to booking requests' :
+                 filter === 'confirmed' ? 'All confirmed reservations' :
+                 filter === 'cancelled' ? 'Cancelled reservations' :
+                 'Manage all reservations'}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -536,9 +594,19 @@ const HostBookings = () => {
         ) : bookings.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">
-              <p className="text-muted-foreground mb-4">No booking requests</p>
+              <p className="text-muted-foreground mb-4">
+                {filter === 'upcoming' ? 'No upcoming bookings' :
+                 filter === 'pending' ? 'No pending requests' :
+                 filter === 'confirmed' ? 'No confirmed bookings' :
+                 filter === 'cancelled' ? 'No cancelled bookings' :
+                 'No booking requests'}
+              </p>
               <p className="text-xs text-muted-foreground">
-                Bookings will appear here when guests make reservation requests for your listings.
+                {filter === 'upcoming' ? 'Confirmed bookings with future check-in dates will appear here.' :
+                 filter === 'pending' ? 'Booking requests from guests will appear here for your review.' :
+                 filter === 'confirmed' ? 'Confirmed bookings will appear here.' :
+                 filter === 'cancelled' ? 'Cancelled bookings will appear here.' :
+                 'Bookings will appear here when guests make reservation requests for your listings.'}
               </p>
               <p className="text-xs text-muted-foreground mt-2">
                 Current host ID: {user?.uid}

@@ -393,9 +393,9 @@ export const notifyListingApproved = async (
   listingTitle: string
 ): Promise<void> => {
   try {
-    // Link to the listing details page (guests can view, but hosts can see their own listings too)
-    // For hosts, we'll link to the guest listing page so they can see how it appears to guests
-    const actionUrl = `/guest/listing/${listingId}`;
+    // Link to the host's listings management page with the specific listing ID
+    // This allows hosts to view and manage their approved listing
+    const actionUrl = `/host/listings?listingId=${listingId}`;
     
     await createNotification({
       userId: hostId,
@@ -475,6 +475,13 @@ export const notifyNewReview = async (
       userRole = userProfile?.role || 'guest';
     }
     
+    // Determine the correct action URL based on user role
+    // Hosts should see their listings management page, guests should see the listing details
+    let actionUrl = `/guest/listing/${listingId}`;
+    if (userRole === 'host') {
+      actionUrl = `/host/listings?listingId=${listingId}`;
+    }
+    
     await createNotification({
       userId,
       role: userRole, // Include role for role-specific filtering
@@ -485,10 +492,119 @@ export const notifyNewReview = async (
       relatedType: 'review',
       read: false,
       priority: 'low',
-      actionUrl: `/guest/listing/${listingId}`
+      actionUrl
     });
   } catch (error) {
     console.error('Error creating review notification:', error);
+  }
+};
+
+/**
+ * Create notification for cancellation request created (for admin)
+ */
+export const notifyCancellationRequestCreated = async (
+  bookingId: string,
+  guestId: string,
+  hostId: string
+): Promise<void> => {
+  try {
+    // Get all admin users
+    const { getDocs, collection, query, where, or } = await import('firebase/firestore');
+    const { db } = await import('./firebase');
+    
+    // Query users with admin role (check both role field and roles array)
+    const usersQuery = query(
+      collection(db, 'users'),
+      or(
+        where('role', '==', 'admin'),
+        where('roles', 'array-contains', 'admin')
+      )
+    );
+    const usersSnapshot = await getDocs(usersQuery);
+    const admins = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // Get booking and listing details for notification
+    const { getDoc, doc } = await import('firebase/firestore');
+    const bookingDoc = await getDoc(doc(db, 'bookings', bookingId));
+    const booking = bookingDoc.exists() ? bookingDoc.data() : null;
+    
+    let listingTitle = 'a booking';
+    if (booking?.listingId) {
+      const listingDoc = await getDoc(doc(db, 'listing', booking.listingId));
+      if (listingDoc.exists()) {
+        listingTitle = listingDoc.data().title;
+      }
+    }
+
+    // Notify all admins
+    const notificationPromises = admins.map(admin =>
+      createNotification({
+        userId: admin.id,
+        role: 'admin',
+        type: 'system',
+        title: 'New Cancellation Request',
+        message: `A guest has requested to cancel their booking for "${listingTitle}"`,
+        relatedId: bookingId,
+        relatedType: 'booking',
+        read: false,
+        priority: 'high',
+        actionUrl: '/admin/cancellation-requests'
+      })
+    );
+
+    await Promise.all(notificationPromises);
+  } catch (error) {
+    console.error('Error creating cancellation request notification:', error);
+  }
+};
+
+/**
+ * Create notification for cancellation request reviewed (for guest)
+ */
+export const notifyCancellationRequestReviewed = async (
+  guestId: string,
+  requestId: string,
+  status: 'approved' | 'rejected',
+  adminNotes?: string
+): Promise<void> => {
+  try {
+    const { getDoc, doc } = await import('firebase/firestore');
+    const { db } = await import('./firebase');
+    
+    // Get cancellation request details
+    const requestDoc = await getDoc(doc(db, 'cancellationRequests', requestId));
+    if (!requestDoc.exists()) return;
+    
+    const request = requestDoc.data();
+    const bookingDoc = await getDoc(doc(db, 'bookings', request.bookingId));
+    const booking = bookingDoc.exists() ? bookingDoc.data() : null;
+    
+    let listingTitle = 'your booking';
+    if (booking?.listingId) {
+      const listingDoc = await getDoc(doc(db, 'listing', booking.listingId));
+      if (listingDoc.exists()) {
+        listingTitle = listingDoc.data().title;
+      }
+    }
+
+    const message = status === 'approved'
+      ? `Your cancellation request for "${listingTitle}" has been approved. ${adminNotes ? `Note: ${adminNotes}` : 'A refund has been processed.'}`
+      : `Your cancellation request for "${listingTitle}" has been rejected. ${adminNotes ? `Reason: ${adminNotes}` : ''}`;
+
+    await createNotification({
+      userId: guestId,
+      role: 'guest',
+      type: 'booking',
+      title: status === 'approved' ? 'Cancellation Approved' : 'Cancellation Rejected',
+      message,
+      relatedId: request.bookingId,
+      relatedType: 'booking',
+      read: false,
+      priority: status === 'approved' ? 'high' : 'medium',
+      actionUrl: '/guest/bookings'
+    });
+  } catch (error) {
+    console.error('Error creating cancellation request review notification:', error);
   }
 };
 

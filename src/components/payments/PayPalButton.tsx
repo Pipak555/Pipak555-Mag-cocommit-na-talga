@@ -49,41 +49,79 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
       }
     }, 2000);
 
-    // Monitor for PayPal popup and try to improve its appearance
+    // Monitor for PayPal popup and center it
     const observer = new MutationObserver(() => {
-      // Find PayPal popup/iframe elements
-      const paypalIframes = document.querySelectorAll('iframe[src*="paypal.com"]');
-      const paypalContainers = document.querySelectorAll('[id*="paypal"], [class*="paypal"]');
+      // Find PayPal popup/iframe elements - multiple selectors for better coverage
+      const paypalIframes = document.querySelectorAll('iframe[src*="paypal.com"], iframe[src*="checkoutnow"], iframe[id*="paypal"]');
+      const paypalContainers = document.querySelectorAll(
+        '[id*="paypal"], [class*="paypal"], [id*="zoid-paypal"], [class*="zoid-paypal"], [id*="paypal-button"], [class*="paypal-button"]'
+      );
+      const paypalOverlays = document.querySelectorAll('[id*="overlay"], [class*="overlay"], [id*="modal"], [class*="modal"]');
       
+      // Center PayPal iframes (checkout popups)
       paypalIframes.forEach((iframe: any) => {
-        if (iframe.src && iframe.src.includes('checkoutnow')) {
-          // Try to center the iframe
-          if (iframe.parentElement) {
-            iframe.parentElement.style.cssText = `
+        if (iframe.src && (iframe.src.includes('checkoutnow') || iframe.src.includes('paypal.com'))) {
+          // Center the iframe's parent container
+          let parent = iframe.parentElement;
+          let attempts = 0;
+          // Traverse up to find the actual popup container (usually 2-3 levels up)
+          while (parent && attempts < 5) {
+            const computedStyle = window.getComputedStyle(parent);
+            if (computedStyle.position === 'fixed' || computedStyle.position === 'absolute' || 
+                parent.id?.includes('paypal') || parent.className?.includes('paypal')) {
+              parent.style.cssText = `
               position: fixed !important;
               top: 50% !important;
               left: 50% !important;
               transform: translate(-50%, -50%) !important;
               z-index: 99999 !important;
+                margin: 0 !important;
             `;
+              break;
+            }
+            parent = parent.parentElement;
+            attempts++;
           }
+          
+          // Style the iframe itself
           iframe.style.cssText = `
             border-radius: 0.75rem !important;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3) !important;
+            max-width: 90vw !important;
+            max-height: 90vh !important;
           `;
         }
       });
 
-      // Style PayPal containers
+      // Center PayPal containers
       paypalContainers.forEach((container: any) => {
-        if (container.id && container.id.includes('container') && 
-            (container.id.includes('paypal') || container.className?.includes('paypal'))) {
+        const computedStyle = window.getComputedStyle(container);
+        if (computedStyle.position === 'fixed' || computedStyle.position === 'absolute') {
           container.style.cssText = `
             position: fixed !important;
             top: 50% !important;
             left: 50% !important;
             transform: translate(-50%, -50%) !important;
             z-index: 99999 !important;
+            margin: 0 !important;
+          `;
+        }
+      });
+
+      // Center PayPal overlays/modals
+      paypalOverlays.forEach((overlay: any) => {
+        const computedStyle = window.getComputedStyle(overlay);
+        const hasPayPalContent = overlay.querySelector('iframe[src*="paypal.com"]') || 
+                                  overlay.id?.includes('paypal') || 
+                                  overlay.className?.includes('paypal');
+        if (hasPayPalContent && (computedStyle.position === 'fixed' || computedStyle.position === 'absolute')) {
+          overlay.style.cssText = `
+            position: fixed !important;
+            top: 50% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) !important;
+            z-index: 99999 !important;
+            margin: 0 !important;
           `;
         }
       });
@@ -249,32 +287,121 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
     }
   };
 
-  const createOrder = (data: any, actions: any) => {
-    return actions.order.create({
+  const createOrder = async (data: any, actions: any) => {
+    try {
+      // In sandbox mode, we can't easily check balance client-side
+      // PayPal will handle insufficient funds on their end
+      // The order creation will succeed, but capture will fail if insufficient funds
+      const order = await actions.order.create({
       purchase_units: [{
         amount: {
           value: amount.toFixed(2),
           currency_code: CURRENCY_CODE
         },
         description: description
+        // NOTE: We intentionally do NOT include any payer information here
+        // This ensures PayPal shows the login page first, not saved payment methods
       }],
       application_context: {
         return_url: redirectUrl || window.location.origin + '/payment/success',
         cancel_url: window.location.origin + '/payment/cancel',
         brand_name: "Mojo Dojo Casa House",
         locale: "en-PH",
-        shipping_preference: "NO_SHIPPING" // For digital services, no shipping needed
+        shipping_preference: "NO_SHIPPING", // For digital services, no shipping needed
+        // CRITICAL: Force PayPal to show LOGIN page first, not billing page with saved payment methods
+        // This ensures users must log in with their own account before seeing any payment options
+        landing_page: "LOGIN", // Forces login page - user must log in first (no saved payment methods shown)
+        // Force immediate payment (no saved payment methods)
+        payment_method: {
+          payee_preferred: "IMMEDIATE_PAYMENT_REQUIRED" // Enforce immediate payment
+        },
+        // Force user to explicitly confirm payment (don't auto-select saved accounts)
+        user_action: "PAY_NOW" // Requires explicit payment confirmation
       }
+      // NOTE: We intentionally do NOT include any payer object here
+      // This prevents PayPal from pre-filling account information
     });
+      return order;
+    } catch (error: any) {
+      console.error('Error creating PayPal order:', error);
+      // Check if it's an insufficient funds error during order creation
+      if (error?.message?.includes('INSUFFICIENT_FUNDS') || error?.details?.[0]?.issue === 'INSUFFICIENT_FUNDS') {
+        toast.error('Payment failed: Insufficient funds in your PayPal account. Please add funds and try again.');
+        throw error;
+      }
+      throw error;
+    }
   };
 
   const onApprove = async (data: any, actions: any) => {
     try {
-      const order = await actions.order.capture();
+      // Attempt to capture the payment
+      // This is where PayPal will actually check for sufficient funds
+      let order;
+      try {
+        order = await actions.order.capture();
+      } catch (captureError: any) {
+        // PayPal capture failed - likely insufficient funds
+        console.error('PayPal capture error:', captureError);
+        const errorMsg = captureError?.message || captureError?.toString() || '';
+        
+        if (
+          errorMsg.includes('INSUFFICIENT_FUNDS') ||
+          errorMsg.includes('insufficient') ||
+          errorMsg.includes('INSTRUMENT_DECLINED') ||
+          errorMsg.includes('declined') ||
+          captureError?.details?.[0]?.issue === 'INSUFFICIENT_FUNDS' ||
+          captureError?.details?.[0]?.issue === 'INSTRUMENT_DECLINED'
+        ) {
+          const errorMessage = 'Payment failed: Insufficient funds in your PayPal account. Please add funds to your PayPal account and try again.';
+          toast.error(errorMessage);
+          throw new Error(errorMessage);
+        }
+        
+        // Re-throw other errors
+        throw captureError;
+      }
       
       // Verify the order was captured successfully
       if (!order || order.status !== 'COMPLETED') {
+        // Check for insufficient funds or payment declined
+        const orderStatus = order?.status;
+        const purchaseUnit = order?.purchase_units?.[0];
+        const paymentStatus = purchaseUnit?.payments?.captures?.[0]?.status;
+        
+        if (
+          orderStatus === 'PAYER_ACTION_REQUIRED' || 
+          orderStatus === 'VOIDED' ||
+          orderStatus === 'COMPLETED' && paymentStatus === 'DECLINED' ||
+          purchaseUnit?.payments?.captures?.[0]?.status === 'DECLINED'
+        ) {
+          const errorMsg = 'Payment failed: Insufficient funds or payment declined. Please add funds to your PayPal account and try again.';
+          toast.error(errorMsg);
+          throw new Error(errorMsg);
+        }
+        
+        // Check for other failure statuses
+        if (orderStatus && orderStatus !== 'COMPLETED') {
+          const errorMsg = `Payment failed with status: ${orderStatus}. Please try again or contact support.`;
+          toast.error(errorMsg);
+          throw new Error(errorMsg);
+        }
+        
         throw new Error('Payment was not completed successfully');
+      }
+      
+      // Additional check: Verify the capture was successful
+      const purchaseUnit = order.purchase_units?.[0];
+      const capture = purchaseUnit?.payments?.captures?.[0];
+      if (capture && capture.status !== 'COMPLETED') {
+        if (capture.status === 'DECLINED' || capture.status === 'FAILED') {
+          const errorMsg = 'Payment failed: Insufficient funds or payment declined. Please add funds to your PayPal account and try again.';
+          toast.error(errorMsg);
+          throw new Error(errorMsg);
+        }
+        const errorMsg = `Payment capture failed with status: ${capture.status}`;
+        toast.error(errorMsg);
+        throw new Error(errorMsg);
       }
       
       // Determine transaction type based on description
@@ -407,9 +534,31 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
   };
 
   const onError = (err: any) => {
-    toast.error("Payment error occurred");
+    console.error('PayPal payment error:', err);
+    
+    // Check for insufficient funds or payment declined errors
+    const errorMessage = err?.message || err?.toString() || '';
+    const errorDetails = err?.details?.[0] || {};
+    
+    // PayPal error codes for insufficient funds
+    if (
+      errorMessage.includes('INSUFFICIENT_FUNDS') ||
+      errorMessage.includes('insufficient') ||
+      errorMessage.includes('INSTRUMENT_DECLINED') ||
+      errorMessage.includes('declined') ||
+      errorDetails.issue === 'INSUFFICIENT_FUNDS' ||
+      errorDetails.issue === 'INSTRUMENT_DECLINED' ||
+      err?.name === 'INSUFFICIENT_FUNDS'
+    ) {
+      toast.error('Payment failed: Insufficient funds in your PayPal account. Please add funds and try again.');
+    } else if (errorMessage.includes('PAYER_ACTION_REQUIRED') || errorMessage.includes('action required')) {
+      toast.error('Payment failed: Action required. Please check your PayPal account and try again.');
+    } else {
+      toast.error(err?.message || 'Payment error occurred. Please try again.');
+    }
+    
     if (import.meta.env.DEV) {
-      console.error(err);
+      console.error('Full PayPal error details:', err);
     }
   };
 
@@ -463,7 +612,8 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
     if (redirectFlowFailed) {
       return (
         <div className="w-full">
-          <div className="paypal-button-wrapper">
+          <div className="flex justify-center">
+            <div className="paypal-button-wrapper max-w-md w-full">
             <PayPalButtons
               createOrder={createOrder}
               onApprove={onApprove}
@@ -476,6 +626,7 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
                 height: 50
               }}
             />
+            </div>
           </div>
           <p className="text-xs text-muted-foreground text-center mt-2">
             Using standard PayPal checkout
@@ -514,7 +665,8 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
 
   return (
     <div className="w-full">
-      <div className="paypal-button-wrapper">
+      <div className="flex justify-center">
+        <div className="paypal-button-wrapper max-w-md w-full">
         <PayPalButtons
           createOrder={createOrder}
           onApprove={onApprove}
@@ -527,6 +679,7 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
             height: 50
           }}
         />
+        </div>
       </div>
     </div>
   );
@@ -558,6 +711,10 @@ export const PayPalButton = (props: PayPalButtonProps) => {
         "data-sdk-integration-source": "button-factory",
         // Locale settings for better popup appearance
         locale: "en_PH", // Philippines locale
+        // Disable saved payment methods to force manual login
+        "disable-funding": "credit,card,venmo,paylater",
+        // Only enable PayPal (forces users to log in with their own account)
+        "enable-funding": "paypal",
         // Use correct PayPal environment
         ...(isSandbox ? {} : { "buyer-country": "PH" })
       }}

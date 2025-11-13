@@ -2,71 +2,40 @@
  * Host Payout Service - PayPal Sandbox Integration
  * 
  * Handles host payouts/withdrawals to PayPal
- * For sandbox mode, simulates PayPal payouts
+ * Calls Cloud Function to send payout via PayPal Payouts API
  */
 
-import { doc, getDoc, updateDoc, addDoc, collection } from 'firebase/firestore';
-import { db } from './firebase';
-import { createTransaction } from './firestore';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from './firebase';
 import type { Transaction } from '@/types';
 
 /**
  * Request withdrawal from wallet to PayPal
  * 
- * For sandbox: Creates withdrawal transaction and deducts from wallet
- * In production: Would call PayPal Payouts API via Firebase Functions
+ * Calls Cloud Function to:
+ * 1. Send payout via PayPal Payouts API to sandbox account
+ * 2. Deduct from wallet balance
+ * 3. Create transaction record
  */
 export const requestWithdrawal = async (
   userId: string,
   amount: number
-): Promise<{ success: boolean; transactionId: string }> => {
+): Promise<{ success: boolean; transactionId: string; payoutId?: string }> => {
   try {
-    // Get user's current wallet balance
-    const userDoc = await getDoc(doc(db, 'users', userId));
-    if (!userDoc.exists()) {
-      throw new Error('User not found');
-    }
-
-    const userData = userDoc.data();
-    const currentBalance = userData.walletBalance || 0;
-    const paypalEmail = userData.paypalEmail;
-    const paypalVerified = userData.paypalEmailVerified;
-
-    // Validate withdrawal
-    if (!paypalEmail || !paypalVerified) {
-      throw new Error('Please link and verify your PayPal account in account settings before requesting withdrawal.');
-    }
-
     if (amount <= 0) {
       throw new Error('Withdrawal amount must be greater than 0');
     }
 
-    if (amount > currentBalance) {
-      throw new Error(`Insufficient balance. Available: ₱${currentBalance.toFixed(2)}, Requested: ₱${amount.toFixed(2)}`);
-    }
-
-    // Calculate new balance
-    const newBalance = currentBalance - amount;
-
-    // Create withdrawal transaction
-    const transactionId = await createTransaction({
-      userId,
-      type: 'withdrawal',
-      amount,
-      description: `Withdrawal to PayPal (${paypalEmail})`,
-      status: 'completed', // In sandbox, we simulate immediate completion
-      paymentMethod: 'paypal',
-      paymentId: `WITHDRAWAL-${Date.now()}`, // Simulated payout ID
-    });
-
-    // Update wallet balance
-    await updateDoc(doc(db, 'users', userId), {
-      walletBalance: newBalance
-    });
-
+    // Call Cloud Function to process withdrawal
+    const requestHostWithdrawal = httpsCallable(functions, 'requestHostWithdrawal');
+    const result = await requestHostWithdrawal({ amount });
+    
+    const data = result.data as { success: boolean; transactionId: string; payoutId?: string; message?: string };
+    
     return {
-      success: true,
-      transactionId
+      success: data.success,
+      transactionId: data.transactionId,
+      payoutId: data.payoutId,
     };
   } catch (error: any) {
     console.error('Error processing withdrawal:', error);

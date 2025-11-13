@@ -118,7 +118,7 @@ const ManageUsers = () => {
         {loading ? (
           <Card>
             <CardContent className="py-12 text-center">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-role-admin" />
               <p className="text-muted-foreground">Loading users...</p>
             </CardContent>
           </Card>
@@ -130,7 +130,7 @@ const ManageUsers = () => {
               <p className="text-sm text-muted-foreground mb-4">
                 Make sure your admin user has the role field set to "admin" in Firestore.
               </p>
-              <Button onClick={loadUsers} variant="outline">
+              <Button onClick={loadUsers} variant="outline" className="hover:bg-role-admin/10 hover:text-role-admin hover:border-role-admin/30">
                 Retry
               </Button>
             </CardContent>
@@ -186,10 +186,10 @@ const ManageUsers = () => {
                           }
                           className={
                             role === 'admin'
-                              ? 'bg-orange-500 hover:bg-orange-600 text-xs'
+                              ? 'bg-role-admin hover:bg-role-admin/90 text-xs'
                               : role === 'host'
-                              ? 'bg-blue-500 hover:bg-blue-600 text-xs'
-                              : 'bg-cyan-500 hover:bg-cyan-600 text-xs'
+                              ? 'bg-role-host hover:bg-role-host/90 text-xs'
+                              : 'bg-role-guest hover:bg-role-guest/90 text-xs'
                           }
                         >
                           {role}
@@ -266,10 +266,10 @@ const ManageUsers = () => {
                                 }
                                 className={
                                   role === 'admin'
-                                    ? 'bg-orange-500 hover:bg-orange-600'
+                                    ? 'bg-role-admin hover:bg-role-admin/90'
                                     : role === 'host'
-                                    ? 'bg-blue-500 hover:bg-blue-600'
-                                    : 'bg-cyan-500 hover:bg-cyan-600'
+                                    ? 'bg-role-host hover:bg-role-host/90'
+                                    : 'bg-role-guest hover:bg-role-guest/90'
                                 }
                               >
                                 {role}

@@ -28,10 +28,14 @@ const ResetPassword = () => {
   
   // Firebase sends the action code as 'oobCode' in the URL
   const actionCode = searchParams.get('oobCode') || searchParams.get('code') || '';
+  
+  // Detect user type from URL or default to guest
+  const userType = searchParams.get('userType') || 'guest';
 
   useEffect(() => {
     if (!actionCode) {
       setError('Invalid or missing reset link. Please request a new password reset.');
+      // Don't auto-redirect - let user click the button to go to login
     }
   }, [actionCode]);
 
@@ -69,12 +73,15 @@ const ResetPassword = () => {
 
     setLoading(true);
     try {
-      const sanitizedPassword = sanitizeString(password);
-      await resetPassword(actionCode, sanitizedPassword);
+      // Don't sanitize password - it's hashed and sanitization might alter special characters
+      const trimmedPassword = password.trim();
+      await resetPassword(actionCode, trimmedPassword);
       setSuccess(true);
       toast.success('Password reset successfully! Redirecting to login...');
       setTimeout(() => {
-        navigate('/guest/login');
+        // Redirect to appropriate login page based on user type
+        const loginPath = userType === 'host' ? '/host/login' : userType === 'admin' ? '/admin/login' : '/guest/login';
+        navigate(loginPath);
       }, 2000);
     } catch (error: any) {
       const errorMessage = error.message || 'Failed to reset password. The link may have expired.';
@@ -111,7 +118,10 @@ const ResetPassword = () => {
                 </CardDescription>
               </div>
               <Button
-                onClick={() => navigate('/guest/login')}
+                onClick={() => {
+                  const loginPath = userType === 'host' ? '/host/login' : userType === 'admin' ? '/admin/login' : '/guest/login';
+                  navigate(loginPath);
+                }}
                 className="w-full bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-white shadow-lg hover:shadow-xl transition-all duration-300"
               >
                 Go to Login
@@ -158,7 +168,8 @@ const ResetPassword = () => {
           </CardHeader>
           
           <CardContent className="relative z-10">
-            {error && (
+            {/* Show error message only if there's an actionCode (form submission error) */}
+            {error && actionCode && (
               <div className="mb-6 p-4 bg-red-100 dark:bg-red-900/20 border-2 border-red-300 dark:border-red-800 rounded-xl">
                 <p className="text-sm text-red-800 dark:text-red-200 flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 flex-shrink-0" />
@@ -167,12 +178,25 @@ const ResetPassword = () => {
               </div>
             )}
 
+            {/* Show missing reset link message only if no actionCode */}
             {!actionCode && (
               <div className="mb-6 p-4 bg-orange-100 dark:bg-orange-900/20 border-2 border-orange-300 dark:border-orange-800 rounded-xl">
-                <p className="text-sm text-orange-800 dark:text-orange-200 flex items-center gap-2">
+                <p className="text-sm text-orange-800 dark:text-orange-200 flex items-center gap-2 mb-3">
                   <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                  Invalid or missing reset link. Please request a new password reset.
+                  Invalid or missing reset link. Please request a new password reset from the login page.
                 </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const loginPath = userType === 'host' ? '/host/login' : userType === 'admin' ? '/admin/login' : '/guest/login';
+                    navigate(loginPath);
+                  }}
+                  className="w-full"
+                >
+                  Go to Login Page
+                </Button>
               </div>
             )}
 
@@ -238,7 +262,10 @@ const ResetPassword = () => {
                 <Button
                   type="button"
                   variant="ghost"
-                  onClick={() => navigate('/guest/login')}
+                  onClick={() => {
+                    const loginPath = userType === 'host' ? '/host/login' : userType === 'admin' ? '/admin/login' : '/guest/login';
+                    navigate(loginPath);
+                  }}
                   className="text-sm"
                 >
                   Back to Login

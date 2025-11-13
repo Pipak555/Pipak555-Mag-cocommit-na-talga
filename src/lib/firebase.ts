@@ -2,7 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getStorage, connectStorageEmulator } from 'firebase/storage';
-import { getFunctions } from 'firebase/functions';
+import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -22,7 +22,7 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
-export const functions = getFunctions(app);
+export const functions = getFunctions(app, 'us-central1');
 
 // Connect to emulators in development mode (localhost only)
 // This ensures local testing doesn't affect your deployed Firebase project
@@ -64,6 +64,18 @@ if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === 'true') {
         console.log('✅ Storage emulator already connected');
       } else {
         console.warn('⚠️  Storage emulator connection issue:', error.message);
+      }
+    }
+    
+    // Connect Functions emulator
+    try {
+      connectFunctionsEmulator(functions, 'localhost', 5001);
+      console.log('✅ Functions emulator connected on port 5001');
+    } catch (error: any) {
+      if (error.message?.includes('already been initialized')) {
+        console.log('✅ Functions emulator already connected');
+      } else {
+        console.warn('⚠️  Functions emulator connection issue:', error.message);
       }
     }
     

@@ -14,12 +14,11 @@ import { ArrowLeft, User, Bell, CreditCard, Calendar, Ticket, Mail, Smartphone, 
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getBookings } from "@/lib/firestore";
-import { CouponManager } from "@/components/coupons/CouponManager";
+import { HostCouponManager } from "@/components/host/HostCouponManager";
 import { getUserSubscription, hasActiveSubscription, getPlanById, cancelSubscription } from "@/lib/billingService";
-import type { UserProfile, Booking, Coupon, NotificationPreferences, HostSubscription } from "@/types";
+import type { UserProfile, Booking, NotificationPreferences, HostSubscription } from "@/types";
 import { formatPHP } from "@/lib/currency";
 import LoadingScreen from "@/components/ui/loading-screen";
-import PayPalIdentity from "@/components/payments/PayPalIdentity";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,7 +37,6 @@ const HostAccountSettings = () => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [userBookings, setUserBookings] = useState<Booking[]>([]);
-  const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'profile');
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -112,7 +110,6 @@ const HostAccountSettings = () => {
       if (docSnap.exists()) {
         const data = docSnap.data() as UserProfile;
         setProfile(data);
-        setCoupons(data.coupons || []);
       }
     } catch (error) {
       console.error(error);
@@ -279,32 +276,6 @@ const HostAccountSettings = () => {
                   <Input id="balance" value={formatPHP(profile.walletBalance)} disabled />
                 </div>
                 
-                {/* PayPal Account Linking */}
-                <div className="pt-4 border-t">
-                  <Label className="text-base font-semibold mb-2 block">PayPal Account</Label>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Link your PayPal account to receive payouts from your bookings. Payments will be sent to your PayPal account.
-                  </p>
-                  {user && (
-                    <PayPalIdentity
-                      userId={user.uid}
-                      paypalEmail={profile.paypalEmail}
-                      paypalVerified={profile.paypalEmailVerified}
-                      onVerified={async (email: string) => {
-                        // Update profile state
-                        setProfile(prev => prev ? {
-                          ...prev,
-                          paypalEmail: email,
-                          paypalEmailVerified: true
-                        } : null);
-                        // Reload profile to get latest data
-                        await loadProfile();
-                        toast.success('PayPal account linked successfully!');
-                      }}
-                    />
-                  )}
-                </div>
-                
                 <Button onClick={handleSaveProfile} disabled={loading}>
                   {loading ? "Saving..." : "Save Changes"}
                 </Button>
@@ -360,18 +331,7 @@ const HostAccountSettings = () => {
           </TabsContent>
 
           <TabsContent value="coupons">
-            <Card>
-              <CardHeader>
-                <CardTitle>Coupons</CardTitle>
-                <CardDescription>Manage your promotional coupons</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <CouponManager 
-                  coupons={coupons} 
-                  onApplyCoupon={(code) => toast.info(`Coupon ${code} applied`)} 
-                />
-              </CardContent>
-            </Card>
+            <HostCouponManager />
           </TabsContent>
 
           <TabsContent value="notifications">

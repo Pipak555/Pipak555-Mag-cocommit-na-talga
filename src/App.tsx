@@ -32,9 +32,11 @@ const ListingDetails = lazy(() => import("./pages/guest/ListingDetails"));
 const MyBookings = lazy(() => import("./pages/guest/MyBookings"));
 const HostBookings = lazy(() => import("./pages/host/HostBookings"));
 const HostPayments = lazy(() => import("./pages/host/HostPayments"));
+const HostEarnings = lazy(() => import("./pages/host/HostEarnings"));
 const Wallet = lazy(() => import("./pages/guest/Wallet"));
 const ManageUsers = lazy(() => import("./pages/admin/ManageUsers"));
 const ReviewListings = lazy(() => import("./pages/admin/ReviewListings"));
+const ReviewCancellationRequests = lazy(() => import("./pages/admin/ReviewCancellationRequests"));
 const ActiveListings = lazy(() => import("./pages/admin/ActiveListings"));
 const AccountSettings = lazy(() => import("./pages/shared/AccountSettings"));
 const HostAccountSettings = lazy(() => import("./pages/host/HostAccountSettings"));
@@ -43,7 +45,6 @@ const HostRegister = lazy(() => import("./pages/host/HostRegister"));
 const HostPayment = lazy(() => import("./pages/host/HostPayment"));
 const HostPaymentSuccess = lazy(() => import("./pages/host/HostPaymentSuccess"));
 const Favorites = lazy(() => import("./pages/guest/Favorites"));
-const Wishlist = lazy(() => import("./pages/guest/Wishlist"));
 const HostMessages = lazy(() => import("./pages/host/Messages"));
 const GuestMessages = lazy(() => import("./pages/guest/Messages"));
 const AdminMessages = lazy(() => import("./pages/admin/Messages"));
@@ -96,6 +97,7 @@ const AppRoutes = () => {
             <Route path="/host/bookings" element={<LazyRoute component={HostBookings} />} />
             <Route path="/host/calendar" element={<LazyRoute component={HostCalendar} />} />
             <Route path="/host/payments" element={<LazyRoute component={HostPayments} />} />
+            <Route path="/host/earnings" element={<LazyRoute component={HostEarnings} />} />
             <Route path="/host/messages" element={<LazyRoute component={HostMessages} />} />
             <Route path="/host/settings" element={<LazyRoute component={HostAccountSettings} />} />
             <Route path="/host/rewards" element={<LazyRoute component={HostRewards} />} />
@@ -107,12 +109,13 @@ const AppRoutes = () => {
             <Route path="/guest/messages" element={<LazyRoute component={GuestMessages} />} />
             <Route path="/guest/settings" element={<LazyRoute component={GuestAccountSettings} />} />
             <Route path="/guest/favorites" element={<LazyRoute component={Favorites} />} />
-            <Route path="/guest/wishlist" element={<LazyRoute component={Wishlist} />} />
+            <Route path="/guest/wishlist" element={<Navigate to="/guest/settings?tab=wishlist" replace />} />
             <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="/admin/dashboard" element={<LazyRoute component={AdminDashboard} />} />
             <Route path="/admin/users" element={<LazyRoute component={ManageUsers} />} />
             <Route path="/admin/listings" element={<LazyRoute component={ReviewListings} />} />
             <Route path="/admin/active-listings" element={<LazyRoute component={ActiveListings} />} />
+            <Route path="/admin/cancellation-requests" element={<LazyRoute component={ReviewCancellationRequests} />} />
             <Route path="/admin/messages" element={<LazyRoute component={AdminMessages} />} />
             <Route path="/admin/payments" element={<LazyRoute component={ManagePayments} />} />
               <Route path="/admin/paypal-settings" element={<LazyRoute component={AdminPayPalSettings} />} />

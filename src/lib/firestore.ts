@@ -263,12 +263,38 @@ export const updateBooking = async (id: string, data: Partial<Booking>) => {
   await updateDoc(doc(db, 'bookings', id), data);
 };
 
-export const getBookings = async (filters?: { guestId?: string; hostId?: string; status?: string }) => {
+export const getBooking = async (id: string): Promise<Booking | null> => {
+  try {
+    const bookingDoc = await getDoc(doc(db, 'bookings', id));
+    if (!bookingDoc.exists()) {
+      return null;
+    }
+    return { id: bookingDoc.id, ...bookingDoc.data() } as Booking;
+  } catch (error: any) {
+    console.error('Error getting booking:', error);
+    throw new Error(error.message || 'Failed to get booking');
+  }
+};
+
+export const getBookings = async (filters?: { guestId?: string; hostId?: string; status?: string; listingId?: string }) => {
   try {
     let q: any;
     
     // Build query based on filters
-    if (filters?.hostId && filters?.status) {
+    if (filters?.listingId && filters?.status) {
+      // Query by listingId and status (for availability checking)
+      q = query(
+        collection(db, 'bookings'),
+        where('listingId', '==', filters.listingId),
+        where('status', '==', filters.status)
+      );
+    } else if (filters?.listingId) {
+      // Query by listingId only
+      q = query(
+        collection(db, 'bookings'),
+        where('listingId', '==', filters.listingId)
+      );
+    } else if (filters?.hostId && filters?.status) {
       // Use composite index: hostId + status + createdAt
       q = query(
         collection(db, 'bookings'),
@@ -333,6 +359,9 @@ export const getBookings = async (filters?: { guestId?: string; hostId?: string;
       console.warn('⚠️ Falling back to query without orderBy');
       let q: any = query(collection(db, 'bookings'));
       
+      if (filters?.listingId) {
+        q = query(q, where('listingId', '==', filters.listingId));
+      }
       if (filters?.guestId) {
         q = query(q, where('guestId', '==', filters.guestId));
       }

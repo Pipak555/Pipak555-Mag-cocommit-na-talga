@@ -47,6 +47,10 @@ import {
   deleteDoc,
   updateDoc,
   serverTimestamp,
+  collection,
+  query,
+  where,
+  getDocs,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -55,7 +59,7 @@ const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp
 const MAX_IMAGES = 10;
 
 export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
-  const { user } = useAuth();
+  const { user, userProfile } = useAuth();
   const [searchParams] = useSearchParams();
   const editListingId = searchParams.get('edit');
   const isEditMode = !!editListingId;
@@ -75,6 +79,8 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
   const [isPublished, setIsPublished] = useState(false); // Track if listing has been published
+  const [isPromoCodeGenerated, setIsPromoCodeGenerated] = useState(false); // Track if promo code was auto-generated
+  const [isGeneratingPromoCode, setIsGeneratingPromoCode] = useState(false); // Track if generating promo code
 
   // debounce timer ref
   const saveTimeoutRef = useRef<number | null>(null);
@@ -221,9 +227,12 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
       if (!id) return;
 
       const formValues = form.getValues();
-      const finalAvailableDates = formValues.dateRange?.from && formValues.dateRange?.to
-        ? generateAvailableDates(formValues.dateRange.from, formValues.dateRange.to)
-        : availableDates;
+      // Get dateRange from form values - ensure we capture it properly
+      const dateRange = formValues.dateRange || { from: undefined, to: undefined };
+      // Generate availableDates from dateRange if both dates are present
+      const finalAvailableDates = dateRange?.from && dateRange?.to
+        ? generateAvailableDates(dateRange.from, dateRange.to)
+        : (availableDates.length > 0 ? availableDates : []);
 
       // Check if draft already exists to preserve createdAt and status
       let existingCreatedAt = null;
@@ -262,6 +271,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         blockedDates,
         images: [],
         status: "draft", // Only save as draft
+        // Also save dateRange directly for easier loading
+        dateRange: dateRange?.from && dateRange?.to ? {
+          from: dateRange.from.toISOString(),
+          to: dateRange.to.toISOString(),
+        } : undefined,
         createdAt: existingCreatedAt || new Date().toISOString(),
         updatedAt: serverTimestamp(),
       };
@@ -312,7 +326,8 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
     }
 
     saveTimeoutRef.current = window.setTimeout(() => {
-      if (form.formState.isDirty) {
+      // Always save if form is dirty OR if dateRange has changed
+      if (form.formState.isDirty || watchedValues.dateRange?.from || watchedValues.dateRange?.to) {
         saveDraftToFirestore();
       }
     }, 2000);
@@ -322,7 +337,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         window.clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [watchedValues, images, user, form.formState.isDirty, saveDraftToFirestore, loading, isPublished, isEditMode]);
+  }, [watchedValues, watchedValues.dateRange, images, user, form.formState.isDirty, saveDraftToFirestore, loading, isPublished, isEditMode]);
 
   // Save draft on page unload (disabled in edit mode)
   useEffect(() => {
@@ -357,6 +372,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         }
 
         // Load existing data into form
+        const existingPromoCode = (listing as any).promoCode || "";
         form.reset({
           title: listing.title || "",
           description: listing.description || "",
@@ -364,7 +380,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
           price: listing.price ? String(listing.price) : "",
           discount: listing.discount ? String(listing.discount) : "",
           promo: listing.promo || "",
-          promoCode: (listing as any).promoCode || "",
+          promoCode: existingPromoCode,
           promoDescription: (listing as any).promoDescription || "",
           promoDiscount: (listing as any).promoDiscount ? String((listing as any).promoDiscount) : "",
           promoMaxUses: (listing as any).promoMaxUses ? String((listing as any).promoMaxUses) : "",
@@ -381,6 +397,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
             : { from: undefined, to: undefined },
           images: [],
         });
+        
+        // Set promo code generated state if editing and promo code exists
+        if (existingPromoCode && existingPromoCode.startsWith('PROMO-')) {
+          setIsPromoCodeGenerated(true);
+        }
 
         // Set existing images
         if (listing.images && Array.isArray(listing.images)) {
@@ -461,12 +482,15 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         bedrooms: data.bedrooms ? String(data.bedrooms) : "",
         bathrooms: data.bathrooms ? String(data.bathrooms) : "",
         amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : (data.amenities || ""),
-        dateRange: data.availableDates && data.availableDates.length > 0
+        dateRange: data.availableDates && Array.isArray(data.availableDates) && data.availableDates.length > 0
           ? {
               from: new Date(data.availableDates[0]),
               to: new Date(data.availableDates[data.availableDates.length - 1]),
             }
-          : { from: undefined, to: undefined },
+          : (data.dateRange ? {
+              from: data.dateRange.from ? new Date(data.dateRange.from) : undefined,
+              to: data.dateRange.to ? new Date(data.dateRange.to) : undefined,
+            } : { from: undefined, to: undefined }),
         images: [],
       });
 
@@ -697,6 +721,14 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
   };
 
   const handleProceedToPayment = async () => {
+    if (!user) return;
+
+    // Check if email is verified
+    if (!userProfile?.emailVerified) {
+      toast.error('Please verify your email address to create listings. Check your inbox for a verification code.');
+      return;
+    }
+
     // Trigger validation for all fields
     const isValid = await form.trigger();
     const dateRange = form.getValues("dateRange");
@@ -745,6 +777,12 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
 
   const handleSubmitListing = async () => {
     if (!user) return;
+
+    // Check if email is verified
+    if (!userProfile?.emailVerified) {
+      toast.error('Please verify your email address to create listings. Check your inbox for a verification code.');
+      return;
+    }
     
     // Trigger validation for all fields
     const isValid = await form.trigger();
@@ -1175,33 +1213,114 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                     <FormField
                       control={form.control}
                       name="promoCode"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Promo Code</FormLabel>
-                          <FormControl>
-                            <div className="flex gap-2">
-                              <Input
-                                placeholder="PROMO-XXXXXX"
-                                value={field.value || ""}
-                                onChange={(e) => field.onChange(e.target.value.toUpperCase())}
-                                className="flex-1"
-                              />
-                              <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => {
-                                  const code = `PROMO-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-                                  field.onChange(code);
-                                }}
-                              >
-                                Generate
-                              </Button>
-                            </div>
-                          </FormControl>
-                          <FormDescription>Enter a custom code or generate one automatically</FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
+                      render={({ field }) => {
+                        // Check if promo code exists and was generated (starts with PROMO-)
+                        const isGenerated = isPromoCodeGenerated || (field.value && field.value.startsWith('PROMO-'));
+                        
+                        return (
+                          <FormItem>
+                            <FormLabel>Promo Code</FormLabel>
+                            <FormControl>
+                              <div className="flex gap-2">
+                                <Input
+                                  placeholder="PROMO-XXXXXX"
+                                  value={field.value || ""}
+                                  onChange={(e) => {
+                                    // Only allow editing if not generated
+                                    if (!isGenerated) {
+                                      field.onChange(e.target.value.toUpperCase());
+                                      setIsPromoCodeGenerated(false);
+                                    }
+                                  }}
+                                  disabled={isGenerated}
+                                  className="flex-1"
+                                  readOnly={isGenerated}
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={async () => {
+                                    setIsGeneratingPromoCode(true);
+                                    try {
+                                      // Generate secure unique promo code
+                                      const generateUniquePromoCode = async (): Promise<string> => {
+                                        const maxAttempts = 10;
+                                        let attempts = 0;
+                                        
+                                        while (attempts < maxAttempts) {
+                                          // Generate a more secure code using crypto if available, otherwise Math.random
+                                          let randomPart: string;
+                                          if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+                                            // Use crypto API for better randomness
+                                            const array = new Uint32Array(1);
+                                            crypto.getRandomValues(array);
+                                            randomPart = array[0].toString(36).toUpperCase().padStart(6, '0').substring(0, 6);
+                                          } else {
+                                            // Fallback to Math.random with timestamp for better uniqueness
+                                            const timestamp = Date.now().toString(36).toUpperCase();
+                                            const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+                                            randomPart = (timestamp + random).substring(0, 6);
+                                          }
+                                          
+                                          const code = `PROMO-${randomPart}`;
+                                          
+                                          // Check if code already exists in database
+                                          const listingsRef = collection(db, 'listing');
+                                          const q = query(listingsRef, where('promoCode', '==', code));
+                                          const snapshot = await getDocs(q);
+                                          
+                                          if (snapshot.empty) {
+                                            // Code is unique, return it
+                                            return code;
+                                          }
+                                          
+                                          attempts++;
+                                        }
+                                        
+                                        // If we couldn't generate a unique code after max attempts, throw error
+                                        throw new Error('Unable to generate a unique promo code. Please try again.');
+                                      };
+                                      
+                                      const uniqueCode = await generateUniquePromoCode();
+                                      field.onChange(uniqueCode);
+                                      setIsPromoCodeGenerated(true);
+                                      toast.success('Unique promo code generated successfully!');
+                                    } catch (error: any) {
+                                      toast.error(error.message || 'Failed to generate promo code. Please try again.');
+                                    } finally {
+                                      setIsGeneratingPromoCode(false);
+                                    }
+                                  }}
+                                  disabled={isGeneratingPromoCode || isGenerated}
+                                >
+                                  {isGeneratingPromoCode ? 'Generating...' : isGenerated ? 'Generated' : 'Generate'}
+                                </Button>
+                                {isGenerated && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      field.onChange('');
+                                      setIsPromoCodeGenerated(false);
+                                      toast.info('Promo code cleared. You can enter a custom code or generate a new one.');
+                                    }}
+                                    className="text-muted-foreground"
+                                  >
+                                    Clear
+                                  </Button>
+                                )}
+                              </div>
+                            </FormControl>
+                            <FormDescription>
+                              {isGenerated 
+                                ? "Generated code is secured and unique. Click 'Clear' to enter a custom code."
+                                : "Enter a custom code or generate one automatically (ensures uniqueness)"}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        );
+                      }}
                     />
 
                     <FormField
@@ -1351,14 +1470,13 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                         <Input
                           type="number"
                           min="0"
-                          step="0.5"
+                          step="1"
                           placeholder="0"
                           {...field}
                           value={field.value || ""}
                           onChange={(e) => field.onChange(e.target.value)}
                         />
                       </FormControl>
-                      <FormDescription>0.5 = half bath (toilet + sink), 1 = full bath (toilet + sink + shower)</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

@@ -15,6 +15,9 @@ const buttonVariants = cva(
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
+        "role-admin": "bg-role-admin text-role-admin-foreground hover:bg-role-admin/90",
+        "role-host": "bg-role-host text-role-host-foreground hover:bg-role-host/90",
+        "role-guest": "bg-role-guest text-role-guest-foreground hover:bg-role-guest/90",
       },
       size: {
         default: "h-10 px-4 py-2",

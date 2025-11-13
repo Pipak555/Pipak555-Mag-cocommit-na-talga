@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { AdminEmailVerificationBanner } from '@/components/admin/EmailVerificationBanner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -237,7 +238,7 @@ const AdminDashboard = () => {
     if (loadingEvents) {
       return (
         <div className="text-center py-8">
-          <Loader2 className="w-8 h-8 mx-auto mb-4 animate-spin text-primary" />
+          <Loader2 className="w-8 h-8 mx-auto mb-4 animate-spin text-role-admin" />
           <p className="text-muted-foreground">Loading events...</p>
         </div>
       );
@@ -399,8 +400,8 @@ const AdminDashboard = () => {
         <div className="container mx-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4 flex justify-between items-center gap-2 sm:gap-3">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <Logo size="sm" />
-            <div className="hidden sm:block p-2 rounded-lg bg-accent/10">
-              <Shield className="w-5 h-5 text-accent" />
+            <div className="hidden sm:block p-2 rounded-lg bg-role-admin/10">
+              <Shield className="w-5 h-5 text-role-admin" />
             </div>
             <div className="min-w-0 flex-1">
               <h1 className="text-sm sm:text-base md:text-lg font-bold truncate">
@@ -412,7 +413,7 @@ const AdminDashboard = () => {
           <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             <NotificationBell />
             <ThemeToggle />
-            <Button variant="outline" onClick={() => setLogoutDialogOpen(true)} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation">
+            <Button variant="outline" onClick={() => setLogoutDialogOpen(true)} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation hover:bg-role-admin/10 hover:text-role-admin hover:border-role-admin/30">
               <span className="hidden sm:inline">Sign Out</span>
               <span className="sm:hidden">Out</span>
             </Button>
@@ -421,10 +422,12 @@ const AdminDashboard = () => {
       </header>
 
       <div className="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8">
+        {/* Email Verification Banner */}
+        <AdminEmailVerificationBanner />
         {/* Welcome Section */}
-        <div className="mb-4 sm:mb-6 md:mb-8 p-4 sm:p-5 md:p-6 rounded-xl bg-gradient-accent text-white">
+        <div className="mb-4 sm:mb-6 md:mb-8 p-4 sm:p-5 md:p-6 rounded-xl bg-role-admin text-role-admin-foreground">
           <h2 className="text-xl sm:text-2xl md:text-3xl font-bold mb-2">Platform Overview</h2>
-          <p className="text-sm sm:text-base text-white/90">Welcome back, {userProfile?.fullName || 'Admin'}!</p>
+          <p className="text-sm sm:text-base text-role-admin-foreground/90">Welcome back, {userProfile?.fullName || 'Admin'}!</p>
         </div>
 
         {/* Platform Stats */}
@@ -471,7 +474,7 @@ const AdminDashboard = () => {
               <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Total Earnings</CardTitle>
             </CardHeader>
             <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-              <div className="text-xl sm:text-2xl font-bold text-accent">{formatPHP(stats.totalEarnings)}</div>
+              <div className="text-xl sm:text-2xl font-bold text-role-admin">{formatPHP(stats.totalEarnings)}</div>
               <p className="text-xs text-muted-foreground mt-1">
                 Subscriptions: {formatPHP(stats.subscriptionRevenue)}
               </p>
@@ -482,9 +485,9 @@ const AdminDashboard = () => {
 
         {/* Admin Tools */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/users')}>
+          <Card className="shadow-medium hover:shadow-hover hover:border-role-admin/50 hover:bg-role-admin/5 transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/users')}>
             <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
-              <Users className="w-6 h-6 sm:w-8 sm:h-8 text-primary mb-2" />
+              <Users className="w-6 h-6 sm:w-8 sm:h-8 text-role-admin mb-2" />
               <CardTitle className="text-base sm:text-lg">User Management</CardTitle>
               <CardDescription className="text-xs sm:text-sm">
                 Manage hosts, guests, and permissions
@@ -492,9 +495,9 @@ const AdminDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/listings')}>
+          <Card className="shadow-medium hover:shadow-hover hover:border-role-admin/50 hover:bg-role-admin/5 transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/listings')}>
             <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
-              <Home className="w-6 h-6 sm:w-8 sm:h-8 text-primary mb-2" />
+              <Home className="w-6 h-6 sm:w-8 sm:h-8 text-role-admin mb-2" />
               <CardTitle className="text-base sm:text-lg">Listings Review</CardTitle>
               <CardDescription className="text-xs sm:text-sm">
                 Approve and moderate listings
@@ -502,9 +505,19 @@ const AdminDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/payments')}>
+          <Card className="shadow-medium hover:shadow-hover hover:border-role-admin/50 hover:bg-role-admin/5 transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/cancellation-requests')}>
             <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
-              <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-accent mb-2" />
+              <Calendar className="w-6 h-6 sm:w-8 sm:h-8 text-role-admin mb-2" />
+              <CardTitle className="text-base sm:text-lg">Cancellation Requests</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                Review and process booking cancellations
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="shadow-medium hover:shadow-hover hover:border-role-admin/50 hover:bg-role-admin/5 transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/payments')}>
+            <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+              <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-role-admin mb-2" />
               <CardTitle className="text-base sm:text-lg">Payment Management</CardTitle>
               <CardDescription className="text-xs sm:text-sm">
                 Review and confirm payments
@@ -512,9 +525,9 @@ const AdminDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/paypal-settings')}>
+          <Card className="shadow-medium hover:shadow-hover hover:border-role-admin/50 hover:bg-role-admin/5 transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/paypal-settings')}>
             <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
-              <CreditCard className="w-6 h-6 sm:w-8 sm:h-8 text-primary mb-2" />
+              <CreditCard className="w-6 h-6 sm:w-8 sm:h-8 text-role-admin mb-2" />
               <CardTitle className="text-base sm:text-lg">PayPal Settings</CardTitle>
               <CardDescription className="text-xs sm:text-sm">
                 Configure PayPal account for subscriptions
@@ -522,9 +535,9 @@ const AdminDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/analytics')}>
+          <Card className="shadow-medium hover:shadow-hover hover:border-role-admin/50 hover:bg-role-admin/5 transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/analytics')}>
             <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
-              <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-secondary mb-2" />
+              <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-role-admin mb-2" />
               <CardTitle className="text-base sm:text-lg">Analytics</CardTitle>
               <CardDescription className="text-xs sm:text-sm">
                 View platform performance metrics
@@ -532,9 +545,9 @@ const AdminDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/reports')}>
+          <Card className="shadow-medium hover:shadow-hover hover:border-role-admin/50 hover:bg-role-admin/5 transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/reports')}>
             <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
-              <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-secondary mb-2" />
+              <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-role-admin mb-2" />
               <CardTitle className="text-base sm:text-lg">Reports</CardTitle>
               <CardDescription className="text-xs sm:text-sm">
                 Generate platform reports
@@ -542,9 +555,9 @@ const AdminDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/policies')}>
+          <Card className="shadow-medium hover:shadow-hover hover:border-role-admin/50 hover:bg-role-admin/5 transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/policies')}>
             <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
-              <Settings className="w-6 h-6 sm:w-8 sm:h-8 text-muted-foreground mb-2" />
+              <Settings className="w-6 h-6 sm:w-8 sm:h-8 text-role-admin mb-2" />
               <CardTitle className="text-base sm:text-lg">Policies & Settings</CardTitle>
               <CardDescription className="text-xs sm:text-sm">
                 Manage platform policies
@@ -552,9 +565,9 @@ const AdminDashboard = () => {
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/messages')}>
+          <Card className="shadow-medium hover:shadow-hover hover:border-role-admin/50 hover:bg-role-admin/5 transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/messages')}>
             <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
-              <MessageSquare className="w-6 h-6 sm:w-8 sm:h-8 text-primary mb-2" />
+              <MessageSquare className="w-6 h-6 sm:w-8 sm:h-8 text-role-admin mb-2" />
               <CardTitle className="text-base sm:text-lg">Messages</CardTitle>
               <CardDescription className="text-xs sm:text-sm">
                 View and respond to messages
@@ -571,7 +584,7 @@ const AdminDashboard = () => {
                 <CardTitle>Recent Activity</CardTitle>
                 <CardDescription>Latest platform events</CardDescription>
               </div>
-              <Button onClick={() => navigate('/admin/create-event')} size="sm">
+              <Button onClick={() => navigate('/admin/create-event')} size="sm" variant="role-admin">
                 <Megaphone className="h-4 w-4 mr-2" />
                 Create Event
               </Button>
@@ -598,7 +611,7 @@ const AdminDashboard = () => {
 
           {loadingBreakdown ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <Loader2 className="h-8 w-8 animate-spin text-role-admin" />
               <p className="ml-3 text-muted-foreground">Loading breakdown...</p>
             </div>
           ) : allEarningsTransactions.length === 0 ? (
@@ -613,7 +626,7 @@ const AdminDashboard = () => {
                 <Card>
                   <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
                     <p className="text-xs sm:text-sm text-muted-foreground">Total Earnings</p>
-                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-accent">
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-role-admin">
                       {formatPHP(
                         allEarningsTransactions.reduce((sum, t) => sum + (t.amount || 0), 0)
                       )}
@@ -623,7 +636,7 @@ const AdminDashboard = () => {
                 <Card>
                   <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
                     <p className="text-xs sm:text-sm text-muted-foreground">Subscription Revenue</p>
-                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-primary">
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-role-admin">
                       {formatPHP(
                         allEarningsTransactions
                           .filter(t => t.earningsType === 'subscription')
@@ -664,8 +677,8 @@ const AdminDashboard = () => {
                           variant={transaction.earningsType === 'subscription' ? 'default' : 'secondary'}
                           className={
                             transaction.earningsType === 'subscription' 
-                              ? 'bg-primary text-xs' 
-                              : 'bg-green-500 text-xs'
+                              ? 'bg-role-admin text-xs' 
+                              : 'bg-role-admin text-xs'
                           }
                         >
                           Subscription
@@ -697,7 +710,7 @@ const AdminDashboard = () => {
                             <span className="text-muted-foreground">Email: </span>
                             <a
                               href={`mailto:${transaction.hostEmail}`}
-                              className="text-primary hover:underline truncate block"
+                              className="text-role-admin hover:underline truncate block"
                             >
                               {transaction.hostEmail}
                             </a>
@@ -705,7 +718,7 @@ const AdminDashboard = () => {
                         )}
                       </div>
                       <div className="pt-1">
-                        <p className="text-base font-semibold text-accent">
+                        <p className="text-base font-semibold text-role-admin">
                           {formatPHP(transaction.amount || 0)}
                         </p>
                       </div>
@@ -746,8 +759,8 @@ const AdminDashboard = () => {
                               variant={transaction.earningsType === 'subscription' ? 'default' : 'secondary'}
                               className={
                                 transaction.earningsType === 'subscription' 
-                                  ? 'bg-primary' 
-                                  : 'bg-green-500'
+                                ? 'bg-role-admin' 
+                                : 'bg-role-admin'
                               }
                             >
                               Subscription

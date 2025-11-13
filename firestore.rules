@@ -43,16 +43,20 @@ service cloud.firestore {
     // Top-level bookings collection
     match /bookings/{bookingId} {
       // Allow read for involved users OR admin
+      // Also allow reading confirmed bookings for availability checking (by listingId)
       allow read: if isSignedIn() && (
         resource.data.guestId == request.auth.uid ||
         resource.data.hostId == request.auth.uid ||
-        isAdmin()
+        isAdmin() ||
+        (resource.data.status == 'confirmed' && resource.data.listingId != null)
       );
       // Allow list/query for bookings where user is involved
+      // Also allow querying confirmed bookings by listingId for availability
       allow list: if isSignedIn() && (
         resource.data.guestId == request.auth.uid ||
         resource.data.hostId == request.auth.uid ||
-        isAdmin()
+        isAdmin() ||
+        (resource.data.status == 'confirmed' && resource.data.listingId != null)
       );
       allow create: if isSignedIn() && request.resource.data.guestId == request.auth.uid;
       allow update: if isSignedIn() && (

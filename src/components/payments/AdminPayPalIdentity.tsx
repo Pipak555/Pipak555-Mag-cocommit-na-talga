@@ -39,15 +39,29 @@ const AdminPayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified }
   // Get base URL from environment variable or use current origin
   // In production, use VITE_APP_URL to ensure consistent redirect URIs
   const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
-  const baseUrl = import.meta.env.PROD ? appUrl : window.location.origin;
+  let baseUrl = import.meta.env.PROD ? appUrl : window.location.origin;
   
   // Use the same redirect URI as guests (already configured in PayPal app)
   // The callback handler will route admin back to admin/paypal-settings based on state
   let redirectUri = `${baseUrl}/paypal-callback`;
   
-  // For localhost development, try both localhost and 127.0.0.1
-  if (baseUrl.includes('localhost') && !import.meta.env.PROD) {
-    redirectUri = redirectUri.replace('localhost', '127.0.0.1');
+  // For local development, convert IP addresses to localhost (PayPal sandbox requirement)
+  if (!import.meta.env.PROD) {
+    // Check if baseUrl contains an IP address (e.g., http://10.56.170.176:8080)
+    const ipAddressMatch = baseUrl.match(/^https?:\/\/(\d+\.\d+\.\d+\.\d+)(:\d+)?/);
+    if (ipAddressMatch) {
+      // Extract port if present
+      const port = ipAddressMatch[2] || ':8080';
+      // Use 127.0.0.1 instead of IP address for PayPal redirect URI
+      redirectUri = `http://127.0.0.1${port}/paypal-callback`;
+      if (import.meta.env.DEV) {
+        console.warn('⚠️ PayPal sandbox doesn\'t accept IP addresses. Using localhost redirect URI:', redirectUri);
+        console.warn('💡 Make sure you access the app via http://127.0.0.1' + port + ' or http://localhost' + port);
+      }
+    } else if (baseUrl.includes('localhost')) {
+      // Replace localhost with 127.0.0.1 for consistency
+      redirectUri = redirectUri.replace('localhost', '127.0.0.1');
+    }
   }
 
   const handleOAuthCallback = useCallback(async (authCode: string) => {

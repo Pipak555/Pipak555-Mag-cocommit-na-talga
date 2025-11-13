@@ -700,17 +700,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // Silently fail - we'll use "User" as default
       }
 
-      // Get the current origin (localhost in dev, or your domain in production)
+    // Get the current origin (localhost in dev, or your domain in production)
       // Use production URL for password reset to ensure domain is authorized
       const appUrl = import.meta.env.VITE_APP_URL || 'https://mojo-dojo-casa-house-f31a5.web.app';
-      const actionCodeSettings = {
+    const actionCodeSettings = {
         url: `${appUrl}/reset-password`,
-        handleCodeInApp: false, // Set to false to open the link in a browser
-      };
+      handleCodeInApp: false, // Set to false to open the link in a browser
+    };
       
       // Generate password reset link using Firebase
       // Firebase will send its own email, but we'll also send our custom EmailJS email
-      await sendPasswordResetEmail(auth, email, actionCodeSettings);
+    await sendPasswordResetEmail(auth, email, actionCodeSettings);
       
       // Send custom EmailJS email with better template
       // Note: The actual reset link with oobCode is sent by Firebase's email

@@ -68,8 +68,8 @@ export const listingFormSchema = z.object({
     .string()
     .optional()
     .refine(
-      (val) => !val || val.trim() === "" || (!isNaN(Number(val)) && Number(val) >= 0),
-      "Bathrooms must be a non-negative number (can be 0.5, 1, 1.5, etc.)"
+      (val) => !val || val.trim() === "" || (!isNaN(Number(val)) && Number(val) >= 0 && Number.isInteger(Number(val))),
+      "Bathrooms must be a non-negative integer"
     ),
   amenities: z.string().optional().default(""),
   dateRange: z

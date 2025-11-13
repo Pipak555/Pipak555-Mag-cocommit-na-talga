@@ -79,16 +79,6 @@ export const ListingCard = memo(({ listing, onView, onFavorite, isFavorite }: Li
           <Badge className="bg-white/95 backdrop-blur-sm text-gray-900 font-semibold shadow-lg capitalize border border-white/20 px-2 sm:px-3 py-0.5 sm:py-1 text-xs sm:text-sm">
             {listing.category}
           </Badge>
-          {(listing.promo || listing.promoDescription) && (
-            <Badge className="bg-primary/90 backdrop-blur-sm text-white font-medium shadow-lg border border-primary/20 px-2 sm:px-3 py-0.5 sm:py-1 text-[10px] sm:text-xs line-clamp-1 max-w-[120px] sm:max-w-[150px]">
-              {listing.promoDescription || listing.promo}
-            </Badge>
-          )}
-          {listing.promoCode && (
-            <Badge className="bg-orange-500/90 backdrop-blur-sm text-white font-medium shadow-lg border border-orange-500/20 px-2 sm:px-3 py-0.5 sm:py-1 text-[10px] sm:text-xs">
-              {listing.promoCode}
-            </Badge>
-          )}
         </div>
         
         {/* Price Badge */}
@@ -154,9 +144,6 @@ export const ListingCard = memo(({ listing, onView, onFavorite, isFavorite }: Li
     prevProps.listing.id === nextProps.listing.id &&
     prevProps.listing.price === nextProps.listing.price &&
     prevProps.listing.discount === nextProps.listing.discount &&
-    prevProps.listing.promo === nextProps.listing.promo &&
-    prevProps.listing.promoCode === nextProps.listing.promoCode &&
-    prevProps.listing.promoDescription === nextProps.listing.promoDescription &&
     prevProps.listing.averageRating === nextProps.listing.averageRating &&
     prevProps.listing.reviewCount === nextProps.listing.reviewCount &&
     prevProps.isFavorite === nextProps.isFavorite &&

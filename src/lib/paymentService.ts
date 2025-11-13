@@ -1,4 +1,4 @@
-import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, getDocs, runTransaction } from 'firebase/firestore';
 import { db } from './firebase';
 import { createTransaction } from './firestore';
 import type { Transaction, Booking } from '@/types';
@@ -46,19 +46,7 @@ export const processBookingPayment = async (booking: Booking, paymentMethod: 'wa
     
     // If payment method is PayPal, check for PayPal payment transaction
     if (paymentMethod === 'paypal') {
-      // Check if guest has linked and verified PayPal account
-      if (!guestData.paypalEmail) {
-        throw new Error('PayPal account not linked. Please link your PayPal account in the wallet settings before making payments.');
-      }
-      
-      // Check if PayPal account is verified
-      if (!guestData.paypalEmailVerified) {
-        throw new Error('PayPal account not verified. Please verify your PayPal account in the wallet settings before making payments.');
-      }
-      
-      // Note: Account verification happens automatically during payment
-      // If the PayPal account is invalid, PayPal will reject the payment
-
+      // No need to check for linked PayPal account - user enters it when paying
       // Check if PayPal payment was already made
       const paypalTransactionsQuery = query(
         collection(db, 'transactions'),
@@ -101,23 +89,52 @@ export const processBookingPayment = async (booking: Booking, paymentMethod: 'wa
       });
     }
 
-    // Get host's current wallet balance
+    // Get host's current wallet balance and payment preference
     const hostDoc = await getDoc(doc(db, 'users', booking.hostId));
     if (!hostDoc.exists()) {
       throw new Error('Host user not found');
     }
 
     const hostData = hostDoc.data();
+    const earningsPayoutMethod = hostData.earningsPayoutMethod || 'wallet'; // Default to wallet if not set
     const hostCurrentBalance = hostData.walletBalance || 0;
-    const hostNewBalance = hostCurrentBalance + totalPrice; // Host gets 100% of booking payment
+    let hostNewBalance = hostCurrentBalance;
 
-    // Add full amount to host wallet
+    // Check host's payment preference
+    if (earningsPayoutMethod === 'paypal') {
+      // Host wants earnings sent directly to PayPal
+      // Check if PayPal account is linked and verified
+      if (!hostData.paypalEmail || !hostData.paypalEmailVerified) {
+        // Fallback to wallet if PayPal not verified
+        console.warn('Host PayPal not verified, falling back to wallet');
+        hostNewBalance = hostCurrentBalance + totalPrice;
+        await updateDoc(doc(db, 'users', booking.hostId), {
+          walletBalance: hostNewBalance
+        });
+      } else {
+        // Create transaction with payoutStatus: 'pending' - Firebase Function will process PayPal payout
+        // Don't add to wallet, let the Firebase Function handle PayPal payout
+        await createTransaction({
+          userId: booking.hostId,
+          type: 'deposit',
+          amount: totalPrice,
+          description: `Earnings from booking #${bookingId.slice(0, 8)}`,
+          status: 'completed',
+          bookingId: bookingId,
+          payoutStatus: 'pending', // Will be processed by Firebase Function
+          payoutMethod: 'paypal' // Indicate this should go to PayPal
+        });
+        // Keep hostNewBalance as currentBalance since we're not adding to wallet
+        hostNewBalance = hostCurrentBalance;
+      }
+    } else {
+      // Host wants earnings in wallet (default behavior)
+      hostNewBalance = hostCurrentBalance + totalPrice;
     await updateDoc(doc(db, 'users', booking.hostId), {
       walletBalance: hostNewBalance
     });
 
     // Create earnings transaction for host
-    // Note: Payout will be automatically processed by Firebase Function trigger (autoProcessHostPayout)
     await createTransaction({
       userId: booking.hostId,
       type: 'deposit',
@@ -125,8 +142,10 @@ export const processBookingPayment = async (booking: Booking, paymentMethod: 'wa
       description: `Earnings from booking #${bookingId.slice(0, 8)}`,
       status: 'completed',
       bookingId: bookingId,
-      payoutStatus: 'pending' // Will be updated by Firebase Function when payout is processed
+        payoutStatus: 'completed', // No payout needed, already in wallet
+        payoutMethod: 'wallet'
     });
+    }
 
     // Award host points for completed booking
     try {
@@ -288,24 +307,23 @@ export const processBookingRefund = async (
           };
         }
 
-    // Get current balances
-    const [guestDoc, hostDoc] = await Promise.all([
-      getDoc(doc(db, 'users', guestId)),
-      getDoc(doc(db, 'users', hostId))
-    ]);
+    // Use Firestore transaction to ensure atomicity
+    const refundResult = await runTransaction(db, async (transactionRef) => {
+      // Get current balances within transaction
+      const guestDoc = await transactionRef.get(doc(db, 'users', guestId));
+      const hostDoc = await transactionRef.get(doc(db, 'users', hostId));
 
-    if (!guestDoc.exists() || !hostDoc.exists()) {
-      throw new Error('User not found for refund processing');
-    }
+      if (!guestDoc.exists() || !hostDoc.exists()) {
+        throw new Error('User not found for refund processing');
+      }
 
-    const guestData = guestDoc.data();
-    const hostData = hostDoc.data();
-    const guestCurrentBalance = guestData.walletBalance || 0;
-    const hostCurrentBalance = hostData.walletBalance || 0;
+      const guestData = guestDoc.data();
+      const hostData = hostDoc.data();
+      const guestCurrentBalance = guestData.walletBalance || 0;
+      const hostCurrentBalance = hostData.walletBalance || 0;
 
-    // Restore coupon if one was used for this booking
-    if (booking.couponCode && guestData.coupons) {
-      try {
+      // Restore coupon if one was used for this booking
+      if (booking.couponCode && guestData.coupons) {
         const updatedCoupons = guestData.coupons.map((coupon: any) => 
           coupon.code === booking.couponCode && coupon.used && coupon.usedForBookingId === bookingId
             ? { 
@@ -317,7 +335,7 @@ export const processBookingRefund = async (
             : coupon
         );
         
-        await updateDoc(doc(db, 'users', guestId), {
+        transactionRef.update(doc(db, 'users', guestId), {
           coupons: updatedCoupons
         });
 
@@ -327,56 +345,42 @@ export const processBookingRefund = async (
             bookingId
           });
         }
-      } catch (couponError) {
-        console.error('Error restoring coupon:', couponError);
-        // Don't fail refund if coupon restore fails
       }
-    }
 
-    // Refund full amount to guest
-    const guestNewBalance = guestCurrentBalance + totalPrice;
-    await updateDoc(doc(db, 'users', guestId), {
-      walletBalance: guestNewBalance
+      // Refund full amount to guest
+      const guestNewBalance = guestCurrentBalance + totalPrice;
+      transactionRef.update(doc(db, 'users', guestId), {
+        walletBalance: guestNewBalance
+      });
+
+      // Deduct full amount from host (if they already received it)
+      // Only deduct if host balance is sufficient, otherwise just record the debt
+      let hostNewBalance = hostCurrentBalance;
+      if (hostCurrentBalance >= totalPrice) {
+        hostNewBalance = hostCurrentBalance - totalPrice;
+        transactionRef.update(doc(db, 'users', hostId), {
+          walletBalance: hostNewBalance
+        });
+      } else {
+        // Record negative balance or debt
+        if (import.meta.env.DEV) {
+          console.warn('⚠️ Host balance insufficient for refund, recording debt');
+        }
+        // Still update host balance to negative (debt tracking)
+        hostNewBalance = hostCurrentBalance - totalPrice;
+        transactionRef.update(doc(db, 'users', hostId), {
+          walletBalance: hostNewBalance
+        });
+      }
+
+      return {
+        guestNewBalance,
+        hostNewBalance,
+        refundAmount: totalPrice
+      };
     });
 
-    // Deduct full amount from host (if they already received it)
-    // Only deduct if host balance is sufficient, otherwise just record the debt
-    let hostNewBalance = hostCurrentBalance;
-    if (hostCurrentBalance >= totalPrice) {
-      hostNewBalance = hostCurrentBalance - totalPrice;
-      await updateDoc(doc(db, 'users', hostId), {
-        walletBalance: hostNewBalance
-      });
-    } else {
-      // Record negative balance or debt
-      if (import.meta.env.DEV) {
-        console.warn('⚠️ Host balance insufficient for refund, recording debt');
-      }
-    }
-
-    // Create refund transaction for guest
-    await createTransaction({
-      userId: guestId,
-      type: 'refund',
-      amount: totalPrice,
-      description: `Refund for cancelled booking #${bookingId.slice(0, 8)} (cancelled by ${cancelledBy})${reason ? `: ${reason}` : ''}`,
-      status: 'completed',
-      bookingId: bookingId,
-      cancelledBy: cancelledBy
-    });
-
-    // Create deduction transaction for host (if applicable)
-    if (hostCurrentBalance >= totalPrice) {
-      await createTransaction({
-        userId: hostId,
-        type: 'withdrawal',
-        amount: totalPrice,
-        description: `Refund deduction for cancelled booking #${bookingId.slice(0, 8)}`,
-        status: 'completed',
-        bookingId: bookingId,
-        cancelledBy: cancelledBy
-      });
-    }
+    const { guestNewBalance, hostNewBalance, refundAmount } = refundResult;
 
     // Only log in development
     if (import.meta.env.DEV) {
@@ -391,6 +395,35 @@ export const processBookingRefund = async (
       });
     }
 
+    // Create transaction records (outside transaction to avoid size limits)
+    let refundTransactionId: string | null = null;
+    try {
+      // Create refund transaction for guest
+      refundTransactionId = await createTransaction({
+        userId: guestId,
+        type: 'refund',
+        amount: totalPrice,
+        description: `Refund for cancelled booking #${bookingId.slice(0, 8)} (cancelled by ${cancelledBy})${reason ? `: ${reason}` : ''}`,
+        status: 'completed',
+        bookingId: bookingId,
+        cancelledBy: cancelledBy
+      });
+
+      // Create deduction transaction for host
+      await createTransaction({
+        userId: hostId,
+        type: 'withdrawal',
+        amount: totalPrice,
+        description: `Refund deduction for cancelled booking #${bookingId.slice(0, 8)}`,
+        status: 'completed',
+        bookingId: bookingId,
+        cancelledBy: cancelledBy
+      });
+    } catch (transactionError) {
+      console.error('⚠️ Error creating refund transaction records:', transactionError);
+      // Don't fail refund if transaction record creation fails - refund is already processed
+    }
+
     // Send notifications
     try {
       // Get listing title for notification
@@ -400,18 +433,23 @@ export const processBookingRefund = async (
       // Notify guest about cancellation
       await notifyBookingCancelled(guestId, bookingId, listingTitle, cancelledBy);
       
-      // Notify guest about refund
-      await notifyPayment(guestId, bookingId, totalPrice, 'refunded');
+      // Notify guest about refund - use refund transaction ID if available, fallback to booking ID
+      await notifyPayment(
+        guestId, 
+        refundTransactionId || bookingId, 
+        totalPrice, 
+        'refunded'
+      );
     } catch (notificationError) {
-      console.error('Error sending notifications:', notificationError);
-      // Don't fail refund if notification fails
+      console.error('⚠️ Error sending notifications:', notificationError);
+      // Don't fail refund if notification fails - refund is already processed
     }
 
     return {
       success: true,
       guestNewBalance,
       hostNewBalance,
-      refundAmount: totalPrice
+      refundAmount
     };
   } catch (error: any) {
     console.error('❌ Error processing booking refund:', error);
@@ -422,6 +460,7 @@ export const processBookingRefund = async (
 /**
  * Process refund for a transaction (admin action)
  * Refunds transaction and updates wallet balances
+ * Uses Firestore transactions to ensure atomicity
  */
 export const processTransactionRefund = async (
   transactionId: string,
@@ -429,6 +468,7 @@ export const processTransactionRefund = async (
   reason?: string
 ) => {
   try {
+    // Validate transaction status before starting
     if (transaction.status === 'refunded') {
       throw new Error('Transaction has already been refunded');
     }
@@ -439,16 +479,7 @@ export const processTransactionRefund = async (
 
     const { userId, amount, type, bookingId } = transaction;
 
-    // Get user's current balance
-    const userDoc = await getDoc(doc(db, 'users', userId));
-    if (!userDoc.exists()) {
-      throw new Error('User not found');
-    }
-
-    const userData = userDoc.data();
-    const currentBalance = userData.walletBalance || 0;
-
-    // For payment transactions, refund to guest
+    // For payment transactions with booking, use the full booking refund function
     if (type === 'payment' && bookingId) {
       // Get booking to process full refund
       const bookingDoc = await getDoc(doc(db, 'bookings', bookingId));
@@ -459,41 +490,95 @@ export const processTransactionRefund = async (
       }
     }
 
-    // For other transaction types, simple refund
-    const newBalance = currentBalance + amount;
-    await updateDoc(doc(db, 'users', userId), {
-      walletBalance: newBalance
-    });
+    // For other transaction types, use atomic transaction
+    return await runTransaction(db, async (transactionRef) => {
+      // Re-read transaction to check status (prevents race conditions)
+      const transactionDoc = await transactionRef.get(doc(db, 'transactions', transactionId));
+      if (!transactionDoc.exists()) {
+        throw new Error('Transaction not found');
+      }
 
-    // Create refund transaction
-    await createTransaction({
-      userId,
-      type: 'refund',
-      amount,
-      description: `Refund for transaction #${transactionId.slice(0, 8)}${reason ? `: ${reason}` : ''} (admin refund)`,
-      status: 'completed',
-      originalTransactionId: transactionId
-    });
+      const currentTransaction = transactionDoc.data() as Transaction;
+      
+      // Double-check status within transaction (prevents double refunds)
+      if (currentTransaction.status === 'refunded') {
+        throw new Error('Transaction has already been refunded');
+      }
 
-    // Update original transaction status
-    await updateDoc(doc(db, 'transactions', transactionId), {
-      status: 'refunded',
-      refundedAt: new Date().toISOString(),
-      refundReason: reason
-    });
+      if (currentTransaction.status !== 'completed') {
+        throw new Error('Only completed transactions can be refunded');
+      }
 
-    console.log('✅ Transaction refund processed:', {
-      transactionId,
-      userId,
-      amount,
-      newBalance
-    });
+      // Get user's current balance within transaction
+      const userDoc = await transactionRef.get(doc(db, 'users', userId));
+      if (!userDoc.exists()) {
+        throw new Error('User not found');
+      }
 
-    return {
-      success: true,
-      newBalance,
-      refundAmount: amount
-    };
+      const userData = userDoc.data();
+      const currentBalance = userData.walletBalance || 0;
+      const newBalance = currentBalance + amount;
+
+      // Update wallet balance atomically
+      transactionRef.update(doc(db, 'users', userId), {
+        walletBalance: newBalance
+      });
+
+      // Update transaction status atomically
+      transactionRef.update(doc(db, 'transactions', transactionId), {
+        status: 'refunded',
+        refundedAt: new Date().toISOString(),
+        refundReason: reason
+      });
+
+      // Return success - transaction will commit all changes atomically
+      return {
+        success: true,
+        newBalance,
+        refundAmount: amount
+      };
+    }).then(async (result) => {
+      // After transaction commits successfully, create refund transaction record
+      // This is done outside the transaction to avoid transaction size limits
+      let refundTransactionId: string | null = null;
+      try {
+        const refundTxId = await createTransaction({
+          userId,
+          type: 'refund',
+          amount,
+          description: `Refund for transaction #${transactionId.slice(0, 8)}${reason ? `: ${reason}` : ''} (admin refund)`,
+          status: 'completed',
+          originalTransactionId: transactionId
+        });
+        refundTransactionId = refundTxId;
+      } catch (createError) {
+        // Log error but don't fail - the refund has already been processed
+        console.error('⚠️ Error creating refund transaction record:', createError);
+      }
+
+      // Send notification to user about refund
+      try {
+        await notifyPayment(
+          userId, 
+          refundTransactionId || transactionId, // Use refund transaction ID if available, fallback to original
+          amount, 
+          'refunded'
+        );
+      } catch (notificationError) {
+        console.error('⚠️ Error sending refund notification:', notificationError);
+        // Don't fail refund if notification fails - refund is already processed
+      }
+
+      console.log('✅ Transaction refund processed:', {
+        transactionId,
+        userId,
+        amount,
+        newBalance: result.newBalance,
+        refundTransactionId
+      });
+
+      return result;
+    });
   } catch (error: any) {
     console.error('❌ Error processing transaction refund:', error);
     throw error;

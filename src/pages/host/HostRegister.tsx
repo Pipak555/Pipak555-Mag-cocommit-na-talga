@@ -137,6 +137,9 @@ const HostRegister = () => {
       setSelectedPlan(null);
     } else if (currentStep === 'payment') {
       setCurrentStep('account');
+    } else if (currentStep === 'plan') {
+      // If on plan step, go back to previous page
+      navigate(-1);
     }
   };
 
@@ -167,22 +170,14 @@ const HostRegister = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8 max-w-6xl">
-        {/* Header with Exit Button */}
-        <div className="flex justify-between items-center mb-6">
+        {/* Header - Only back button */}
+        <div className="flex justify-start items-center mb-6">
           <Button
             variant="ghost"
             size="icon"
-            onClick={handleBackToHome}
+            onClick={handleBack}
           >
-            <Home className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={handleExit}
-            className="gap-2 text-muted-foreground hover:text-destructive"
-          >
-            <X className="h-4 w-4" />
-            Exit
+            <ArrowLeft className="h-4 w-4" />
           </Button>
         </div>
 
@@ -295,8 +290,8 @@ const HostRegister = () => {
                     {plans.map((plan) => (
                       <Card
                         key={plan.id}
-                        className={`cursor-pointer transition-all hover:border-primary ${
-                          selectedPlan?.id === plan.id ? 'border-primary border-2' : ''
+                        className={`cursor-pointer transition-all hover:border-role-host hover:bg-role-host/5 ${
+                          selectedPlan?.id === plan.id ? 'border-role-host border-2 bg-role-host/5' : ''
                         }`}
                         onClick={() => handlePlanSelect(plan)}
                       >

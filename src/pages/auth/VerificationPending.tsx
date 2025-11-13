@@ -204,6 +204,26 @@ const VerificationPending = () => {
                   >
                     Cancel
                   </Button>
+
+                  {/* Skip for now option - show for all user roles */}
+                  <Button
+                    variant="ghost"
+                    className="w-full text-muted-foreground"
+                    onClick={() => {
+                      toast.info('You can verify your email later from your dashboard. Some features may be restricted until verification.');
+                      if (userRole === 'guest') {
+                        navigate('/guest/dashboard');
+                      } else if (userRole === 'host') {
+                        navigate('/host/dashboard');
+                      } else if (userRole === 'admin') {
+                        navigate('/admin/dashboard');
+                      } else {
+                        navigate('/guest/dashboard');
+                      }
+                    }}
+                  >
+                    Skip for now
+                  </Button>
                 </div>
               </>
             )}

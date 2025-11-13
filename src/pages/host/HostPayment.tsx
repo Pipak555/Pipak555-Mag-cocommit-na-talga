@@ -8,7 +8,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { PayPalButton } from '@/components/payments/PayPalButton';
 import { getPlanById, getUserSubscription } from '@/lib/billingService';
 import { formatPHP } from '@/lib/currency';
 import { Button } from '@/components/ui/button';
@@ -16,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Check, ArrowLeft, CreditCard, X, Home, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { HostPlan } from '@/types';
+import { PayPalButton } from '@/components/payments/PayPalButton';
 
 const HostPayment = () => {
   const navigate = useNavigate();
@@ -53,6 +53,7 @@ const HostPayment = () => {
     // Check if payment was already completed
     const checkPaymentStatus = async () => {
       try {
+        // Check subscription status
         const subscription = await getUserSubscription(user.uid);
         if (subscription && subscription.status === 'active' && subscription.planId === planId) {
           setPaymentCompleted(true);
@@ -77,8 +78,7 @@ const HostPayment = () => {
     if (!user || !plan) return;
 
     try {
-      // The PayPal button will handle the payment processing
-      // This callback is called after successful payment
+      // Payment was successful - subscription is already activated by the payment handler
       setPaymentCompleted(true);
       
       // Redirect to success page
@@ -90,6 +90,7 @@ const HostPayment = () => {
       toast.error('Payment processed but there was an error activating your subscription. Please contact support.');
     }
   };
+
 
   // Note: PayPalButton now handles subscription processing internally
   // This function is called after successful payment
@@ -287,74 +288,53 @@ const HostPayment = () => {
 
                 {/* Payment Options */}
                 <div className="space-y-6">
-                  {/* PayPal Checkout Option */}
-                  <div className="border-2 border-primary rounded-lg p-6 bg-primary/5">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="font-semibold text-lg mb-1">PayPal Checkout</h3>
-                        <p className="text-sm text-muted-foreground">
-                          Secure payment with PayPal.
+                  {/* PayPal Checkout */}
+                    <div className="border-2 border-primary rounded-lg p-6 bg-primary/5">
+                      <div className="flex items-start justify-between mb-4">
+                        <div>
+                          <h3 className="font-semibold text-lg mb-1">PayPal Checkout</h3>
+                          <p className="text-sm text-muted-foreground">
+                          Pay securely with PayPal. You'll be redirected to PayPal to complete your payment.
+                          </p>
+                        </div>
+                        <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
+                          <CreditCard className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      </div>
+                      
+                      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-4">
+                        <p className="text-xs text-blue-800 dark:text-blue-200">
+                          <strong>Payment Information:</strong> When you click "Pay with PayPal", you'll be redirected to PayPal to complete the payment. 
+                          The payment will go directly to the platform's admin PayPal account (configured in PayPal Developer Dashboard). 
                         </p>
                       </div>
-                      <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
-                        <CreditCard className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Click the button below to complete your payment. You'll be redirected to PayPal to securely complete the transaction.
-                    </p>
-                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 mb-4">
-                      <p className="text-xs text-yellow-800 dark:text-yellow-200">
-                        <strong>Note:</strong> You don't need to link your PayPal account beforehand. You'll log in to PayPal during checkout.
-                      </p>
-                    </div>
 
                     {/* PayPal Button */}
-                    {user && (
-                      <div className="space-y-4">
-                        <div className="border-t pt-4">
-                          <div className="flex justify-between items-center mb-4">
-                            <span className="text-sm font-medium">Pay with PayPal</span>
-                            <span className="text-lg font-bold text-primary">{formatPHP(plan.price)}</span>
-                          </div>
-                          
+                    {user && plan && (
+                        <div className="space-y-4">
+                          <div className="border-t pt-4">
+                            <div className="flex justify-between items-center mb-4">
+                            <span className="text-sm font-medium">Total Amount</span>
+                              <span className="text-lg font-bold text-primary">{formatPHP(plan.price)}</span>
+                            </div>
+                            
                           <PayPalButton
                             amount={plan.price}
                             userId={user.uid}
                             description={`Host subscription: ${plan.name} (${plan.billingCycle}) - planId=${plan.id}`}
                             onSuccess={handlePaymentSuccess}
-                            redirectUrl={`${window.location.origin}/host/payment/success?planId=${plan.id}&userId=${user.uid}`}
+                            redirectUrl={`${window.location.origin}/host/payment/success?planId=${plan.id}`}
+                            useRedirectFlow={true}
                           />
-
-                          <div className="mt-4 text-center">
-                            <Button
-                              variant="outline"
-                              className="w-full"
-                              onClick={() => {
-                                // Alternative payment method (could be credit card)
-                                toast.info('Credit card payment coming soon');
-                              }}
-                            >
-                              <CreditCard className="h-4 w-4 mr-2" />
-                              Debit or Credit Card
-                            </Button>
                           </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
+                      )}
+                    </div>
 
                   {/* Footer */}
                   <div className="text-center text-sm text-muted-foreground">
                     Powered by PayPal
                   </div>
-
-                  {/* Debug Message (only in dev) */}
-                  {import.meta.env.DEV && (
-                    <div className="text-xs text-muted-foreground text-center">
-                      Debug: PayPal button ready!
-                    </div>
-                  )}
                 </div>
               </CardContent>
             </Card>

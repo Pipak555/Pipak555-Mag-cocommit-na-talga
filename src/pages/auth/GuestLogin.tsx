@@ -63,11 +63,12 @@ const GuestLogin = () => {
     setLoading(true);
     
     try {
-      // Sanitize inputs
+      // Sanitize email only - don't sanitize password as it can alter special characters
       const sanitizedEmail = sanitizeEmail(data.email);
-      const sanitizedPassword = sanitizeString(data.password);
+      // Don't sanitize password - it's hashed and sanitization might alter special characters
+      const password = data.password.trim();
       
-      await signIn(sanitizedEmail, sanitizedPassword, 'guest');
+      await signIn(sanitizedEmail, password, 'guest');
       toast.success('Welcome back!');
       navigate('/guest/dashboard');
     } catch (error: any) {
@@ -81,12 +82,13 @@ const GuestLogin = () => {
     setLoading(true);
     
     try {
-      // Sanitize inputs
+      // Sanitize inputs (except password)
       const sanitizedFullName = sanitizeString(data.fullName);
       const sanitizedEmail = sanitizeEmail(data.email);
-      const sanitizedPassword = sanitizeString(data.password);
+      // Don't sanitize password - it's hashed and sanitization might alter special characters
+      const password = data.password.trim();
       
-      await signUp(sanitizedEmail, sanitizedPassword, sanitizedFullName, 'guest');
+      await signUp(sanitizedEmail, password, sanitizedFullName, 'guest');
       toast.success('Account created! Please check your email to verify your account.');
       navigate('/verify-otp');
     } catch (error: any) {

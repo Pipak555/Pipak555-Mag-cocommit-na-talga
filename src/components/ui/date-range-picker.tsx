@@ -41,11 +41,28 @@ export function DateRangePicker({
 
   const handleSelect = (range: { from: Date | undefined; to: Date | undefined } | undefined) => {
     if (range) {
-      onChange?.(range);
-      // Close popover when both dates are selected
+      // Automatically sort dates: earlier date becomes 'from', later date becomes 'to'
+      let sortedRange = range;
       if (range.from && range.to) {
+        const fromTime = range.from.getTime();
+        const toTime = range.to.getTime();
+        
+        // If 'to' is earlier than 'from', swap them
+        if (toTime < fromTime) {
+          sortedRange = {
+            from: range.to,
+            to: range.from
+          };
+        }
+      }
+      
+      onChange?.(sortedRange);
+      // Close popover when both dates are selected
+      if (sortedRange.from && sortedRange.to) {
         setOpen(false);
       }
+    } else {
+      onChange?.(range);
     }
   };
 

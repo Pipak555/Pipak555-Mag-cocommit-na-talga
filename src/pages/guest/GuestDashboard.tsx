@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { EmailVerificationBanner } from '@/components/guest/EmailVerificationBanner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CategoryCardVideo } from '@/components/ui/category-card-video';
 import { VideoBackground } from '@/components/ui/video-background';
-import { Heart, MapPin, Calendar, CalendarDays, Wallet, Settings, User, Sparkles, Bookmark, Home, Compass, Wrench, Building2, MessageSquare } from 'lucide-react';
+import { Heart, MapPin, Calendar, CalendarDays, Wallet, Settings, User, Sparkles, Home, Compass, Wrench, Building2, MessageSquare } from 'lucide-react';
 import { formatPHP } from '@/lib/currency';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
@@ -39,14 +40,12 @@ const GuestDashboard = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState({
     favorites: 0,
-    wishlist: 0,
     upcomingTrips: 0,
     pastBookings: 0,
     walletBalance: 0,
   });
   const [recommendations, setRecommendations] = useState<Listing[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
-  const [wishlist, setWishlist] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
@@ -65,11 +64,9 @@ const GuestDashboard = () => {
         setStats(prev => ({
           ...prev,
           favorites: userData.favorites?.length || 0,
-          wishlist: userData.wishlist?.length || 0,
           walletBalance: userData.walletBalance || 0,
         }));
         setFavorites(userData.favorites || []);
-        setWishlist(userData.wishlist || []);
       }
     });
 
@@ -147,23 +144,6 @@ const GuestDashboard = () => {
     }
   };
 
-  const handleWishlist = async (listingId: string) => {
-    if (!user) {
-      toast.error("Please login to add to wishlist");
-      return;
-    }
-    
-    try {
-      const { toggleWishlist } = await import('@/lib/firestore');
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      const currentWishlist = userDoc.exists() ? (userDoc.data().wishlist || []) : [];
-      const newWishlist = await toggleWishlist(user.uid, listingId, currentWishlist);
-      setWishlist(newWishlist);
-      toast.success(newWishlist.includes(listingId) ? "Added to wishlist" : "Removed from wishlist");
-    } catch (error) {
-      toast.error("Failed to update wishlist");
-    }
-  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -188,8 +168,8 @@ const GuestDashboard = () => {
         <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center gap-2 sm:gap-3">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <Logo size="sm" />
-            <div className="hidden sm:block p-2 rounded-lg bg-secondary/10">
-              <User className="w-5 h-5 text-secondary" />
+            <div className="hidden sm:block p-2 rounded-lg bg-role-guest/10">
+              <User className="w-5 h-5 text-role-guest" />
             </div>
             <div className="min-w-0 flex-1">
               <h1 className="text-base sm:text-lg font-bold truncate">
@@ -201,7 +181,7 @@ const GuestDashboard = () => {
           <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             <NotificationBell />
             <ThemeToggle />
-            <Button variant="outline" onClick={() => setLogoutDialogOpen(true)} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation">
+            <Button variant="outline" onClick={() => setLogoutDialogOpen(true)} className="h-9 sm:h-auto text-xs sm:text-sm px-2 sm:px-4 touch-manipulation hover:bg-role-guest/10 hover:text-role-guest hover:border-role-guest/30">
               <span className="hidden sm:inline">Sign Out</span>
               <span className="sm:hidden">Out</span>
             </Button>
@@ -210,6 +190,9 @@ const GuestDashboard = () => {
       </header>
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Email Verification Banner */}
+        <EmailVerificationBanner />
+
         {/* Hero Video Section */}
         <div className="relative mb-8 rounded-xl overflow-hidden h-64 md:h-80 lg:h-96 shadow-lg">
           <VideoBackground 
@@ -232,7 +215,7 @@ const GuestDashboard = () => {
             </p>
             <Button 
               size="lg" 
-              className="h-12 px-8 text-lg bg-primary hover:bg-primary/90 shadow-2xl hover:shadow-2xl hover:scale-105 transition-all"
+              className="h-12 px-8 text-lg bg-role-guest hover:bg-role-guest/90 shadow-2xl hover:shadow-2xl hover:scale-105 transition-all"
               onClick={() => navigate('/guest/browse')}
             >
               Browse All Listings
@@ -241,112 +224,95 @@ const GuestDashboard = () => {
         </div>
 
         {/* Quick Stats */}
-        <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 md:gap-4 lg:gap-6 mb-4 sm:mb-6 md:mb-8 ${hasRole('host') ? 'lg:grid-cols-5' : 'lg:grid-cols-6'}`}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 md:gap-6 mb-6 sm:mb-8">
           <Card 
-            className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer hover:scale-105 active:scale-100"
+            className="relative overflow-hidden border-0 shadow-md hover:shadow-xl hover:border-role-guest/30 hover:bg-role-guest/5 transition-all duration-300 group cursor-pointer hover:scale-105 active:scale-100"
             onClick={() => navigate('/guest/favorites')}
           >
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-secondary to-accent" />
-            <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
-              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                <Heart className="h-3 w-3 sm:h-4 sm:w-4" />
-                Favorites
+            <div className="absolute top-0 left-0 right-0 h-1 bg-role-guest" />
+            <CardHeader className="pb-2 px-3 pt-3">
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 min-w-0">
+                <Heart className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="truncate">Favorites</span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-              <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-br from-primary to-primary-glow bg-clip-text text-transparent">
+            <CardContent className="px-3 pb-3">
+              <div className="text-2xl font-bold text-role-guest truncate">
                 {stats.favorites}
               </div>
             </CardContent>
           </Card>
 
           <Card 
-            className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer hover:scale-105 active:scale-100"
-            onClick={() => navigate('/guest/wishlist')}
-          >
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-blue-400 to-blue-300" />
-            <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
-              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                <Bookmark className="h-3 w-3 sm:h-4 sm:w-4" />
-                Wishlist
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-              <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-br from-blue-500 to-blue-600 bg-clip-text text-transparent">
-                {stats.wishlist}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card 
-            className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer"
+            className="relative overflow-hidden border-0 shadow-md hover:shadow-xl hover:border-role-guest/30 hover:bg-role-guest/5 transition-all duration-300 group cursor-pointer"
             onClick={() => navigate('/guest/bookings?filter=upcoming')}
           >
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-secondary via-primary to-accent" />
-            <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
-              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
-                Upcoming Trips
+            <div className="absolute top-0 left-0 right-0 h-1 bg-role-guest" />
+            <CardHeader className="pb-2 px-3 pt-3">
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 min-w-0">
+                <Calendar className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="truncate">Upcoming Trips</span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-              <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-br from-secondary to-secondary/80 bg-clip-text text-transparent">
+            <CardContent className="px-3 pb-3">
+              <div className="text-2xl font-bold text-role-guest truncate">
                 {stats.upcomingTrips}
               </div>
             </CardContent>
           </Card>
 
           <Card 
-            className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer"
+            className="relative overflow-hidden border-0 shadow-md hover:shadow-xl hover:border-role-guest/30 hover:bg-role-guest/5 transition-all duration-300 group cursor-pointer"
             onClick={() => navigate('/guest/bookings?filter=past')}
           >
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-accent via-primary to-secondary" />
-            <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
-              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                <CalendarDays className="h-3 w-3 sm:h-4 sm:w-4" />
-                Past Bookings
+            <div className="absolute top-0 left-0 right-0 h-1 bg-role-guest" />
+            <CardHeader className="pb-2 px-3 pt-3">
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 min-w-0">
+                <CalendarDays className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="truncate">Past Bookings</span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-              <div className="text-2xl sm:text-3xl font-bold">{stats.pastBookings}</div>
+            <CardContent className="px-3 pb-3">
+              <div className="text-2xl font-bold text-role-guest truncate">{stats.pastBookings}</div>
             </CardContent>
           </Card>
 
-          <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-xl transition-all duration-300 group">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-accent via-green-500 to-green-600" />
-            <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
-              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                <Wallet className="h-3 w-3 sm:h-4 sm:w-4" />
-                Wallet Balance
+          <Card className="relative overflow-hidden border-0 shadow-md hover:shadow-xl hover:border-role-guest/30 hover:bg-role-guest/5 transition-all duration-300 group">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-role-guest" />
+            <CardHeader className="pb-2 px-3 pt-3">
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 min-w-0">
+                <Wallet className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="truncate">Wallet Balance</span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-              <div className="text-xl sm:text-2xl md:text-3xl font-bold text-accent">{formatPHP(stats.walletBalance)}</div>
+            <CardContent className="px-3 pb-3">
+              <div className="text-xl font-bold text-role-guest truncate">{formatPHP(stats.walletBalance)}</div>
             </CardContent>
           </Card>
 
           {/* Become a Host Card */}
           {!hasRole('host') && (
             <Card 
-              className="relative overflow-hidden border-2 border-secondary/30 shadow-lg hover:shadow-xl transition-all duration-300 group cursor-pointer bg-gradient-to-br from-secondary/5 to-secondary/10"
+              className="relative overflow-hidden border-2 border-role-host/30 shadow-lg hover:shadow-xl transition-all duration-300 group cursor-pointer bg-gradient-to-br from-role-host/5 to-role-host/10"
               onClick={handleBecomeHost}
             >
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-secondary via-secondary/80 to-secondary/60" />
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-secondary" />
-                  <CardTitle className="text-sm font-medium text-secondary uppercase tracking-wide">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-role-host" />
+              <CardHeader className="pb-2 px-3 pt-3">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Building2 className="w-3.5 h-3.5 text-role-host flex-shrink-0" />
+                  <CardTitle className="text-xs font-medium text-role-host uppercase tracking-wide truncate">
                     Become a Host
                   </CardTitle>
                 </div>
               </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground mb-3">
+              <CardContent className="px-3 pb-3">
+                <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
                   Start earning by hosting your property
                 </p>
                 <Button 
-                  variant="secondary" 
-                  className="w-full"
+                  variant="role-host" 
+                  size="sm"
+                  className="w-full text-xs h-8"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleBecomeHost();
@@ -380,7 +346,7 @@ const GuestDashboard = () => {
               title="Experiences"
               description="Discover unique activities"
               href="/guest/browse?category=experience"
-              colorClass="secondary"
+              colorClass="primary"
             />
 
             <CategoryCardVideo
@@ -390,7 +356,7 @@ const GuestDashboard = () => {
               title="Services"
               description="Professional assistance"
               href="/guest/browse?category=service"
-              colorClass="accent"
+              colorClass="primary"
             />
           </div>
         </div>
@@ -400,10 +366,10 @@ const GuestDashboard = () => {
           <div className="mb-8">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-6 h-6 text-primary" />
+                <Sparkles className="w-6 h-6 text-role-guest" />
                 <h3 className="text-2xl font-bold">Recommended for You</h3>
               </div>
-              <Button variant="outline" onClick={() => navigate('/guest/browse')}>
+              <Button variant="outline" onClick={() => navigate('/guest/browse')} className="hover:bg-role-guest/10 hover:text-role-guest hover:border-role-guest/30">
                 View All
               </Button>
             </div>
@@ -423,39 +389,39 @@ const GuestDashboard = () => {
 
         {/* Quick Actions */}
         <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-6">
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/guest/favorites')}>
+          <Card className="shadow-medium hover:shadow-hover hover:border-role-guest/50 hover:bg-role-guest/5 transition-smooth cursor-pointer" onClick={() => navigate('/guest/favorites')}>
             <CardHeader>
-              <Heart className="w-8 h-8 text-primary mb-2" />
+              <Heart className="w-8 h-8 text-role-guest mb-2" />
               <CardTitle>Favorites</CardTitle>
               <CardDescription>Your saved listings</CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/guest/bookings')}>
+          <Card className="shadow-medium hover:shadow-hover hover:border-role-guest/50 hover:bg-role-guest/5 transition-smooth cursor-pointer" onClick={() => navigate('/guest/bookings')}>
             <CardHeader>
-              <Calendar className="w-8 h-8 text-secondary mb-2" />
+              <Calendar className="w-8 h-8 text-role-guest mb-2" />
               <CardTitle>My Bookings</CardTitle>
               <CardDescription>View your trips</CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/guest/messages')}>
+          <Card className="shadow-medium hover:shadow-hover hover:border-role-guest/50 hover:bg-role-guest/5 transition-smooth cursor-pointer" onClick={() => navigate('/guest/messages')}>
             <CardHeader>
-              <MessageSquare className="w-8 h-8 text-primary mb-2" />
+              <MessageSquare className="w-8 h-8 text-role-guest mb-2" />
               <CardTitle>Messages</CardTitle>
               <CardDescription>View your conversations</CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/guest/wallet')}>
+          <Card className="shadow-medium hover:shadow-hover hover:border-role-guest/50 hover:bg-role-guest/5 transition-smooth cursor-pointer" onClick={() => navigate('/guest/wallet')}>
             <CardHeader>
-              <Wallet className="w-8 h-8 text-accent mb-2" />
+              <Wallet className="w-8 h-8 text-role-guest mb-2" />
               <CardTitle>E-Wallet</CardTitle>
               <CardDescription>Manage your balance</CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="shadow-medium hover:shadow-hover transition-smooth cursor-pointer" onClick={() => navigate('/guest/settings')}>
+          <Card className="shadow-medium hover:shadow-hover hover:border-role-guest/50 hover:bg-role-guest/5 transition-smooth cursor-pointer" onClick={() => navigate('/guest/settings')}>
             <CardHeader>
               <Settings className="w-8 h-8 text-muted-foreground mb-2" />
               <CardTitle>Settings</CardTitle>
