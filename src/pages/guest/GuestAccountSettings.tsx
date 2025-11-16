@@ -140,7 +140,7 @@ const GuestAccountSettings = () => {
         typeof item === 'string' ? item : item.listingId
       );
       const wishlistDetails = await Promise.all(
-        listingIds.map(id => getListing(id))
+        listingIds.map(id => getListing(id, user?.uid))
       );
       setWishlistListings(wishlistDetails.filter((l): l is Listing => l !== null));
     } catch (error) {

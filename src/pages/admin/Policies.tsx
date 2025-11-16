@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Save, Shield, FileText, AlertTriangle } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ArrowLeft, Save, Shield, FileText, AlertTriangle, Printer, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { BackButton } from "@/components/shared/BackButton";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const Policies = () => {
   const navigate = useNavigate();
@@ -327,6 +330,365 @@ const Policies = () => {
    - Platform will review and make final determination
    - Both parties must comply with platform decisions`);
 
+  const [exporting, setExporting] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'pdf' | 'csv'>('pdf');
+
+  // Format text for display (convert plain text to formatted sections)
+  const formatPolicyText = (text: string): string[] => {
+    return text.split('\n').filter(line => line.trim() !== '');
+  };
+
+  // Escape HTML for safe rendering
+  const escapeHtml = (text: string): string => {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  };
+
+  // Print function
+  const handlePrint = (policyType: 'cancellation' | 'terms' | 'rules' | 'all') => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error('Please allow popups to print documents');
+      return;
+    }
+
+    let content = '';
+    let title = '';
+
+    if (policyType === 'all') {
+      title = 'All Policies & Compliance Documents';
+      content = `
+        <div style="page-break-after: always;">
+          <h1 style="text-align: center; font-size: 24px; margin-bottom: 10px; color: #1e40af;">CANCELLATION POLICY</h1>
+          <div style="white-space: pre-wrap; font-family: Arial, sans-serif; line-height: 1.6; font-size: 12px;">${escapeHtml(cancellationPolicy)}</div>
+        </div>
+        <div style="page-break-after: always;">
+          <h1 style="text-align: center; font-size: 24px; margin-bottom: 10px; color: #1e40af;">TERMS OF SERVICE</h1>
+          <div style="white-space: pre-wrap; font-family: Arial, sans-serif; line-height: 1.6; font-size: 12px;">${escapeHtml(termsOfService)}</div>
+        </div>
+        <div>
+          <h1 style="text-align: center; font-size: 24px; margin-bottom: 10px; color: #1e40af;">HOUSE RULES & REGULATIONS</h1>
+          <div style="white-space: pre-wrap; font-family: Arial, sans-serif; line-height: 1.6; font-size: 12px;">${escapeHtml(houseRules)}</div>
+        </div>
+      `;
+    } else {
+      const policies = {
+        cancellation: { title: 'CANCELLATION POLICY', content: cancellationPolicy },
+        terms: { title: 'TERMS OF SERVICE', content: termsOfService },
+        rules: { title: 'HOUSE RULES & REGULATIONS', content: houseRules }
+      };
+      title = policies[policyType].title;
+      content = escapeHtml(policies[policyType].content);
+    }
+
+    const printHTML = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            @media print {
+              @page {
+                size: A4;
+                margin: 2cm;
+              }
+              body {
+                margin: 0;
+                padding: 0;
+              }
+              .page-break {
+                page-break-after: always;
+              }
+            }
+            body {
+              font-family: Arial, sans-serif;
+              line-height: 1.6;
+              color: #333;
+              max-width: 800px;
+              margin: 0 auto;
+              padding: 20px;
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 30px;
+              padding-bottom: 20px;
+              border-bottom: 3px solid #1e40af;
+            }
+            .header h1 {
+              color: #1e40af;
+              font-size: 28px;
+              margin: 0 0 10px 0;
+              font-weight: bold;
+            }
+            .header .subtitle {
+              color: #666;
+              font-size: 14px;
+              margin-top: 5px;
+            }
+            .content {
+              white-space: pre-wrap;
+              font-size: 12px;
+              line-height: 1.8;
+            }
+            .footer {
+              margin-top: 40px;
+              padding-top: 20px;
+              border-top: 1px solid #ddd;
+              text-align: center;
+              font-size: 10px;
+              color: #666;
+            }
+            .section {
+              margin-bottom: 20px;
+            }
+            .section-title {
+              font-weight: bold;
+              font-size: 14px;
+              color: #1e40af;
+              margin-top: 20px;
+              margin-bottom: 10px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>${title}</h1>
+            <div class="subtitle">Generated: ${new Date().toLocaleString()}</div>
+            <div class="subtitle">Firebnb Platform - Policies & Compliance</div>
+          </div>
+          <div class="content">${content}</div>
+          <div class="footer">
+            <p>This document is confidential and proprietary to Firebnb Platform.</p>
+            <p>Page generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(printHTML);
+    printWindow.document.close();
+    printWindow.focus();
+    
+    // Wait for content to load before printing
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 250);
+    
+    toast.success('Print dialog opened');
+  };
+
+  // PDF Export function
+  const handleExportPDF = (policyType: 'cancellation' | 'terms' | 'rules' | 'all') => {
+    setExporting(true);
+    try {
+      const doc = new jsPDF();
+      let yPos = 20;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 20;
+      const maxWidth = pageWidth - (margin * 2);
+
+      const addHeader = (title: string) => {
+        doc.setFontSize(20);
+        doc.setFont(undefined, 'bold');
+        doc.setTextColor(30, 64, 175); // Blue color
+        const titleWidth = doc.getTextWidth(title);
+        doc.text(title, (pageWidth - titleWidth) / 2, yPos);
+        yPos += 10;
+        
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'normal');
+        doc.setTextColor(100, 100, 100);
+        const dateText = `Generated: ${new Date().toLocaleString()}`;
+        const dateWidth = doc.getTextWidth(dateText);
+        doc.text(dateText, (pageWidth - dateWidth) / 2, yPos);
+        yPos += 5;
+        
+        const platformText = 'Firebnb Platform - Policies & Compliance';
+        const platformWidth = doc.getTextWidth(platformText);
+        doc.text(platformText, (pageWidth - platformWidth) / 2, yPos);
+        yPos += 15;
+        
+        // Draw line
+        doc.setDrawColor(30, 64, 175);
+        doc.setLineWidth(0.5);
+        doc.line(margin, yPos, pageWidth - margin, yPos);
+        yPos += 10;
+      };
+
+      const addContent = (text: string) => {
+        doc.setFontSize(11);
+        doc.setFont(undefined, 'normal');
+        doc.setTextColor(0, 0, 0);
+        
+        const lines = doc.splitTextToSize(text, maxWidth);
+        const lineHeight = 6;
+        
+        lines.forEach((line: string) => {
+          if (yPos > doc.internal.pageSize.getHeight() - 30) {
+            doc.addPage();
+            yPos = 20;
+          }
+          
+          // Check if line is a section header (starts with number and period)
+          if (/^\d+\.\s+[A-Z]/.test(line.trim())) {
+            yPos += 5;
+            doc.setFont(undefined, 'bold');
+            doc.setFontSize(12);
+            doc.setTextColor(30, 64, 175);
+            doc.text(line, margin, yPos);
+            doc.setFont(undefined, 'normal');
+            doc.setFontSize(11);
+            doc.setTextColor(0, 0, 0);
+          } else if (/^[A-Z][A-Z\s&]+:/.test(line.trim())) {
+            yPos += 3;
+            doc.setFont(undefined, 'bold');
+            doc.text(line, margin, yPos);
+            doc.setFont(undefined, 'normal');
+          } else {
+            doc.text(line, margin, yPos);
+          }
+          
+          yPos += lineHeight;
+        });
+        
+        yPos += 10;
+      };
+
+      if (policyType === 'all') {
+        addHeader('CANCELLATION POLICY');
+        addContent(cancellationPolicy);
+        doc.addPage();
+        yPos = 20;
+        
+        addHeader('TERMS OF SERVICE');
+        addContent(termsOfService);
+        doc.addPage();
+        yPos = 20;
+        
+        addHeader('HOUSE RULES & REGULATIONS');
+        addContent(houseRules);
+      } else {
+        const policies = {
+          cancellation: { title: 'CANCELLATION POLICY', content: cancellationPolicy },
+          terms: { title: 'TERMS OF SERVICE', content: termsOfService },
+          rules: { title: 'HOUSE RULES & REGULATIONS', content: houseRules }
+        };
+        addHeader(policies[policyType].title);
+        addContent(policies[policyType].content);
+      }
+
+      // Add footer to each page
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(100, 100, 100);
+        doc.text(
+          `Page ${i} of ${totalPages}`,
+          pageWidth / 2,
+          doc.internal.pageSize.getHeight() - 10,
+          { align: 'center' }
+        );
+        doc.text(
+          'Firebnb Platform - Confidential Document',
+          pageWidth / 2,
+          doc.internal.pageSize.getHeight() - 5,
+          { align: 'center' }
+        );
+      }
+
+      const filename = policyType === 'all' 
+        ? `all-policies-${Date.now()}.pdf`
+        : `${policyType}-policy-${Date.now()}.pdf`;
+      
+      doc.save(filename);
+      toast.success('PDF exported successfully');
+    } catch (error: any) {
+      console.error('Error exporting PDF:', error);
+      toast.error(`Failed to export PDF: ${error.message}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // CSV Export function
+  const handleExportCSV = (policyType: 'cancellation' | 'terms' | 'rules' | 'all') => {
+    setExporting(true);
+    try {
+      let csvContent = '';
+      let filename = '';
+
+      if (policyType === 'all') {
+        filename = `all-policies-${Date.now()}.csv`;
+        csvContent = `Policy Type,Section,Content\n`;
+        
+        // Cancellation Policy
+        const cancelLines = cancellationPolicy.split('\n').filter(line => line.trim());
+        cancelLines.forEach(line => {
+          const section = line.match(/^\d+\.\s+(.+)/)?.[1] || '';
+          csvContent += `"Cancellation Policy","${section}","${line.replace(/"/g, '""')}"\n`;
+        });
+        
+        // Terms of Service
+        const termsLines = termsOfService.split('\n').filter(line => line.trim());
+        termsLines.forEach(line => {
+          const section = line.match(/^\d+\.\s+(.+)/)?.[1] || '';
+          csvContent += `"Terms of Service","${section}","${line.replace(/"/g, '""')}"\n`;
+        });
+        
+        // House Rules
+        const rulesLines = houseRules.split('\n').filter(line => line.trim());
+        rulesLines.forEach(line => {
+          const section = line.match(/^\d+\.\s+(.+)/)?.[1] || '';
+          csvContent += `"House Rules & Regulations","${section}","${line.replace(/"/g, '""')}"\n`;
+        });
+      } else {
+        const policies = {
+          cancellation: { title: 'Cancellation Policy', content: cancellationPolicy },
+          terms: { title: 'Terms of Service', content: termsOfService },
+          rules: { title: 'House Rules & Regulations', content: houseRules }
+        };
+        
+        filename = `${policyType}-policy-${Date.now()}.csv`;
+        csvContent = `Section,Content\n`;
+        
+        const lines = policies[policyType].content.split('\n').filter(line => line.trim());
+        lines.forEach(line => {
+          const section = line.match(/^\d+\.\s+(.+)/)?.[1] || '';
+          csvContent += `"${section}","${line.replace(/"/g, '""')}"\n`;
+        });
+      }
+
+      // Create and download file
+      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('CSV exported successfully');
+    } catch (error: any) {
+      console.error('Error exporting CSV:', error);
+      toast.error(`Failed to export CSV: ${error.message}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExport = (policyType: 'cancellation' | 'terms' | 'rules' | 'all') => {
+    if (exportFormat === 'pdf') {
+      handleExportPDF(policyType);
+    } else {
+      handleExportCSV(policyType);
+    }
+  };
+
   const handleSave = () => {
     // In a real app, save to Firestore
     toast.success("Policies updated successfully");
@@ -337,17 +699,74 @@ const Policies = () => {
       <div className="max-w-4xl mx-auto">
         <BackButton to="/admin/dashboard" className="mb-6" />
 
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold">Policies & Compliance</h1>
-            <p className="text-muted-foreground">
-              Manage platform rules, regulations, and policies
-            </p>
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-3xl font-bold">Policies & Compliance</h1>
+              <p className="text-muted-foreground">
+                Manage, view, download, and print platform rules, regulations, and policies
+              </p>
+            </div>
+            <Button onClick={handleSave}>
+              <Save className="h-4 w-4 mr-2" />
+              Save All Changes
+            </Button>
           </div>
-          <Button onClick={handleSave}>
-            <Save className="h-4 w-4 mr-2" />
-            Save All Changes
-          </Button>
+          
+          {/* Print & Export Section */}
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Printer className="h-5 w-5" />
+                Print & Export Documents
+              </CardTitle>
+              <CardDescription>
+                Print or export all policies and compliance documents in various formats
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
+                <div className="flex-1 space-y-2">
+                  <label className="text-sm font-medium">Export Format</label>
+                  <Select value={exportFormat} onValueChange={(value: 'pdf' | 'csv') => setExportFormat(value)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pdf">PDF (Portable Document Format)</SelectItem>
+                      <SelectItem value="csv">CSV (Comma Separated Values)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <Button
+                    onClick={() => handlePrint('all')}
+                    variant="outline"
+                    disabled={exporting}
+                  >
+                    <Printer className="h-4 w-4 mr-2" />
+                    Print All
+                  </Button>
+                  <Button
+                    onClick={() => handleExport('all')}
+                    disabled={exporting}
+                  >
+                    {exporting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Exporting...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="h-4 w-4 mr-2" />
+                        Export All ({exportFormat.toUpperCase()})
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         <Tabs defaultValue="cancellation" className="space-y-4">
@@ -360,10 +779,37 @@ const Policies = () => {
           <TabsContent value="cancellation">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5" />
-                  Cancellation Policy
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5" />
+                    Cancellation Policy
+                  </CardTitle>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => handlePrint('cancellation')}
+                      variant="outline"
+                      size="sm"
+                      disabled={exporting}
+                    >
+                      <Printer className="h-4 w-4 mr-2" />
+                      Print
+                    </Button>
+                    <Button
+                      onClick={() => handleExport('cancellation')}
+                      size="sm"
+                      disabled={exporting}
+                    >
+                      {exporting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Download className="h-4 w-4 mr-2" />
+                          Export
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 <Textarea
@@ -379,10 +825,37 @@ const Policies = () => {
           <TabsContent value="terms">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Terms of Service
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Terms of Service
+                  </CardTitle>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => handlePrint('terms')}
+                      variant="outline"
+                      size="sm"
+                      disabled={exporting}
+                    >
+                      <Printer className="h-4 w-4 mr-2" />
+                      Print
+                    </Button>
+                    <Button
+                      onClick={() => handleExport('terms')}
+                      size="sm"
+                      disabled={exporting}
+                    >
+                      {exporting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Download className="h-4 w-4 mr-2" />
+                          Export
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 <Textarea
@@ -398,10 +871,37 @@ const Policies = () => {
           <TabsContent value="rules">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Shield className="h-5 w-5" />
-                  House Rules & Regulations
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Shield className="h-5 w-5" />
+                    House Rules & Regulations
+                  </CardTitle>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => handlePrint('rules')}
+                      variant="outline"
+                      size="sm"
+                      disabled={exporting}
+                    >
+                      <Printer className="h-4 w-4 mr-2" />
+                      Print
+                    </Button>
+                    <Button
+                      onClick={() => handleExport('rules')}
+                      size="sm"
+                      disabled={exporting}
+                    >
+                      {exporting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Download className="h-4 w-4 mr-2" />
+                          Export
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 <Textarea

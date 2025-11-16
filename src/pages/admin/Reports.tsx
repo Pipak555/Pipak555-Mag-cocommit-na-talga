@@ -14,9 +14,12 @@ import { toast } from "sonner";
 import { formatPHP } from "@/lib/currency";
 import type { Booking, Listing, UserProfile } from "@/types";
 import { BackButton } from "@/components/shared/BackButton";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
 
 type ReportType = 'summary' | 'users' | 'bookings' | 'revenue' | 'listings';
-type ExportFormat = 'csv' | 'json' | 'txt';
+type ExportFormat = 'csv' | 'pdf' | 'xlsx';
 
 const Reports = () => {
   const navigate = useNavigate();
@@ -164,260 +167,643 @@ const Reports = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange.start, dateRange.end]);
 
-  const generateSummaryReport = (format: ExportFormat): string => {
+  const generateSummaryReport = (format: ExportFormat): string | Blob => {
     const timestamp = new Date().toLocaleString();
     const dateRangeText = dateRange.start || dateRange.end 
-      ? `Date Range: ${dateRange.start || 'All'} to ${dateRange.end || 'All'}\n`
-      : '';
+      ? `Date Range: ${dateRange.start || 'All'} to ${dateRange.end || 'All'}`
+      : 'All Time';
     
     if (format === 'csv') {
-      return `Platform Analytics Report
+      // Improved CSV with better structure
+      return `PLATFORM ANALYTICS REPORT
 Generated: ${timestamp}
 ${dateRangeText}
+
+BOOKINGS
 Metric,Value
 Total Bookings,${reportData.totalBookings}
 Confirmed Bookings,${reportData.confirmedBookings}
 Cancelled Bookings,${reportData.cancelledBookings}
 Completed Bookings,${reportData.completedBookings}
 Pending Bookings,${reportData.pendingBookings}
-Total Revenue,₱${reportData.totalRevenue.toFixed(2)}
-Net to Hosts,₱${reportData.totalRevenue.toFixed(2)}
+
+REVENUE
+Metric,Value (PHP)
+Total Revenue,${reportData.totalRevenue.toFixed(2)}
+Net to Hosts,${reportData.totalRevenue.toFixed(2)}
+
+USERS
+Metric,Value
 Total Users,${reportData.totalUsers}
 Active Hosts,${reportData.activeHosts}
 Active Guests,${reportData.activeGuests}
+
+LISTINGS
+Metric,Value
 Total Listings,${reportData.totalListings}
 Approved Listings,${reportData.approvedListings}
 Pending Listings,${reportData.pendingListings}
 Rejected Listings,${reportData.rejectedListings}
 `;
-    } else if (format === 'json') {
-      return JSON.stringify({
-        reportType: 'summary',
-        generated: timestamp,
-        dateRange: dateRange.start || dateRange.end ? { start: dateRange.start || null, end: dateRange.end || null } : null,
-        metrics: {
-          bookings: {
-            total: reportData.totalBookings,
-            confirmed: reportData.confirmedBookings,
-            cancelled: reportData.cancelledBookings,
-            completed: reportData.completedBookings,
-            pending: reportData.pendingBookings
-          },
-          revenue: {
-            total: reportData.totalRevenue,
-            serviceFees: reportData.totalServiceFees,
-            netToHosts: reportData.totalRevenue - reportData.totalServiceFees,
-            currency: 'PHP'
-          },
-          users: {
-            total: reportData.totalUsers,
-            hosts: reportData.activeHosts,
-            guests: reportData.activeGuests
-          },
-          listings: {
-            total: reportData.totalListings,
-            approved: reportData.approvedListings,
-            pending: reportData.pendingListings,
-            rejected: reportData.rejectedListings
-          }
-        }
-      }, null, 2);
-    } else {
-      return `PLATFORM ANALYTICS REPORT
-Generated: ${timestamp}
-${dateRangeText}
-═══════════════════════════════════════════════════════════
-
-BOOKINGS
-───────────────────────────────────────────────────────────
-Total Bookings:           ${reportData.totalBookings}
-Confirmed:                ${reportData.confirmedBookings}
-Cancelled:                ${reportData.cancelledBookings}
-Completed:                ${reportData.completedBookings}
-Pending:                  ${reportData.pendingBookings}
-
-REVENUE
-───────────────────────────────────────────────────────────
-Total Revenue:            ${formatPHP(reportData.totalRevenue)}
-Service Fees (15%):       ${formatPHP(reportData.totalServiceFees)}
-Net to Hosts:             ${formatPHP(reportData.totalRevenue - reportData.totalServiceFees)}
-
-USERS
-───────────────────────────────────────────────────────────
-Total Users:              ${reportData.totalUsers}
-Active Hosts:             ${reportData.activeHosts}
-Active Guests:            ${reportData.activeGuests}
-
-LISTINGS
-───────────────────────────────────────────────────────────
-Total Listings:           ${reportData.totalListings}
-Approved:                 ${reportData.approvedListings}
-Pending:                  ${reportData.pendingListings}
-Rejected:                 ${reportData.rejectedListings}
-
-═══════════════════════════════════════════════════════════
-`;
+    } else if (format === 'pdf') {
+      const doc = new jsPDF();
+      let yPos = 20;
+      
+      // Header
+      doc.setFontSize(20);
+      doc.setFont(undefined, 'bold');
+      doc.text('Platform Analytics Report', 14, yPos);
+      yPos += 10;
+      
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'normal');
+      doc.text(`Generated: ${timestamp}`, 14, yPos);
+      yPos += 6;
+      doc.text(`Date Range: ${dateRangeText}`, 14, yPos);
+      yPos += 15;
+      
+      // Bookings Section
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.text('Bookings', 14, yPos);
+      yPos += 8;
+      
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Metric', 'Value']],
+        body: [
+          ['Total Bookings', reportData.totalBookings.toString()],
+          ['Confirmed Bookings', reportData.confirmedBookings.toString()],
+          ['Cancelled Bookings', reportData.cancelledBookings.toString()],
+          ['Completed Bookings', reportData.completedBookings.toString()],
+          ['Pending Bookings', reportData.pendingBookings.toString()],
+        ],
+        theme: 'striped',
+        headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
+        styles: { fontSize: 10, cellPadding: 5 },
+        margin: { left: 14, right: 14 },
+      });
+      yPos = (doc as any).lastAutoTable.finalY + 15;
+      
+      // Revenue Section
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.text('Revenue', 14, yPos);
+      yPos += 8;
+      
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Metric', 'Value (PHP)']],
+        body: [
+          ['Total Revenue', formatPHP(reportData.totalRevenue)],
+          ['Net to Hosts', formatPHP(reportData.totalRevenue)],
+        ],
+        theme: 'striped',
+        headStyles: { fillColor: [34, 197, 94], textColor: 255, fontStyle: 'bold' },
+        styles: { fontSize: 10, cellPadding: 5 },
+        margin: { left: 14, right: 14 },
+      });
+      yPos = (doc as any).lastAutoTable.finalY + 15;
+      
+      // Users Section
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.text('Users', 14, yPos);
+      yPos += 8;
+      
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Metric', 'Value']],
+        body: [
+          ['Total Users', reportData.totalUsers.toString()],
+          ['Active Hosts', reportData.activeHosts.toString()],
+          ['Active Guests', reportData.activeGuests.toString()],
+        ],
+        theme: 'striped',
+        headStyles: { fillColor: [168, 85, 247], textColor: 255, fontStyle: 'bold' },
+        styles: { fontSize: 10, cellPadding: 5 },
+        margin: { left: 14, right: 14 },
+      });
+      yPos = (doc as any).lastAutoTable.finalY + 15;
+      
+      // Listings Section
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.text('Listings', 14, yPos);
+      yPos += 8;
+      
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Metric', 'Value']],
+        body: [
+          ['Total Listings', reportData.totalListings.toString()],
+          ['Approved Listings', reportData.approvedListings.toString()],
+          ['Pending Listings', reportData.pendingListings.toString()],
+          ['Rejected Listings', reportData.rejectedListings.toString()],
+        ],
+        theme: 'striped',
+        headStyles: { fillColor: [236, 72, 153], textColor: 255, fontStyle: 'bold' },
+        styles: { fontSize: 10, cellPadding: 5 },
+        margin: { left: 14, right: 14 },
+      });
+      
+      return doc.output('blob');
+    } else if (format === 'xlsx') {
+      const wb = XLSX.utils.book_new();
+      
+      // Summary Sheet
+      const summaryData = [
+        ['PLATFORM ANALYTICS REPORT'],
+        ['Generated:', timestamp],
+        ['Date Range:', dateRangeText],
+        [],
+        ['BOOKINGS'],
+        ['Metric', 'Value'],
+        ['Total Bookings', reportData.totalBookings],
+        ['Confirmed Bookings', reportData.confirmedBookings],
+        ['Cancelled Bookings', reportData.cancelledBookings],
+        ['Completed Bookings', reportData.completedBookings],
+        ['Pending Bookings', reportData.pendingBookings],
+        [],
+        ['REVENUE'],
+        ['Metric', 'Value (PHP)'],
+        ['Total Revenue', reportData.totalRevenue],
+        ['Net to Hosts', reportData.totalRevenue],
+        [],
+        ['USERS'],
+        ['Metric', 'Value'],
+        ['Total Users', reportData.totalUsers],
+        ['Active Hosts', reportData.activeHosts],
+        ['Active Guests', reportData.activeGuests],
+        [],
+        ['LISTINGS'],
+        ['Metric', 'Value'],
+        ['Total Listings', reportData.totalListings],
+        ['Approved Listings', reportData.approvedListings],
+        ['Pending Listings', reportData.pendingListings],
+        ['Rejected Listings', reportData.rejectedListings],
+      ];
+      
+      const ws = XLSX.utils.aoa_to_sheet(summaryData);
+      
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 25 },
+        { wch: 20 },
+      ];
+      
+      XLSX.utils.book_append_sheet(wb, ws, 'Summary');
+      
+      return XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
     }
+    
+    return '';
   };
 
-  const generateUsersReport = (format: ExportFormat): string => {
+  const generateUsersReport = (format: ExportFormat): string | Blob => {
     const timestamp = new Date().toLocaleString();
     
     if (format === 'csv') {
-      const headers = 'ID,Email,Full Name,Role(s),Created At,Wallet Balance,Points\n';
+      const headers = 'ID,Email,Full Name,Role(s),Created At,Wallet Balance (PHP),Points\n';
       const rows = detailedData.users.map(user => {
         const roles = user.roles || [user.role];
-        return `${user.id},${user.email},${user.fullName},"${roles.join(', ')}",${user.createdAt},${user.walletBalance || 0},${user.points || 0}`;
+        const createdAt = new Date(user.createdAt).toLocaleDateString();
+        return `${user.id},"${user.email}","${user.fullName}","${roles.join(', ')}","${createdAt}",${(user.walletBalance || 0).toFixed(2)},${user.points || 0}`;
       }).join('\n');
-      return `Users Report\nGenerated: ${timestamp}\n\n${headers}${rows}`;
-    } else if (format === 'json') {
-      return JSON.stringify({
-        reportType: 'users',
-        generated: timestamp,
-        totalUsers: detailedData.users.length,
-        users: detailedData.users.map(user => ({
-          id: user.id,
-          email: user.email,
-          fullName: user.fullName,
-          roles: user.roles || [user.role],
-          createdAt: user.createdAt,
-          walletBalance: user.walletBalance || 0,
-          points: user.points || 0
-        }))
-      }, null, 2);
-    } else {
-      let text = `USERS REPORT\nGenerated: ${timestamp}\n═══════════════════════════════════════════════════════════\n\n`;
-      detailedData.users.forEach((user, index) => {
+      return `USERS REPORT
+Generated: ${timestamp}
+Total Users: ${detailedData.users.length}
+
+${headers}${rows}`;
+    } else if (format === 'pdf') {
+      const doc = new jsPDF('landscape');
+      let yPos = 20;
+      
+      // Header
+      doc.setFontSize(20);
+      doc.setFont(undefined, 'bold');
+      doc.text('Users Report', 14, yPos);
+      yPos += 10;
+      
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'normal');
+      doc.text(`Generated: ${timestamp}`, 14, yPos);
+      yPos += 6;
+      doc.text(`Total Users: ${detailedData.users.length}`, 14, yPos);
+      yPos += 15;
+      
+      // Table
+      const tableData = detailedData.users.map(user => {
         const roles = user.roles || [user.role];
-        text += `${index + 1}. ${user.fullName} (${user.email})\n`;
-        text += `   ID: ${user.id}\n`;
-        text += `   Roles: ${roles.join(', ')}\n`;
-        text += `   Created: ${new Date(user.createdAt).toLocaleDateString()}\n`;
-        text += `   Wallet: ${formatPHP(user.walletBalance || 0)}\n`;
-        text += `   Points: ${user.points || 0}\n\n`;
+        return [
+          user.id.substring(0, 8) + '...',
+          user.email,
+          user.fullName,
+          roles.join(', '),
+          new Date(user.createdAt).toLocaleDateString(),
+          formatPHP(user.walletBalance || 0),
+          (user.points || 0).toString(),
+        ];
       });
-      return text;
+      
+      autoTable(doc, {
+        startY: yPos,
+        head: [['ID', 'Email', 'Full Name', 'Role(s)', 'Created At', 'Wallet Balance', 'Points']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
+        styles: { fontSize: 8, cellPadding: 3 },
+        margin: { left: 14, right: 14 },
+      });
+      
+      return doc.output('blob');
+    } else if (format === 'xlsx') {
+      const wb = XLSX.utils.book_new();
+      
+      const usersData = [
+        ['USERS REPORT'],
+        ['Generated:', timestamp],
+        ['Total Users:', detailedData.users.length],
+        [],
+        ['ID', 'Email', 'Full Name', 'Role(s)', 'Created At', 'Wallet Balance (PHP)', 'Points'],
+        ...detailedData.users.map(user => {
+          const roles = user.roles || [user.role];
+          return [
+            user.id,
+            user.email,
+            user.fullName,
+            roles.join(', '),
+            new Date(user.createdAt).toLocaleDateString(),
+            user.walletBalance || 0,
+            user.points || 0,
+          ];
+        }),
+      ];
+      
+      const ws = XLSX.utils.aoa_to_sheet(usersData);
+      
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 25 },
+        { wch: 30 },
+        { wch: 25 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 20 },
+        { wch: 10 },
+      ];
+      
+      XLSX.utils.book_append_sheet(wb, ws, 'Users');
+      
+      return XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
     }
+    
+    return '';
   };
 
-  const generateBookingsReport = (format: ExportFormat): string => {
+  const generateBookingsReport = (format: ExportFormat): string | Blob => {
     const timestamp = new Date().toLocaleString();
     
     if (format === 'csv') {
-      const headers = 'ID,Guest ID,Host ID,Listing ID,Check In,Check Out,Guests,Total Price,Status,Created At\n';
+      const headers = 'ID,Guest ID,Host ID,Listing ID,Check In,Check Out,Guests,Total Price (PHP),Status,Created At\n';
       const rows = detailedData.bookings.map(booking => {
-        return `${booking.id},${booking.guestId},${booking.hostId},${booking.listingId},${booking.checkIn},${booking.checkOut},${booking.guests},${booking.totalPrice || 0},${booking.status},${booking.createdAt}`;
+        return `${booking.id},"${booking.guestId}","${booking.hostId}","${booking.listingId}","${new Date(booking.checkIn).toLocaleDateString()}","${new Date(booking.checkOut).toLocaleDateString()}",${booking.guests},${(booking.totalPrice || 0).toFixed(2)},${booking.status.toUpperCase()},"${new Date(booking.createdAt).toLocaleDateString()}"`;
       }).join('\n');
-      return `Bookings Report\nGenerated: ${timestamp}\n\n${headers}${rows}`;
-    } else if (format === 'json') {
-      return JSON.stringify({
-        reportType: 'bookings',
-        generated: timestamp,
-        totalBookings: detailedData.bookings.length,
-        bookings: detailedData.bookings
-      }, null, 2);
-    } else {
-      let text = `BOOKINGS REPORT\nGenerated: ${timestamp}\n═══════════════════════════════════════════════════════════\n\n`;
-      detailedData.bookings.forEach((booking, index) => {
-        text += `${index + 1}. Booking #${booking.id.slice(0, 8)}\n`;
-        text += `   Guest ID: ${booking.guestId}\n`;
-        text += `   Host ID: ${booking.hostId}\n`;
-        text += `   Check In: ${new Date(booking.checkIn).toLocaleDateString()}\n`;
-        text += `   Check Out: ${new Date(booking.checkOut).toLocaleDateString()}\n`;
-        text += `   Guests: ${booking.guests}\n`;
-        text += `   Total Price: ${formatPHP(booking.totalPrice || 0)}\n`;
-        text += `   Status: ${booking.status.toUpperCase()}\n`;
-        text += `   Created: ${new Date(booking.createdAt).toLocaleDateString()}\n\n`;
+      return `BOOKINGS REPORT
+Generated: ${timestamp}
+Total Bookings: ${detailedData.bookings.length}
+
+${headers}${rows}`;
+    } else if (format === 'pdf') {
+      const doc = new jsPDF('landscape');
+      let yPos = 20;
+      
+      // Header
+      doc.setFontSize(20);
+      doc.setFont(undefined, 'bold');
+      doc.text('Bookings Report', 14, yPos);
+      yPos += 10;
+      
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'normal');
+      doc.text(`Generated: ${timestamp}`, 14, yPos);
+      yPos += 6;
+      doc.text(`Total Bookings: ${detailedData.bookings.length}`, 14, yPos);
+      yPos += 15;
+      
+      // Table
+      const tableData = detailedData.bookings.map(booking => [
+        booking.id.substring(0, 8) + '...',
+        booking.guestId.substring(0, 8) + '...',
+        booking.hostId.substring(0, 8) + '...',
+        booking.listingId.substring(0, 8) + '...',
+        new Date(booking.checkIn).toLocaleDateString(),
+        new Date(booking.checkOut).toLocaleDateString(),
+        booking.guests.toString(),
+        formatPHP(booking.totalPrice || 0),
+        booking.status.toUpperCase(),
+        new Date(booking.createdAt).toLocaleDateString(),
+      ]);
+      
+      autoTable(doc, {
+        startY: yPos,
+        head: [['ID', 'Guest ID', 'Host ID', 'Listing ID', 'Check In', 'Check Out', 'Guests', 'Total Price', 'Status', 'Created At']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
+        styles: { fontSize: 7, cellPadding: 2 },
+        margin: { left: 14, right: 14 },
       });
-      return text;
+      
+      return doc.output('blob');
+    } else if (format === 'xlsx') {
+      const wb = XLSX.utils.book_new();
+      
+      const bookingsData = [
+        ['BOOKINGS REPORT'],
+        ['Generated:', timestamp],
+        ['Total Bookings:', detailedData.bookings.length],
+        [],
+        ['ID', 'Guest ID', 'Host ID', 'Listing ID', 'Check In', 'Check Out', 'Guests', 'Total Price (PHP)', 'Status', 'Created At'],
+        ...detailedData.bookings.map(booking => [
+          booking.id,
+          booking.guestId,
+          booking.hostId,
+          booking.listingId,
+          new Date(booking.checkIn).toLocaleDateString(),
+          new Date(booking.checkOut).toLocaleDateString(),
+          booking.guests,
+          booking.totalPrice || 0,
+          booking.status.toUpperCase(),
+          new Date(booking.createdAt).toLocaleDateString(),
+        ]),
+      ];
+      
+      const ws = XLSX.utils.aoa_to_sheet(bookingsData);
+      
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 25 },
+        { wch: 25 },
+        { wch: 25 },
+        { wch: 25 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 10 },
+        { wch: 18 },
+        { wch: 12 },
+        { wch: 15 },
+      ];
+      
+      XLSX.utils.book_append_sheet(wb, ws, 'Bookings');
+      
+      return XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
     }
+    
+    return '';
   };
 
-  const generateRevenueReport = (format: ExportFormat): string => {
+  const generateRevenueReport = (format: ExportFormat): string | Blob => {
     const timestamp = new Date().toLocaleString();
     const revenueBookings = detailedData.bookings.filter(b => 
       b.status === 'confirmed' || b.status === 'completed'
     );
     
     if (format === 'csv') {
-      const headers = 'Booking ID,Guest ID,Host ID,Total Price,Net to Host,Status,Check In Date\n';
+      const summary = `SUMMARY
+Total Revenue (PHP),${reportData.totalRevenue.toFixed(2)}
+Net to Hosts (PHP),${reportData.totalRevenue.toFixed(2)}
+
+DETAILED BREAKDOWN
+`;
+      const headers = 'Booking ID,Guest ID,Host ID,Total Price (PHP),Net to Host (PHP),Status,Check In Date\n';
       const rows = revenueBookings.map(booking => {
         const netToHost = booking.totalPrice || 0; // Hosts get 100%
-        return `${booking.id},${booking.guestId},${booking.hostId},${booking.totalPrice || 0},${netToHost.toFixed(2)},${booking.status},${booking.checkIn}`;
+        return `${booking.id},"${booking.guestId}","${booking.hostId}",${(booking.totalPrice || 0).toFixed(2)},${netToHost.toFixed(2)},${booking.status.toUpperCase()},"${new Date(booking.checkIn).toLocaleDateString()}"`;
       }).join('\n');
-      const summary = `Total Revenue,${reportData.totalRevenue.toFixed(2)}\nNet to Hosts,${reportData.totalRevenue.toFixed(2)}\n`;
-      return `Revenue Report\nGenerated: ${timestamp}\n\n${summary}\n${headers}${rows}`;
-    } else if (format === 'json') {
-      return JSON.stringify({
-        reportType: 'revenue',
-        generated: timestamp,
-        summary: {
-          totalRevenue: reportData.totalRevenue,
-          netToHosts: reportData.totalRevenue // Hosts get 100%
-        },
-        bookings: revenueBookings.map(booking => ({
-          bookingId: booking.id,
-          guestId: booking.guestId,
-          hostId: booking.hostId,
-          totalPrice: booking.totalPrice || 0,
-          netToHost: booking.totalPrice || 0, // Hosts get 100%
-          status: booking.status,
-          checkIn: booking.checkIn
-        }))
-      }, null, 2);
-    } else {
-      let text = `REVENUE REPORT\nGenerated: ${timestamp}\n═══════════════════════════════════════════════════════════\n\n`;
-      text += `SUMMARY\n───────────────────────────────────────────────────────────\n`;
-      text += `Total Revenue:            ${formatPHP(reportData.totalRevenue)}\n`;
-      text += `Net to Hosts:            ${formatPHP(reportData.totalRevenue)}\n\n`;
-      text += `DETAILED BREAKDOWN\n───────────────────────────────────────────────────────────\n\n`;
-      revenueBookings.forEach((booking, index) => {
-        const netToHost = booking.totalPrice || 0; // Hosts get 100%
-        text += `${index + 1}. Booking #${booking.id.slice(0, 8)}\n`;
-        text += `   Total Price: ${formatPHP(booking.totalPrice || 0)}\n`;
-        text += `   Net to Host: ${formatPHP(netToHost)}\n`;
-        text += `   Check In: ${new Date(booking.checkIn).toLocaleDateString()}\n\n`;
+      return `REVENUE REPORT
+Generated: ${timestamp}
+Total Transactions: ${revenueBookings.length}
+
+${summary}${headers}${rows}`;
+    } else if (format === 'pdf') {
+      const doc = new jsPDF();
+      let yPos = 20;
+      
+      // Header
+      doc.setFontSize(20);
+      doc.setFont(undefined, 'bold');
+      doc.text('Revenue Report', 14, yPos);
+      yPos += 10;
+      
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'normal');
+      doc.text(`Generated: ${timestamp}`, 14, yPos);
+      yPos += 6;
+      doc.text(`Total Transactions: ${revenueBookings.length}`, 14, yPos);
+      yPos += 15;
+      
+      // Summary Section
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.text('Summary', 14, yPos);
+      yPos += 8;
+      
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Metric', 'Amount (PHP)']],
+        body: [
+          ['Total Revenue', formatPHP(reportData.totalRevenue)],
+          ['Net to Hosts', formatPHP(reportData.totalRevenue)],
+        ],
+        theme: 'striped',
+        headStyles: { fillColor: [34, 197, 94], textColor: 255, fontStyle: 'bold' },
+        styles: { fontSize: 10, cellPadding: 5 },
+        margin: { left: 14, right: 14 },
       });
-      return text;
+      yPos = (doc as any).lastAutoTable.finalY + 15;
+      
+      // Detailed Breakdown
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.text('Detailed Breakdown', 14, yPos);
+      yPos += 8;
+      
+      const tableData = revenueBookings.map(booking => {
+        const netToHost = booking.totalPrice || 0;
+        return [
+          booking.id.substring(0, 8) + '...',
+          booking.guestId.substring(0, 8) + '...',
+          booking.hostId.substring(0, 8) + '...',
+          formatPHP(booking.totalPrice || 0),
+          formatPHP(netToHost),
+          booking.status.toUpperCase(),
+          new Date(booking.checkIn).toLocaleDateString(),
+        ];
+      });
+      
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Booking ID', 'Guest ID', 'Host ID', 'Total Price', 'Net to Host', 'Status', 'Check In']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
+        styles: { fontSize: 8, cellPadding: 3 },
+        margin: { left: 14, right: 14 },
+      });
+      
+      return doc.output('blob');
+    } else if (format === 'xlsx') {
+      const wb = XLSX.utils.book_new();
+      
+      // Summary Sheet
+      const summaryData = [
+        ['REVENUE REPORT'],
+        ['Generated:', timestamp],
+        ['Total Transactions:', revenueBookings.length],
+        [],
+        ['SUMMARY'],
+        ['Metric', 'Amount (PHP)'],
+        ['Total Revenue', reportData.totalRevenue],
+        ['Net to Hosts', reportData.totalRevenue],
+        [],
+        ['DETAILED BREAKDOWN'],
+        ['Booking ID', 'Guest ID', 'Host ID', 'Total Price (PHP)', 'Net to Host (PHP)', 'Status', 'Check In Date'],
+        ...revenueBookings.map(booking => {
+          const netToHost = booking.totalPrice || 0;
+          return [
+            booking.id,
+            booking.guestId,
+            booking.hostId,
+            booking.totalPrice || 0,
+            netToHost,
+            booking.status.toUpperCase(),
+            new Date(booking.checkIn).toLocaleDateString(),
+          ];
+        }),
+      ];
+      
+      const ws = XLSX.utils.aoa_to_sheet(summaryData);
+      
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 25 },
+        { wch: 25 },
+        { wch: 25 },
+        { wch: 20 },
+        { wch: 20 },
+        { wch: 12 },
+        { wch: 15 },
+      ];
+      
+      XLSX.utils.book_append_sheet(wb, ws, 'Revenue');
+      
+      return XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
     }
+    
+    return '';
   };
 
-  const generateListingsReport = (format: ExportFormat): string => {
+  const generateListingsReport = (format: ExportFormat): string | Blob => {
     const timestamp = new Date().toLocaleString();
     
     if (format === 'csv') {
-      const headers = 'ID,Title,Host ID,Category,Price,Status,Location,Created At\n';
+      const headers = 'ID,Title,Host ID,Category,Price (PHP),Status,Location,Created At\n';
       const rows = detailedData.listings.map(listing => {
-        return `${listing.id},${listing.title},${listing.hostId},${listing.category},${listing.price},${listing.status},${listing.location},${listing.createdAt}`;
+        return `${listing.id},"${listing.title}","${listing.hostId}",${listing.category.toUpperCase()},${listing.price.toFixed(2)},${listing.status.toUpperCase()},"${listing.location}","${new Date(listing.createdAt).toLocaleDateString()}"`;
       }).join('\n');
-      return `Listings Report\nGenerated: ${timestamp}\n\n${headers}${rows}`;
-    } else if (format === 'json') {
-      return JSON.stringify({
-        reportType: 'listings',
-        generated: timestamp,
-        totalListings: detailedData.listings.length,
-        listings: detailedData.listings
-      }, null, 2);
-    } else {
-      let text = `LISTINGS REPORT\nGenerated: ${timestamp}\n═══════════════════════════════════════════════════════════\n\n`;
-      detailedData.listings.forEach((listing, index) => {
-        text += `${index + 1}. ${listing.title}\n`;
-        text += `   ID: ${listing.id}\n`;
-        text += `   Host ID: ${listing.hostId}\n`;
-        text += `   Category: ${listing.category.toUpperCase()}\n`;
-        text += `   Price: ${formatPHP(listing.price)}\n`;
-        text += `   Status: ${listing.status.toUpperCase()}\n`;
-        text += `   Location: ${listing.location}\n`;
-        text += `   Created: ${new Date(listing.createdAt).toLocaleDateString()}\n\n`;
+      return `LISTINGS REPORT
+Generated: ${timestamp}
+Total Listings: ${detailedData.listings.length}
+
+${headers}${rows}`;
+    } else if (format === 'pdf') {
+      const doc = new jsPDF('landscape');
+      let yPos = 20;
+      
+      // Header
+      doc.setFontSize(20);
+      doc.setFont(undefined, 'bold');
+      doc.text('Listings Report', 14, yPos);
+      yPos += 10;
+      
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'normal');
+      doc.text(`Generated: ${timestamp}`, 14, yPos);
+      yPos += 6;
+      doc.text(`Total Listings: ${detailedData.listings.length}`, 14, yPos);
+      yPos += 15;
+      
+      // Table
+      const tableData = detailedData.listings.map(listing => [
+        listing.id.substring(0, 8) + '...',
+        listing.title.length > 30 ? listing.title.substring(0, 30) + '...' : listing.title,
+        listing.hostId.substring(0, 8) + '...',
+        listing.category.toUpperCase(),
+        formatPHP(listing.price),
+        listing.status.toUpperCase(),
+        listing.location.length > 25 ? listing.location.substring(0, 25) + '...' : listing.location,
+        new Date(listing.createdAt).toLocaleDateString(),
+      ]);
+      
+      autoTable(doc, {
+        startY: yPos,
+        head: [['ID', 'Title', 'Host ID', 'Category', 'Price', 'Status', 'Location', 'Created At']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
+        styles: { fontSize: 8, cellPadding: 3 },
+        margin: { left: 14, right: 14 },
       });
-      return text;
+      
+      return doc.output('blob');
+    } else if (format === 'xlsx') {
+      const wb = XLSX.utils.book_new();
+      
+      const listingsData = [
+        ['LISTINGS REPORT'],
+        ['Generated:', timestamp],
+        ['Total Listings:', detailedData.listings.length],
+        [],
+        ['ID', 'Title', 'Host ID', 'Category', 'Price (PHP)', 'Status', 'Location', 'Created At'],
+        ...detailedData.listings.map(listing => [
+          listing.id,
+          listing.title,
+          listing.hostId,
+          listing.category.toUpperCase(),
+          listing.price,
+          listing.status.toUpperCase(),
+          listing.location,
+          new Date(listing.createdAt).toLocaleDateString(),
+        ]),
+      ];
+      
+      const ws = XLSX.utils.aoa_to_sheet(listingsData);
+      
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 25 },
+        { wch: 35 },
+        { wch: 25 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 12 },
+        { wch: 30 },
+        { wch: 15 },
+      ];
+      
+      XLSX.utils.book_append_sheet(wb, ws, 'Listings');
+      
+      return XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
     }
+    
+    return '';
   };
 
   const generateReport = () => {
     setGenerating(true);
     try {
-      let content = '';
+      let content: string | Blob = '';
       let filename = '';
       let mimeType = '';
       
@@ -446,26 +832,42 @@ Rejected:                 ${reportData.rejectedListings}
       
       // Set MIME type and file extension
       if (exportFormat === 'csv') {
-        mimeType = 'text/csv';
+        mimeType = 'text/csv;charset=utf-8;';
         filename += '.csv';
-      } else if (exportFormat === 'json') {
-        mimeType = 'application/json';
-        filename += '.json';
-      } else {
-        mimeType = 'text/plain';
-        filename += '.txt';
+        // Create blob from string for CSV
+        const blob = new Blob(['\ufeff' + content], { type: mimeType }); // BOM for UTF-8
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      } else if (exportFormat === 'pdf') {
+        // Content is already a Blob for PDF
+        const url = window.URL.createObjectURL(content as Blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${filename}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      } else if (exportFormat === 'xlsx') {
+        // Content is already an ArrayBuffer for XLSX
+        const blob = new Blob([content as ArrayBuffer], { 
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+        });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${filename}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
       }
-      
-      // Create and download file
-      const blob = new Blob([content], { type: mimeType });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
       
       toast.success(`Report downloaded successfully as ${exportFormat.toUpperCase()}`);
     } catch (error: any) {
@@ -522,9 +924,9 @@ Rejected:                 ${reportData.rejectedListings}
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="csv">CSV</SelectItem>
-                      <SelectItem value="json">JSON</SelectItem>
-                      <SelectItem value="txt">TXT</SelectItem>
+                      <SelectItem value="csv">CSV (Comma Separated Values)</SelectItem>
+                      <SelectItem value="pdf">PDF (Portable Document Format)</SelectItem>
+                      <SelectItem value="xlsx">XLSX (Excel Spreadsheet)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

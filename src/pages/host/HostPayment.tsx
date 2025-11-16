@@ -257,7 +257,7 @@ const HostPayment = () => {
                   </div>
                   <h1 className="text-3xl font-bold mb-2">Complete Payment</h1>
                   <p className="text-muted-foreground">
-                    You'll be redirected to PayPal to complete your payment.
+                    Pay securely with PayPal using the button below.
                   </p>
                 </div>
 
@@ -294,7 +294,7 @@ const HostPayment = () => {
                         <div>
                           <h3 className="font-semibold text-lg mb-1">PayPal Checkout</h3>
                           <p className="text-sm text-muted-foreground">
-                          Pay securely with PayPal. You'll be redirected to PayPal to complete your payment.
+                          Pay securely with PayPal. Click the PayPal button below to complete your payment.
                           </p>
                         </div>
                         <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
@@ -304,7 +304,7 @@ const HostPayment = () => {
                       
                       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-4">
                         <p className="text-xs text-blue-800 dark:text-blue-200">
-                          <strong>Payment Information:</strong> When you click "Pay with PayPal", you'll be redirected to PayPal to complete the payment. 
+                          <strong>Payment Information:</strong> Click the PayPal button below to complete your payment securely. 
                           The payment will go directly to the platform's admin PayPal account (configured in PayPal Developer Dashboard). 
                         </p>
                       </div>
@@ -324,7 +324,7 @@ const HostPayment = () => {
                             description={`Host subscription: ${plan.name} (${plan.billingCycle}) - planId=${plan.id}`}
                             onSuccess={handlePaymentSuccess}
                             redirectUrl={`${window.location.origin}/host/payment/success?planId=${plan.id}`}
-                            useRedirectFlow={true}
+                            useRedirectFlow={false}
                           />
                           </div>
                         </div>

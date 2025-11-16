@@ -62,7 +62,13 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
   const { user, userProfile } = useAuth();
   const [searchParams] = useSearchParams();
   const editListingId = searchParams.get('edit');
+  const categoryParam = searchParams.get('category');
   const isEditMode = !!editListingId;
+  
+  // Get category from URL param or default to 'home' for backward compatibility
+  const defaultCategory = (categoryParam && ['home', 'service', 'experience'].includes(categoryParam)) 
+    ? categoryParam as 'home' | 'service' | 'experience'
+    : 'home';
   
   const [loading, setLoading] = useState(false);
   const [loadingListing, setLoadingListing] = useState(false);
@@ -78,6 +84,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
   const [draftId, setDraftId] = useState<string | null>(null);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  const [manualSaveConfirmOpen, setManualSaveConfirmOpen] = useState(false);
   const [isPublished, setIsPublished] = useState(false); // Track if listing has been published
   const [isPromoCodeGenerated, setIsPromoCodeGenerated] = useState(false); // Track if promo code was auto-generated
   const [isGeneratingPromoCode, setIsGeneratingPromoCode] = useState(false); // Track if generating promo code
@@ -91,7 +98,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
     defaultValues: {
       title: "",
       description: "",
-      category: "home",
+      category: defaultCategory,
       price: "",
       discount: "",
       promo: "",
@@ -100,16 +107,30 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
       promoDiscount: "",
       promoMaxUses: "",
       location: "",
+      // House-specific
       maxGuests: "",
       bedrooms: "",
       bathrooms: "",
+      houseType: "",
       amenities: "",
+      // Service-specific
+      duration: "",
+      serviceType: "",
+      requirements: "",
+      locationRequired: false,
+      // Experience-specific
+      capacity: "",
+      schedule: "",
+      whatsIncluded: "",
       dateRange: { from: undefined, to: undefined },
       images: [],
     },
     mode: "onChange",
     shouldFocusError: true,
   });
+  
+  // Watch category to conditionally render fields
+  const currentCategory = form.watch('category') || defaultCategory;
 
   const watchedValues = form.watch();
   const formErrors = form.formState.errors;
@@ -123,18 +144,26 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
 
   // Calculate form completion percentage
   const calculateCompletion = useCallback(() => {
-    const fields = [
+    const baseFields = [
       watchedValues.title,
       watchedValues.description,
       watchedValues.price,
       watchedValues.location,
-      watchedValues.maxGuests,
       watchedValues.dateRange?.from && watchedValues.dateRange?.to,
       images.length > 0,
     ];
-    const completed = fields.filter(Boolean).length;
-    return Math.round((completed / fields.length) * 100);
-  }, [watchedValues, images.length]);
+    
+    // Add category-specific required fields
+    if (currentCategory === 'home') {
+      baseFields.push(watchedValues.maxGuests);
+    } else if (currentCategory === 'experience') {
+      baseFields.push(watchedValues.capacity);
+    }
+    // Service has no additional required fields
+    
+    const completed = baseFields.filter(Boolean).length;
+    return Math.round((completed / baseFields.length) * 100);
+  }, [watchedValues, images.length, currentCategory]);
 
   const completionPercentage = calculateCompletion();
 
@@ -254,7 +283,27 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         console.error("Error checking existing draft:", err);
       }
 
-      const payloadRaw = {
+      // Handle images: for manual saves, upload new images; for auto-saves, only save existing URLs
+      let imagesToSave = isEditMode ? existingImages : (existingImages.length > 0 ? existingImages : []);
+      
+      // For manual saves, upload new images if any
+      if (opts?.manual && images.length > 0) {
+        try {
+          const id = getDraftDocId();
+          if (id) {
+            const uploadedUrls = await uploadImagesWithProgress(images, id);
+            imagesToSave = [...existingImages, ...uploadedUrls];
+            // Update local state to reflect uploaded images
+            setExistingImages(imagesToSave);
+            setImages([]); // Clear new images after upload
+          }
+        } catch (err) {
+          console.error("Failed to upload images for draft:", err);
+          // Continue saving draft even if image upload fails
+        }
+      }
+
+      const payloadRaw: any = {
         hostId: user.uid,
         title: formValues.title || "",
         description: formValues.description || "",
@@ -262,15 +311,16 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         price: formValues.price ? Number(formValues.price) : undefined,
         discount: formValues.discount && formValues.discount.trim() ? Number(formValues.discount) : undefined,
         promo: formValues.promo || undefined,
+        promoCode: formValues.promoCode || undefined,
+        promoDescription: formValues.promoDescription || undefined,
+        promoDiscount: formValues.promoDiscount && formValues.promoDiscount.trim() ? Number(formValues.promoDiscount) : undefined,
+        promoMaxUses: formValues.promoMaxUses && formValues.promoMaxUses.trim() ? Number(formValues.promoMaxUses) : undefined,
         location: formValues.location || "",
-        maxGuests: formValues.maxGuests ? Number(formValues.maxGuests) : undefined,
-        bedrooms: formValues.bedrooms && formValues.bedrooms.trim() ? Number(formValues.bedrooms) : undefined,
-        bathrooms: formValues.bathrooms && formValues.bathrooms.trim() ? Number(formValues.bathrooms) : undefined,
-        amenities: formValues.amenities ? formValues.amenities.split(",").map(a => a.trim()).filter(Boolean) : [],
         availableDates: finalAvailableDates,
         blockedDates,
-        images: [],
+        images: imagesToSave, // Save existing images (and newly uploaded for manual saves)
         status: "draft", // Only save as draft
+        isManualDraft: opts?.manual || false, // Track if this is a manual save
         // Also save dateRange directly for easier loading
         dateRange: dateRange?.from && dateRange?.to ? {
           from: dateRange.from.toISOString(),
@@ -279,6 +329,27 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         createdAt: existingCreatedAt || new Date().toISOString(),
         updatedAt: serverTimestamp(),
       };
+
+      // Add category-specific fields
+      if (formValues.category === 'home') {
+        payloadRaw.maxGuests = formValues.maxGuests ? Number(formValues.maxGuests) : undefined;
+        payloadRaw.bedrooms = formValues.bedrooms && formValues.bedrooms.trim() ? Number(formValues.bedrooms) : undefined;
+        payloadRaw.bathrooms = formValues.bathrooms && formValues.bathrooms.trim() ? Number(formValues.bathrooms) : undefined;
+        payloadRaw.houseType = formValues.houseType && formValues.houseType.trim() ? formValues.houseType : undefined;
+        payloadRaw.amenities = formValues.amenities ? formValues.amenities.split(",").map(a => a.trim()).filter(Boolean) : [];
+      } else if (formValues.category === 'service') {
+        payloadRaw.servicePrice = formValues.price ? Number(formValues.price) : undefined;
+        payloadRaw.duration = formValues.duration && formValues.duration.trim() ? formValues.duration : undefined;
+        payloadRaw.serviceType = formValues.serviceType && formValues.serviceType.trim() ? formValues.serviceType : undefined;
+        payloadRaw.requirements = formValues.requirements && formValues.requirements.trim() ? formValues.requirements : undefined;
+        payloadRaw.locationRequired = formValues.locationRequired || false;
+      } else if (formValues.category === 'experience') {
+        payloadRaw.pricePerPerson = formValues.price ? Number(formValues.price) : undefined;
+        payloadRaw.capacity = formValues.capacity ? Number(formValues.capacity) : undefined;
+        payloadRaw.duration = formValues.duration && formValues.duration.trim() ? formValues.duration : undefined;
+        payloadRaw.schedule = formValues.schedule && formValues.schedule.trim() ? formValues.schedule : undefined;
+        payloadRaw.whatsIncluded = formValues.whatsIncluded ? formValues.whatsIncluded.split(",").map(a => a.trim()).filter(Boolean) : [];
+      }
 
       const payload = removeUndefined(payloadRaw);
 
@@ -359,7 +430,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
       
       setLoadingListing(true);
       try {
-        const listing = await getListing(editListingId);
+        const listing = await getListing(editListingId, user.uid);
         if (!listing) {
           toast.error("Listing not found");
           return;
@@ -373,11 +444,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
 
         // Load existing data into form
         const existingPromoCode = (listing as any).promoCode || "";
-        form.reset({
+        const formData: any = {
           title: listing.title || "",
           description: listing.description || "",
           category: listing.category || "home",
-          price: listing.price ? String(listing.price) : "",
+          price: listing.price ? String(listing.price) : (listing as any).servicePrice ? String((listing as any).servicePrice) : (listing as any).pricePerPerson ? String((listing as any).pricePerPerson) : "",
           discount: listing.discount ? String(listing.discount) : "",
           promo: listing.promo || "",
           promoCode: existingPromoCode,
@@ -385,10 +456,6 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
           promoDiscount: (listing as any).promoDiscount ? String((listing as any).promoDiscount) : "",
           promoMaxUses: (listing as any).promoMaxUses ? String((listing as any).promoMaxUses) : "",
           location: listing.location || "",
-          maxGuests: listing.maxGuests ? String(listing.maxGuests) : "",
-          bedrooms: listing.bedrooms ? String(listing.bedrooms) : "",
-          bathrooms: listing.bathrooms ? String(listing.bathrooms) : "",
-          amenities: Array.isArray(listing.amenities) ? listing.amenities.join(", ") : "",
           dateRange: listing.availableDates && listing.availableDates.length > 0
             ? {
                 from: new Date(listing.availableDates[0]),
@@ -396,7 +463,28 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
               }
             : { from: undefined, to: undefined },
           images: [],
-        });
+        };
+
+        // Load category-specific fields
+        if (listing.category === 'home') {
+          formData.maxGuests = listing.maxGuests ? String(listing.maxGuests) : "";
+          formData.bedrooms = listing.bedrooms ? String(listing.bedrooms) : "";
+          formData.bathrooms = listing.bathrooms ? String(listing.bathrooms) : "";
+          formData.houseType = listing.houseType || "";
+          formData.amenities = Array.isArray(listing.amenities) ? listing.amenities.join(", ") : "";
+        } else if (listing.category === 'service') {
+          formData.duration = (listing as any).duration || "";
+          formData.serviceType = (listing as any).serviceType || "";
+          formData.requirements = (listing as any).requirements || "";
+          formData.locationRequired = (listing as any).locationRequired || false;
+        } else if (listing.category === 'experience') {
+          formData.capacity = (listing as any).capacity ? String((listing as any).capacity) : "";
+          formData.duration = (listing as any).duration || "";
+          formData.schedule = (listing as any).schedule || "";
+          formData.whatsIncluded = Array.isArray((listing as any).whatsIncluded) ? (listing as any).whatsIncluded.join(", ") : "";
+        }
+
+        form.reset(formData);
         
         // Set promo code generated state if editing and promo code exists
         if (existingPromoCode && existingPromoCode.startsWith('PROMO-')) {
@@ -431,46 +519,18 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
     loadExistingListing();
   }, [isEditMode, editListingId, user, form]);
 
-  // On mount: check if a draft exists (only in create mode)
-  useEffect(() => {
-    if (isEditMode) return; // Skip draft check in edit mode
-    
-    const checkDraft = async () => {
-      if (!user) return;
-      const id = getDraftDocId();
-      if (!id) return;
-      try {
-        const snap = await getDoc(doc(db, "listing", id));
-        if (snap.exists()) {
-          const data = snap.data();
-          if (data.status === "draft") {
-            setDraftFound(true);
-            setShowDraftDialog(true);
-            setDraftId(id);
-          }
-        }
-      } catch (err: any) {
-        if (err.code !== "permission-denied") {
-          console.error("Failed to check draft:", err);
-        }
-      }
-    };
-    checkDraft();
-  }, [user, getDraftDocId, isEditMode]);
-
-  // Load the draft into form state
-  const loadDraft = async () => {
-    if (!draftId) return;
+  // Auto-load draft on mount (internal function) - defined before useEffect
+  const loadDraftAuto = useCallback(async (draftIdToLoad: string) => {
     try {
-      const snap = await getDoc(doc(db, "listing", draftId));
+      const snap = await getDoc(doc(db, "listing", draftIdToLoad));
       if (!snap.exists()) return;
       const data = snap.data() as any;
 
-      form.reset({
+      const formData: any = {
         title: data.title || "",
         description: data.description || "",
         category: (data.category as "home" | "experience" | "service") || "home",
-        price: data.price ? String(data.price) : "",
+        price: data.price ? String(data.price) : (data as any).servicePrice ? String((data as any).servicePrice) : (data as any).pricePerPerson ? String((data as any).pricePerPerson) : "",
         discount: data.discount ? String(data.discount) : "",
         promo: data.promo || "",
         promoCode: (data as any).promoCode || "",
@@ -478,10 +538,6 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         promoDiscount: (data as any).promoDiscount ? String((data as any).promoDiscount) : "",
         promoMaxUses: (data as any).promoMaxUses ? String((data as any).promoMaxUses) : "",
         location: data.location || "",
-        maxGuests: data.maxGuests ? String(data.maxGuests) : "",
-        bedrooms: data.bedrooms ? String(data.bedrooms) : "",
-        bathrooms: data.bathrooms ? String(data.bathrooms) : "",
-        amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : (data.amenities || ""),
         dateRange: data.availableDates && Array.isArray(data.availableDates) && data.availableDates.length > 0
           ? {
               from: new Date(data.availableDates[0]),
@@ -492,13 +548,154 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
               to: data.dateRange.to ? new Date(data.dateRange.to) : undefined,
             } : { from: undefined, to: undefined }),
         images: [],
-      });
+      };
+
+      // Load category-specific fields
+      const category = (data.category as "home" | "experience" | "service") || "home";
+      if (category === 'home') {
+        formData.maxGuests = data.maxGuests ? String(data.maxGuests) : "";
+        formData.bedrooms = data.bedrooms ? String(data.bedrooms) : "";
+        formData.bathrooms = data.bathrooms ? String(data.bathrooms) : "";
+        formData.houseType = data.houseType || "";
+        formData.amenities = Array.isArray(data.amenities) ? data.amenities.join(", ") : (data.amenities || "");
+      } else if (category === 'service') {
+        formData.duration = (data as any).duration || "";
+        formData.serviceType = (data as any).serviceType || "";
+        formData.requirements = (data as any).requirements || "";
+        formData.locationRequired = (data as any).locationRequired || false;
+      } else if (category === 'experience') {
+        formData.capacity = (data as any).capacity ? String((data as any).capacity) : "";
+        formData.duration = (data as any).duration || "";
+        formData.schedule = (data as any).schedule || "";
+        formData.whatsIncluded = Array.isArray((data as any).whatsIncluded) ? (data as any).whatsIncluded.join(", ") : "";
+      }
+
+      form.reset(formData);
+
+      // Restore images
+      if (data.images && Array.isArray(data.images) && data.images.length > 0) {
+        setExistingImages(data.images);
+      }
+
+      // Restore dates
+      if (data.availableDates && Array.isArray(data.availableDates)) {
+        setAvailableDates(data.availableDates);
+      }
+      if (data.blockedDates && Array.isArray(data.blockedDates)) {
+        setBlockedDates(data.blockedDates);
+      }
+
+      // Set promo code generated state if exists
+      if (formData.promoCode && formData.promoCode.startsWith('PROMO-')) {
+        setIsPromoCodeGenerated(true);
+      }
+
+      // Show notification that draft was restored
+      toast.success("Draft restored. You can continue editing where you left off.");
+    } catch (err: any) {
+      console.error("Failed to auto-load draft:", err);
+    }
+  }, [form]);
+
+  // On mount: check if a draft exists and automatically load it (only in create mode)
+  useEffect(() => {
+    if (isEditMode) return; // Skip draft check in edit mode
+    if (hasMountedRef.current) return; // Only check once on mount
+    
+    const checkAndLoadDraft = async () => {
+      if (!user) return;
+      const id = getDraftDocId();
+      if (!id) return;
+      try {
+        const snap = await getDoc(doc(db, "listing", id));
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.status === "draft") {
+            setDraftFound(true);
+            setDraftId(id);
+            // Automatically load the draft - show dialog only if user wants to discard
+            await loadDraftAuto(id);
+          }
+        }
+      } catch (err: any) {
+        if (err.code !== "permission-denied") {
+          console.error("Failed to check draft:", err);
+        }
+      }
+    };
+    checkAndLoadDraft();
+  }, [user, getDraftDocId, isEditMode, loadDraftAuto]);
+
+
+  // Load the draft into form state (manual load from dialog)
+  const loadDraft = async () => {
+    if (!draftId) return;
+    try {
+      const snap = await getDoc(doc(db, "listing", draftId));
+      if (!snap.exists()) return;
+      const data = snap.data() as any;
+
+      const formData: any = {
+        title: data.title || "",
+        description: data.description || "",
+        category: (data.category as "home" | "experience" | "service") || "home",
+        price: data.price ? String(data.price) : (data as any).servicePrice ? String((data as any).servicePrice) : (data as any).pricePerPerson ? String((data as any).pricePerPerson) : "",
+        discount: data.discount ? String(data.discount) : "",
+        promo: data.promo || "",
+        promoCode: (data as any).promoCode || "",
+        promoDescription: (data as any).promoDescription || "",
+        promoDiscount: (data as any).promoDiscount ? String((data as any).promoDiscount) : "",
+        promoMaxUses: (data as any).promoMaxUses ? String((data as any).promoMaxUses) : "",
+        location: data.location || "",
+        dateRange: data.availableDates && Array.isArray(data.availableDates) && data.availableDates.length > 0
+          ? {
+              from: new Date(data.availableDates[0]),
+              to: new Date(data.availableDates[data.availableDates.length - 1]),
+            }
+          : (data.dateRange ? {
+              from: data.dateRange.from ? new Date(data.dateRange.from) : undefined,
+              to: data.dateRange.to ? new Date(data.dateRange.to) : undefined,
+            } : { from: undefined, to: undefined }),
+        images: [],
+      };
+
+      // Load category-specific fields
+      const category = (data.category as "home" | "experience" | "service") || "home";
+      if (category === 'home') {
+        formData.maxGuests = data.maxGuests ? String(data.maxGuests) : "";
+        formData.bedrooms = data.bedrooms ? String(data.bedrooms) : "";
+        formData.bathrooms = data.bathrooms ? String(data.bathrooms) : "";
+        formData.houseType = data.houseType || "";
+        formData.amenities = Array.isArray(data.amenities) ? data.amenities.join(", ") : (data.amenities || "");
+      } else if (category === 'service') {
+        formData.duration = (data as any).duration || "";
+        formData.serviceType = (data as any).serviceType || "";
+        formData.requirements = (data as any).requirements || "";
+        formData.locationRequired = (data as any).locationRequired || false;
+      } else if (category === 'experience') {
+        formData.capacity = (data as any).capacity ? String((data as any).capacity) : "";
+        formData.duration = (data as any).duration || "";
+        formData.schedule = (data as any).schedule || "";
+        formData.whatsIncluded = Array.isArray((data as any).whatsIncluded) ? (data as any).whatsIncluded.join(", ") : "";
+      }
+
+      form.reset(formData);
+
+      // Restore images
+      if (data.images && Array.isArray(data.images) && data.images.length > 0) {
+        setExistingImages(data.images);
+      }
 
       if (data.availableDates && Array.isArray(data.availableDates)) {
         setAvailableDates(data.availableDates);
       }
       if (data.blockedDates && Array.isArray(data.blockedDates)) {
         setBlockedDates(data.blockedDates);
+      }
+
+      // Set promo code generated state if exists
+      if (formData.promoCode && formData.promoCode.startsWith('PROMO-')) {
+        setIsPromoCodeGenerated(true);
       }
 
       setShowDraftDialog(false);
@@ -574,10 +771,6 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
       promoDiscount: formValues.promoDiscount && formValues.promoDiscount.trim() ? Number(formValues.promoDiscount) : undefined,
       promoMaxUses: formValues.promoMaxUses && formValues.promoMaxUses.trim() ? Number(formValues.promoMaxUses) : undefined,
       location: formValues.location,
-      maxGuests: Number(formValues.maxGuests),
-      bedrooms: formValues.bedrooms && formValues.bedrooms.trim() ? Number(formValues.bedrooms) : undefined,
-      bathrooms: formValues.bathrooms && formValues.bathrooms.trim() ? Number(formValues.bathrooms) : undefined,
-      amenities: formValues.amenities ? formValues.amenities.split(",").map((a: string) => a.trim()).filter(Boolean) : [],
       availableDates: finalAvailableDates,
       blockedDates,
       images: [],
@@ -585,6 +778,27 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
       createdAt: existingCreatedAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(), // Use regular timestamp since createListing overwrites it
     };
+
+    // Add category-specific fields
+    if (formValues.category === 'home') {
+      payloadRaw.maxGuests = formValues.maxGuests ? Number(formValues.maxGuests) : undefined;
+      payloadRaw.bedrooms = formValues.bedrooms && formValues.bedrooms.trim() ? Number(formValues.bedrooms) : undefined;
+      payloadRaw.bathrooms = formValues.bathrooms && formValues.bathrooms.trim() ? Number(formValues.bathrooms) : undefined;
+      payloadRaw.houseType = formValues.houseType && formValues.houseType.trim() ? formValues.houseType : undefined;
+      payloadRaw.amenities = formValues.amenities ? formValues.amenities.split(",").map((a: string) => a.trim()).filter(Boolean) : [];
+    } else if (formValues.category === 'service') {
+      payloadRaw.servicePrice = Number(formValues.price); // Store as servicePrice for clarity
+      payloadRaw.duration = formValues.duration && formValues.duration.trim() ? formValues.duration : undefined;
+      payloadRaw.serviceType = formValues.serviceType && formValues.serviceType.trim() ? formValues.serviceType : undefined;
+      payloadRaw.requirements = formValues.requirements && formValues.requirements.trim() ? formValues.requirements : undefined;
+      payloadRaw.locationRequired = formValues.locationRequired || false;
+    } else if (formValues.category === 'experience') {
+      payloadRaw.pricePerPerson = Number(formValues.price); // Store as pricePerPerson for clarity
+      payloadRaw.capacity = formValues.capacity ? Number(formValues.capacity) : undefined;
+      payloadRaw.duration = formValues.duration && formValues.duration.trim() ? formValues.duration : undefined;
+      payloadRaw.schedule = formValues.schedule && formValues.schedule.trim() ? formValues.schedule : undefined;
+      payloadRaw.whatsIncluded = formValues.whatsIncluded ? formValues.whatsIncluded.split(",").map((a: string) => a.trim()).filter(Boolean) : [];
+    }
 
     const payload = removeUndefined(payloadRaw);
     
@@ -786,9 +1000,21 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
     
     // Trigger validation for all fields
     const isValid = await form.trigger();
+    const formValues = form.getValues();
     const dateRange = form.getValues("dateRange");
     const formErrors = form.formState.errors;
     
+    // Category-specific validation
+    const category = formValues.category || currentCategory;
+    if (category === 'home' && !formValues.maxGuests) {
+      form.setError("maxGuests", { message: "Max guests is required for house listings" });
+      await form.trigger("maxGuests");
+    }
+    if (category === 'experience' && !formValues.capacity) {
+      form.setError("capacity", { message: "Capacity is required for experience listings" });
+      await form.trigger("capacity");
+    }
+
     // Check date range
     if (!dateRange?.from || !dateRange?.to) {
       form.setError("dateRange.to", { message: "Date range is required" });
@@ -806,10 +1032,15 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
     }
 
     // If there are any errors, show them and scroll to first error
-    if (!isValid || !dateRange?.from || !dateRange?.to || totalImages === 0) {
+    if (!isValid || !dateRange?.from || !dateRange?.to || totalImages === 0 || 
+        (category === 'home' && !formValues.maxGuests) || 
+        (category === 'experience' && !formValues.capacity)) {
       toast.error("Please fix all errors in the form before submitting.");
       // Scroll to first error field
-      const firstErrorField = Object.keys(formErrors)[0] || "dateRange" || "images";
+      const firstErrorField = Object.keys(formErrors)[0] || 
+                             (category === 'home' && !formValues.maxGuests ? "maxGuests" : "") ||
+                             (category === 'experience' && !formValues.capacity ? "capacity" : "") ||
+                             "dateRange" || "images";
       const errorElement = document.querySelector(`[name="${firstErrorField}"]`) || 
                           document.querySelector('[name="dateRange"]') ||
                           document.querySelector('[name="images"]');
@@ -874,7 +1105,13 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
     }
   };
 
-  const handleSaveDraft = async () => {
+  const handleSaveDraft = () => {
+    // Show confirmation dialog for manual save
+    setManualSaveConfirmOpen(true);
+  };
+
+  const confirmManualSave = async () => {
+    setManualSaveConfirmOpen(false);
     // Allow saving drafts even if required fields are missing
     // No validation needed for drafts - they can be incomplete
     await saveDraftToFirestore({ manual: true });
@@ -934,14 +1171,31 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         promoDiscount: formValues.promoDiscount && formValues.promoDiscount.trim() ? Number(formValues.promoDiscount) : undefined,
         promoMaxUses: formValues.promoMaxUses && formValues.promoMaxUses.trim() ? Number(formValues.promoMaxUses) : undefined,
         location: formValues.location,
-        maxGuests: Number(formValues.maxGuests),
-        bedrooms: formValues.bedrooms && formValues.bedrooms.trim() ? Number(formValues.bedrooms) : undefined,
-        bathrooms: formValues.bathrooms && formValues.bathrooms.trim() ? Number(formValues.bathrooms) : undefined,
-        amenities: formValues.amenities ? formValues.amenities.split(",").map((a: string) => a.trim()).filter(Boolean) : [],
         availableDates: finalAvailableDates,
         blockedDates,
         updatedAt: new Date().toISOString(),
       };
+
+      // Add category-specific fields
+      if (formValues.category === 'home') {
+        updateData.maxGuests = formValues.maxGuests ? Number(formValues.maxGuests) : undefined;
+        updateData.bedrooms = formValues.bedrooms && formValues.bedrooms.trim() ? Number(formValues.bedrooms) : undefined;
+        updateData.bathrooms = formValues.bathrooms && formValues.bathrooms.trim() ? Number(formValues.bathrooms) : undefined;
+        updateData.houseType = formValues.houseType && formValues.houseType.trim() ? formValues.houseType : undefined;
+        updateData.amenities = formValues.amenities ? formValues.amenities.split(",").map((a: string) => a.trim()).filter(Boolean) : [];
+      } else if (formValues.category === 'service') {
+        updateData.servicePrice = Number(formValues.price);
+        updateData.duration = formValues.duration && formValues.duration.trim() ? formValues.duration : undefined;
+        updateData.serviceType = formValues.serviceType && formValues.serviceType.trim() ? formValues.serviceType : undefined;
+        updateData.requirements = formValues.requirements && formValues.requirements.trim() ? formValues.requirements : undefined;
+        updateData.locationRequired = formValues.locationRequired || false;
+      } else if (formValues.category === 'experience') {
+        updateData.pricePerPerson = Number(formValues.price);
+        updateData.capacity = formValues.capacity ? Number(formValues.capacity) : undefined;
+        updateData.duration = formValues.duration && formValues.duration.trim() ? formValues.duration : undefined;
+        updateData.schedule = formValues.schedule && formValues.schedule.trim() ? formValues.schedule : undefined;
+        updateData.whatsIncluded = formValues.whatsIncluded ? formValues.whatsIncluded.split(",").map((a: string) => a.trim()).filter(Boolean) : [];
+      }
 
       // Remove undefined values
       const cleanedData = removeUndefined(updateData);
@@ -978,31 +1232,39 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
 
   return (
     <>
-      {/* Draft confirmation dialog */}
-      <Dialog open={showDraftDialog} onOpenChange={setShowDraftDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Unsaved Draft Found</DialogTitle>
-            <DialogDescription>
-              We found a saved draft for this account. Would you like to continue editing it or discard it and start fresh?
-            </DialogDescription>
-          </DialogHeader>
-          <div className="mt-4 flex gap-2 justify-end">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowDraftDialog(false);
-                setDiscardConfirmOpen(true);
-              }}
-            >
+      {/* Manual Save Confirmation Dialog */}
+      <AlertDialog open={manualSaveConfirmOpen} onOpenChange={setManualSaveConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save Draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will save your current progress as a draft. Manual drafts will appear in your Listings page. You can continue editing at any time.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmManualSave}>Save Draft</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Draft Discard Confirmation Dialog */}
+      <AlertDialog open={discardConfirmOpen} onOpenChange={setDiscardConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard Draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to discard this draft? This action cannot be undone. All unsaved progress will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDiscardConfirmOpen(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={discardDraft} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Discard Draft
-            </Button>
-            <Button onClick={loadDraft}>
-              Continue Draft
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {loadingListing ? (
         <Card>
@@ -1016,6 +1278,25 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
       ) : (
         <Card>
           <CardHeader>
+            {/* Draft Restored Banner */}
+            {draftFound && !isEditMode && (
+              <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  <p className="text-sm text-blue-900 dark:text-blue-100">
+                    Draft restored. You can continue editing where you left off.
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDiscardConfirmOpen(true)}
+                  className="text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100"
+                >
+                  Discard
+                </Button>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <CardTitle>{isEditMode ? 'Edit Listing' : 'Create New Listing'}</CardTitle>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -1104,8 +1385,8 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                 )}
               />
 
-              {/* Category and Price */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              {/* Category (hidden if set from URL, shown in edit mode) */}
+              {(!categoryParam || isEditMode) && (
                 <FormField
                   control={form.control}
                   name="category"
@@ -1114,14 +1395,14 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                       <FormLabel>
                         Category <span className="text-destructive">*</span>
                       </FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value || defaultCategory}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Select category" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="home">Home</SelectItem>
+                          <SelectItem value="home">House</SelectItem>
                           <SelectItem value="experience">Experience</SelectItem>
                           <SelectItem value="service">Service</SelectItem>
                         </SelectContent>
@@ -1130,31 +1411,35 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                     </FormItem>
                   )}
                 />
+              )}
 
-                <FormField
-                  control={form.control}
-                  name="price"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        Price per Night (₱) <span className="text-destructive">*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0.00"
-                          {...field}
-                          value={field.value || ""}
-                          onChange={(e) => field.onChange(e.target.value)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+              {/* Price - Category-specific labels */}
+              <FormField
+                control={form.control}
+                name="price"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {currentCategory === 'home' && 'Price per Night (₱)'}
+                      {currentCategory === 'experience' && 'Price per Person (₱)'}
+                      {currentCategory === 'service' && 'Service Price (₱)'}
+                      <span className="text-destructive">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        {...field}
+                        value={field.value || ""}
+                        onChange={(e) => field.onChange(e.target.value)}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               {/* Discount and Promo */}
               <div className="space-y-4">
@@ -1414,94 +1699,275 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                 )}
               />
 
-              {/* Max Guests, Bedrooms, Bathrooms */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                <FormField
-                  control={form.control}
-                  name="maxGuests"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        Max Guests <span className="text-destructive">*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="1"
-                          placeholder="1"
-                          {...field}
-                          value={field.value || ""}
-                          onChange={(e) => field.onChange(e.target.value)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              {/* House-specific fields */}
+              {currentCategory === 'home' && (
+                <>
+                  {/* Max Guests, Bedrooms, Bathrooms */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                    <FormField
+                      control={form.control}
+                      name="maxGuests"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            Max Guests <span className="text-destructive">*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="1"
+                              placeholder="1"
+                              {...field}
+                              value={field.value || ""}
+                              onChange={(e) => field.onChange(e.target.value)}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                <FormField
-                  control={form.control}
-                  name="bedrooms"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Bedrooms</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="0"
-                          placeholder="0"
-                          {...field}
-                          value={field.value || ""}
-                          onChange={(e) => field.onChange(e.target.value)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                    <FormField
+                      control={form.control}
+                      name="bedrooms"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Bedrooms</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              {...field}
+                              value={field.value || ""}
+                              onChange={(e) => field.onChange(e.target.value)}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                <FormField
-                  control={form.control}
-                  name="bathrooms"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Bathrooms</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="1"
-                          placeholder="0"
-                          {...field}
-                          value={field.value || ""}
-                          onChange={(e) => field.onChange(e.target.value)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+                    <FormField
+                      control={form.control}
+                      name="bathrooms"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Bathrooms</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="1"
+                              placeholder="0"
+                              {...field}
+                              value={field.value || ""}
+                              onChange={(e) => field.onChange(e.target.value)}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
 
-              {/* Amenities */}
-              <FormField
-                control={form.control}
-                name="amenities"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Amenities</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="WiFi, Pool, Kitchen, Parking (comma separated)"
-                        {...field}
-                        value={field.value || ""}
-                      />
-                    </FormControl>
-                    <FormDescription>Separate multiple amenities with commas</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  {/* House Type */}
+                  <FormField
+                    control={form.control}
+                    name="houseType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>House Type</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select house type (optional)" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="Apartment">Apartment</SelectItem>
+                            <SelectItem value="House">House</SelectItem>
+                            <SelectItem value="Villa">Villa</SelectItem>
+                            <SelectItem value="Condo">Condo</SelectItem>
+                            <SelectItem value="Studio">Studio</SelectItem>
+                            <SelectItem value="Other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Amenities */}
+                  <FormField
+                    control={form.control}
+                    name="amenities"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Amenities</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="WiFi, Pool, Kitchen, Parking (comma separated)"
+                            {...field}
+                            value={field.value || ""}
+                          />
+                        </FormControl>
+                        <FormDescription>Separate multiple amenities with commas</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
+
+              {/* Service-specific fields */}
+              {currentCategory === 'service' && (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="duration"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Duration</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., 2 hours, 1 day, 30 minutes"
+                            {...field}
+                            value={field.value || ""}
+                          />
+                        </FormControl>
+                        <FormDescription>How long does this service take?</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="serviceType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Service Type / Category</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., Cleaning, Repair, Consultation, Photography"
+                            {...field}
+                            value={field.value || ""}
+                          />
+                        </FormControl>
+                        <FormDescription>What type of service is this?</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="requirements"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Requirements</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="List any requirements or prerequisites for this service..."
+                            className="min-h-[100px]"
+                            {...field}
+                            value={field.value || ""}
+                          />
+                        </FormControl>
+                        <FormDescription>What do customers need to know or provide?</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
+
+              {/* Experience-specific fields */}
+              {currentCategory === 'experience' && (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="capacity"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Maximum Capacity <span className="text-destructive">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="1"
+                            placeholder="10"
+                            {...field}
+                            value={field.value || ""}
+                            onChange={(e) => field.onChange(e.target.value)}
+                          />
+                        </FormControl>
+                        <FormDescription>Maximum number of participants</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="duration"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Duration</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., 3 hours, Half day, Full day"
+                            {...field}
+                            value={field.value || ""}
+                          />
+                        </FormControl>
+                        <FormDescription>How long is this experience?</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="schedule"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Schedule</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., Daily 9 AM - 5 PM, Weekends only, By appointment"
+                            {...field}
+                            value={field.value || ""}
+                          />
+                        </FormControl>
+                        <FormDescription>When is this experience available?</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="whatsIncluded"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>What's Included</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Equipment, Guide, Refreshments, Materials (comma separated)"
+                            {...field}
+                            value={field.value || ""}
+                          />
+                        </FormControl>
+                        <FormDescription>Separate multiple items with commas</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
 
               {/* Date Range */}
               <FormField

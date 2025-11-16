@@ -86,7 +86,8 @@ const MyBookings = () => {
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (userDoc.exists()) {
         const userData = userDoc.data();
-        setWalletBalance(userData.walletBalance || 0);
+        const { readWalletBalance } = await import('@/lib/financialUtils');
+        setWalletBalance(readWalletBalance(userData.walletBalance));
         setWishlist(userData.wishlist || []);
       }
     };
@@ -274,7 +275,7 @@ const MyBookings = () => {
     
     try {
       // Fetch listing details
-      const listing = await getListing(booking.listingId);
+      const listing = await getListing(booking.listingId, user?.uid);
       if (listing) {
         setSelectedListing(listing);
         
@@ -610,9 +611,10 @@ const MyBookings = () => {
                               toast.success("Payment successful! Your booking will be confirmed once the host approves.");
                               // Reload wallet balance
                               const userDoc = getDoc(doc(db, 'users', user.uid));
-                              userDoc.then(doc => {
+                              userDoc.then(async doc => {
                                 if (doc.exists()) {
-                                  setWalletBalance(doc.data().walletBalance || 0);
+                                  const { readWalletBalance } = await import('@/lib/financialUtils');
+                                  setWalletBalance(readWalletBalance(doc.data().walletBalance));
                                 }
                               });
                             }}

@@ -45,7 +45,7 @@ service cloud.firestore {
       // Allow read for involved users OR admin
       // Also allow reading confirmed bookings for availability checking (by listingId)
       allow read: if isSignedIn() && (
-        resource.data.guestId == request.auth.uid ||
+        resource.data.guestId == request.auth.uid ||                             
         resource.data.hostId == request.auth.uid ||
         isAdmin() ||
         (resource.data.status == 'confirmed' && resource.data.listingId != null)
@@ -128,6 +128,12 @@ service cloud.firestore {
       allow write: if isSignedIn() && (
         // Users can always write their own document (for profile updates, multi-role registration, admin PayPal linking, etc.)
         request.auth.uid == userId ||
+        // Allow users to update their own walletBalance for deposits (top-ups) or withdrawals
+        // Users can increase balance for deposits, or decrease for withdrawals
+        (request.auth.uid == userId &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['walletBalance']) &&
+         request.resource.data.walletBalance is number &&
+         request.resource.data.walletBalance >= 0) ||
         // Allow payment processing: host can update guest's walletBalance, points, and coupons when processing booking payment
         // This is needed for the payment service to deduct from guest wallet, credit host wallet, award points, and mark coupons as used
         // Check that only payment-related fields are being updated (allow any combination of these fields)
@@ -146,6 +152,12 @@ service cloud.firestore {
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostPoints']) &&
          request.resource.data.hostPoints is number &&
          request.resource.data.hostPoints >= 0) ||
+        // Allow updating hostPoints and walletBalance together when redeeming points for e-wallet
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostPoints', 'walletBalance']) &&
+         request.resource.data.hostPoints is number &&
+         request.resource.data.hostPoints >= 0 &&
+         request.resource.data.walletBalance is number &&
+         request.resource.data.walletBalance >= 0) ||
         // Allow updating host-specific data fields (hostFavorites, hostWishlist)
         // This is needed when users interact with listings as host
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostFavorites']) ||
@@ -289,6 +301,20 @@ service cloud.firestore {
       // Users can create their own transactions, or hosts can create transactions for payment processing
       allow create: if isSignedIn() && (
         request.resource.data.userId == request.auth.uid ||
+        // Allow users to create deposit transactions for wallet top-ups
+        (request.resource.data.userId == request.auth.uid &&
+         request.resource.data.type == 'deposit' &&
+         request.resource.data.status == 'completed' &&
+         request.resource.data.amount is number &&
+         request.resource.data.amount > 0 &&
+         request.resource.data.paymentMethod == 'paypal') ||
+        // Allow users to create withdrawal transactions (status will be 'pending' until admin processes)
+        (request.resource.data.userId == request.auth.uid &&
+         request.resource.data.type == 'withdrawal' &&
+         request.resource.data.status == 'pending' &&
+         request.resource.data.amount is number &&
+         request.resource.data.amount > 0 &&
+         request.resource.data.paymentMethod == 'paypal') ||
         // Allow hosts to create transactions for guests when processing booking payments
         // This is needed for the payment service to create payment, deposit, and reward transactions
         (request.resource.data.bookingId != null &&
@@ -362,17 +388,17 @@ service cloud.firestore {
 
     // Admin settings collection
     match /adminSettings/{settingId} {
-      // Only admins can read and write admin settings
-      // Allow read: admins can read any admin setting
-      allow read: if isAdmin();
+      // Allow authenticated users to read PayPal email for wallet top-ups
+      // Only allow reading the paypal document
+      // This is needed for guests/hosts to get admin PayPal email when making deposits
+      allow read: if isSignedIn() && settingId == 'paypal';
       
-      // Allow create: admins can create admin settings
+      // Allow list/query for authenticated users (needed to query adminSettings/paypal)
+      allow list: if isSignedIn();
+      
+      // Only admins can write admin settings
       allow create: if isAdmin();
-      
-      // Allow update: admins can update admin settings
       allow update: if isAdmin();
-      
-      // Allow delete: admins can delete admin settings
       allow delete: if isAdmin();
     }
 

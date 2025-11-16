@@ -30,6 +30,7 @@ import { DollarSign, TrendingUp, Wallet, Loader2, AlertCircle, ArrowUpRight, Che
 import { toast } from "sonner";
 import { getUserTransactions } from "@/lib/firestore";
 import { requestWithdrawal } from "@/lib/hostPayoutService";
+import { calculatePayPalPayoutFee, calculateWithdrawalWithFees } from "@/lib/financialUtils";
 import type { Transaction } from "@/types";
 import { formatPHP } from "@/lib/currency";
 import LoadingScreen from "@/components/ui/loading-screen";
@@ -47,6 +48,7 @@ const HostPayments = () => {
   const [withdrawDialogOpen, setWithdrawDialogOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawing, setWithdrawing] = useState(false);
+  const [adminAbsorbsFees, setAdminAbsorbsFees] = useState(true);
   const [linkPayPalDialogOpen, setLinkPayPalDialogOpen] = useState(false);
   const [unlinkDialogOpen, setUnlinkDialogOpen] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -117,7 +119,8 @@ const HostPayments = () => {
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (userDoc.exists()) {
         const userData = userDoc.data();
-        setWalletBalance(userData.walletBalance || 0);
+        const { readWalletBalance } = await import('@/lib/financialUtils');
+        setWalletBalance(readWalletBalance(userData.walletBalance));
         setPaypalEmail(userData.paypalEmail || null);
         // Check for either paypalEmailVerified or paypalOAuthVerified (fallback method)
         setPaypalVerified(userData.paypalEmailVerified || userData.paypalOAuthVerified || false);
@@ -235,6 +238,25 @@ const HostPayments = () => {
     }
   };
 
+  // Load fee configuration
+  useEffect(() => {
+    const loadFeeConfig = async () => {
+      try {
+        const { getDoc, doc } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase');
+        const adminSettingsDoc = await getDoc(doc(db, 'adminSettings', 'withdrawal'));
+        if (adminSettingsDoc.exists()) {
+          const settings = adminSettingsDoc.data();
+          setAdminAbsorbsFees(settings?.adminAbsorbsFees !== false); // Default to true
+        }
+      } catch (error) {
+        // Default to admin absorbs fees
+        setAdminAbsorbsFees(true);
+      }
+    };
+    loadFeeConfig();
+  }, []);
+
   const handleWithdraw = async () => {
     if (!user) return;
 
@@ -244,8 +266,15 @@ const HostPayments = () => {
       return;
     }
 
-    if (amount > walletBalance) {
-      toast.error(`Insufficient balance. Available: ${formatPHP(walletBalance)}`);
+    const fee = calculatePayPalPayoutFee(amount);
+    const totalRequired = adminAbsorbsFees ? amount : calculateWithdrawalWithFees(amount);
+
+    if (totalRequired > walletBalance) {
+      if (adminAbsorbsFees) {
+        toast.error(`Insufficient balance. Available: ${formatPHP(walletBalance)}, Required: ${formatPHP(amount)}`);
+      } else {
+        toast.error(`Insufficient balance. Available: ${formatPHP(walletBalance)}, Required: ${formatPHP(totalRequired)} (withdrawal: ${formatPHP(amount)} + fees: ${formatPHP(fee)})`);
+      }
       return;
     }
 
@@ -260,11 +289,8 @@ const HostPayments = () => {
 
     setWithdrawing(true);
     try {
-      const result = await requestWithdrawal(user.uid, amount);
-      const successMessage = result.payoutId 
-        ? `Withdrawal of ${formatPHP(amount)} sent to your PayPal account! Payout ID: ${result.payoutId}`
-        : `Withdrawal of ${formatPHP(amount)} processed successfully!${paypalEmail ? ` Funds will be sent to ${paypalEmail}` : ' Funds will be sent to your linked PayPal account'}`;
-      toast.success(successMessage);
+      const result = await requestWithdrawal(user.uid, amount, !adminAbsorbsFees);
+      toast.success(result.message || `Withdrawal request submitted successfully!${paypalEmail ? ` Funds will be sent to ${paypalEmail}` : ' Funds will be sent to your linked PayPal account'} once processed by admin.`);
       setWithdrawDialogOpen(false);
       setWithdrawAmount('');
       // Reload data to update wallet balance
@@ -725,6 +751,59 @@ const HostPayments = () => {
                   step="0.01"
                   className="mt-2"
                 />
+                {withdrawAmount && parseFloat(withdrawAmount) > 0 && (
+                  <div className="mt-2 p-3 bg-muted rounded-lg space-y-1">
+                    {(() => {
+                      const amount = parseFloat(withdrawAmount);
+                      const fee = calculatePayPalPayoutFee(amount);
+                      const totalRequired = adminAbsorbsFees ? amount : calculateWithdrawalWithFees(amount);
+                      const amountReceived = adminAbsorbsFees ? amount : amount - fee;
+                      
+                      return (
+                        <>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">PayPal Fee:</span>
+                            <span className="font-medium">{formatPHP(fee)}</span>
+                          </div>
+                          {adminAbsorbsFees ? (
+                            <>
+                              <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">You will receive:</span>
+                                <span className="font-semibold text-green-600 dark:text-green-400">{formatPHP(amountReceived)}</span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Deducted from wallet:</span>
+                                <span className="font-medium">{formatPHP(amount)}</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-2 pt-2 border-t">
+                                ✓ Fees paid by admin
+                              </p>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">You will receive:</span>
+                                <span className="font-semibold text-green-600 dark:text-green-400">{formatPHP(amountReceived)}</span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Total deducted from wallet:</span>
+                                <span className="font-medium">{formatPHP(totalRequired)}</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-2 pt-2 border-t">
+                                Fees deducted from your wallet
+                              </p>
+                            </>
+                          )}
+                          {totalRequired > walletBalance && (
+                            <p className="text-xs text-destructive mt-1">
+                              Insufficient balance. Need {formatPHP(totalRequired - walletBalance)} more.
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
                 <p className="text-xs text-muted-foreground mt-1">
                   Enter amount to withdraw (max: {formatPHP(walletBalance)})
                 </p>
@@ -746,7 +825,17 @@ const HostPayments = () => {
               <Button variant="outline" onClick={() => setWithdrawDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleWithdraw} disabled={withdrawing || !withdrawAmount || parseFloat(withdrawAmount) <= 0}>
+              <Button 
+                onClick={handleWithdraw} 
+                disabled={
+                  withdrawing || 
+                  !withdrawAmount || 
+                  parseFloat(withdrawAmount) <= 0 ||
+                  (adminAbsorbsFees 
+                    ? parseFloat(withdrawAmount) > walletBalance 
+                    : calculateWithdrawalWithFees(parseFloat(withdrawAmount)) > walletBalance)
+                }
+              >
                 {withdrawing ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />

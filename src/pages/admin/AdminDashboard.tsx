@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { formatPHP } from '@/lib/currency';
 import type { Transaction, Booking, Listing, PlatformEvent } from '@/types';
 import { getAllEvents } from '@/lib/eventService';
+import { readTransactionAmount } from '@/lib/financialUtils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -186,7 +187,7 @@ const AdminDashboard = () => {
             t.status === 'completed'
           );
         const subscriptionRevenue = subscriptionTransactions.reduce((sum: number, t: any) => {
-          return sum + (t.amount || 0);
+          return sum + readTransactionAmount(t.amount || 0);
         }, 0);
 
         const totalEarnings = subscriptionRevenue;
@@ -628,7 +629,7 @@ const AdminDashboard = () => {
                     <p className="text-xs sm:text-sm text-muted-foreground">Total Earnings</p>
                     <p className="text-lg sm:text-xl md:text-2xl font-bold text-role-admin">
                       {formatPHP(
-                        allEarningsTransactions.reduce((sum, t) => sum + (t.amount || 0), 0)
+                        allEarningsTransactions.reduce((sum, t) => sum + readTransactionAmount(t.amount || 0), 0)
                       )}
                     </p>
                   </CardContent>
@@ -640,7 +641,7 @@ const AdminDashboard = () => {
                       {formatPHP(
                         allEarningsTransactions
                           .filter(t => t.earningsType === 'subscription')
-                          .reduce((sum, t) => sum + (t.amount || 0), 0)
+                          .reduce((sum, t) => sum + readTransactionAmount(t.amount || 0), 0)
                       )}
                     </p>
                   </CardContent>
@@ -719,7 +720,7 @@ const AdminDashboard = () => {
                       </div>
                       <div className="pt-1">
                         <p className="text-base font-semibold text-role-admin">
-                          {formatPHP(transaction.amount || 0)}
+                          {formatPHP(readTransactionAmount(transaction.amount || 0))}
                         </p>
                       </div>
                     </div>
@@ -792,7 +793,7 @@ const AdminDashboard = () => {
                             )}
                           </TableCell>
                           <TableCell className="text-right font-semibold text-accent">
-                            {formatPHP(transaction.amount || 0)}
+                            {formatPHP(readTransactionAmount(transaction.amount || 0))}
                           </TableCell>
                         </TableRow>
                       ))}

@@ -35,7 +35,7 @@ export function DateRangePicker({
   modifiers,
   modifiersClassNames,
   classNames,
-  numberOfMonths = 2,
+  numberOfMonths = 1,
 }: DateRangePickerProps) {
   const [open, setOpen] = React.useState(false);
 

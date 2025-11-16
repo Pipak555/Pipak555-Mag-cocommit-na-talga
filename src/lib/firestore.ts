@@ -98,15 +98,28 @@ export const deleteListing = async (id: string) => {
   await deleteDoc(doc(db, 'listing', id));
 };
 
-export const getListing = async (id: string) => {
+// Helper function to sanitize listing data - removes promo code fields for non-hosts
+export const sanitizeListingForGuest = (listing: any, userId?: string): Listing => {
+  if (!userId || listing.hostId === userId) {
+    // User is the host or no user provided - return full listing
+    return listing as Listing;
+  }
+  
+  // User is not the host - remove promo code fields
+  const { promoCode, promoDiscount, promoDescription, promoMaxUses, promo, ...sanitized } = listing;
+  return sanitized as Listing;
+};
+
+export const getListing = async (id: string, userId?: string) => {
   const docSnap = await getDoc(doc(db, 'listing', id));
   if (docSnap.exists()) {
-    return { id: docSnap.id, ...docSnap.data() } as Listing;
+    const listing = { id: docSnap.id, ...docSnap.data() } as Listing;
+    return sanitizeListingForGuest(listing, userId);
   }
   return null;
 };
 
-export const getListings = async (filters?: { category?: string; status?: string; hostId?: string }) => {
+export const getListings = async (filters?: { category?: string; status?: string; hostId?: string }, userId?: string) => {
   try {
     // Only log in development
     if (import.meta.env.DEV) {
@@ -188,7 +201,9 @@ export const getListings = async (filters?: { category?: string; status?: string
         if (!data.createdAt) {
           data.createdAt = new Date().toISOString();
         }
-        return { id: doc.id, ...data } as Listing;
+        const listing = { id: doc.id, ...data } as Listing;
+        // Sanitize listing for guests (remove promo codes if user is not the host)
+        return sanitizeListingForGuest(listing, userId);
       })
       .filter((listing): listing is Listing => listing !== null);
     
@@ -355,34 +370,43 @@ export const getBookings = async (filters?: { guestId?: string; hostId?: string;
   } catch (error: any) {
     console.error('❌ Error in getBookings:', error);
     // If query fails due to missing index, try without orderBy as fallback
-    if (error.code === 'failed-precondition') {
-      console.warn('⚠️ Falling back to query without orderBy');
-      let q: any = query(collection(db, 'bookings'));
-      
-      if (filters?.listingId) {
-        q = query(q, where('listingId', '==', filters.listingId));
+    if (error.code === 'failed-precondition' || error.message?.includes('index')) {
+      console.warn('⚠️ Falling back to query without orderBy (index may need to be created)');
+      try {
+        let q: any = query(collection(db, 'bookings'));
+        
+        if (filters?.listingId) {
+          q = query(q, where('listingId', '==', filters.listingId));
+        }
+        if (filters?.guestId) {
+          q = query(q, where('guestId', '==', filters.guestId));
+        }
+        if (filters?.hostId) {
+          q = query(q, where('hostId', '==', filters.hostId));
+        }
+        if (filters?.status) {
+          q = query(q, where('status', '==', filters.status));
+        }
+        
+        const snapshot = await getDocs(q);
+        const bookings = snapshot.docs
+          .map(doc => {
+            const data = doc.data();
+            if (!data) return null;
+            return Object.assign({ id: doc.id }, data) as Booking;
+          })
+          .filter((booking): booking is Booking => booking !== null);
+        // Sort manually by createdAt descending
+        bookings.sort((a, b) => {
+          const aTime = new Date(a.createdAt || 0).getTime();
+          const bTime = new Date(b.createdAt || 0).getTime();
+          return bTime - aTime;
+        });
+        return bookings;
+      } catch (fallbackError: any) {
+        console.error('❌ Fallback query also failed:', fallbackError);
+        throw fallbackError;
       }
-      if (filters?.guestId) {
-        q = query(q, where('guestId', '==', filters.guestId));
-      }
-      if (filters?.hostId) {
-        q = query(q, where('hostId', '==', filters.hostId));
-      }
-      if (filters?.status) {
-        q = query(q, where('status', '==', filters.status));
-      }
-      
-      const snapshot = await getDocs(q);
-      const bookings = snapshot.docs
-        .map(doc => {
-          const data = doc.data();
-          if (!data) return null;
-          return Object.assign({ id: doc.id }, data) as Booking;
-        })
-        .filter((booking): booking is Booking => booking !== null);
-      // Sort manually
-      bookings.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      return bookings;
     }
     throw error;
   }

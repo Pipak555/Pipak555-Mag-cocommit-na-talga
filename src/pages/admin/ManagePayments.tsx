@@ -27,6 +27,7 @@ import type { Transaction, HostSubscription } from "@/types";
 import { formatPHP } from "@/lib/currency";
 import LoadingScreen from "@/components/ui/loading-screen";
 import { processTransactionRefund, confirmTransaction } from "@/lib/paymentService";
+import { readTransactionAmount } from "@/lib/financialUtils";
 
 interface TransactionWithUser extends Transaction {
   userEmail?: string;
@@ -215,7 +216,7 @@ const ManagePayments = () => {
   const pendingTransactions = transactions.filter(t => t.status === 'pending');
   const totalRevenue = transactions
     .filter(t => t.status === 'completed')
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + readTransactionAmount(t.amount), 0);
   
   // Subscription payments (these go to admin PayPal account)
   const subscriptionTransactions = transactions.filter(t => 
@@ -224,7 +225,7 @@ const ManagePayments = () => {
   );
   const subscriptionRevenue = subscriptionTransactions
     .filter(t => t.status === 'completed')
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + readTransactionAmount(t.amount), 0);
   
   
   const activeSubscriptions = subscriptions.filter(s => s.status === 'active');
@@ -346,7 +347,7 @@ const ManagePayments = () => {
                     </div>
                     <div className="flex items-center gap-4">
                       <div className="text-right">
-                        <p className="text-lg font-bold">{formatPHP(transaction.amount)}</p>
+                        <p className="text-lg font-bold">{formatPHP(readTransactionAmount(transaction.amount))}</p>
                         <p className="text-xs text-muted-foreground">{transaction.paymentMethod || 'N/A'}</p>
                       </div>
                       {transaction.status === 'pending' && (
@@ -460,7 +461,7 @@ const ManagePayments = () => {
                           )}
                         </div>
                         <div className="text-right">
-                          <p className="text-lg font-bold text-primary">{formatPHP(transaction.amount)}</p>
+                          <p className="text-lg font-bold text-primary">{formatPHP(readTransactionAmount(transaction.amount))}</p>
                           <p className="text-xs text-muted-foreground">{transaction.paymentMethod || 'PayPal'}</p>
                           <p className="text-xs text-primary mt-1">→ Your PayPal</p>
                         </div>

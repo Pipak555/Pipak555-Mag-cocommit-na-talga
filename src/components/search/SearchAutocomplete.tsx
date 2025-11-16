@@ -10,6 +10,7 @@ import type { Listing } from "@/types";
 import { formatPHP } from "@/lib/currency";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface SearchAutocompleteProps {
   onSearch?: (query: string) => void;
@@ -32,6 +33,7 @@ export const SearchAutocomplete = ({
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     loadRecentSearches();
@@ -112,7 +114,7 @@ export const SearchAutocomplete = ({
         query: searchQuery,
         status: 'approved',
         limit: 5 // Show top 5 suggestions
-      });
+      }, user?.uid);
 
       setSuggestions(result.listings);
     } catch (error) {

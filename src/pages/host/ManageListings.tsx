@@ -5,7 +5,8 @@ import { getListings, deleteListing, getListing } from "@/lib/firestore";
 import { Badge } from "@/components/ui/badge";
 import { ListingCard } from "@/components/listings/ListingCard";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Plus, Home, Edit, MapPin, DollarSign, Users, Bed, Bath, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, Home, Edit, MapPin, DollarSign, Users, Bed, Bath, Loader2, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import {
@@ -34,6 +35,7 @@ const ManageListings = () => {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [listings, setListings] = useState<Listing[]>([]);
+  const [allListings, setAllListings] = useState<Listing[]>([]); // Store all listings for filtering
   const [loading, setLoading] = useState(true);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [listingToDelete, setListingToDelete] = useState<string | null>(null);
@@ -41,6 +43,8 @@ const ManageListings = () => {
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
   const [loadingListing, setLoadingListing] = useState(false);
   const [hasAutoOpened, setHasAutoOpened] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<'all' | 'published' | 'drafts' | 'pending'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -59,7 +63,7 @@ const ManageListings = () => {
           setLoadingListing(true);
           setDetailDialogOpen(true);
           try {
-            const listingData = await getListing(listingId);
+            const listingData = await getListing(listingId, user.uid);
             if (listingData) {
               setSelectedListing(listingData);
             } else {
@@ -92,11 +96,14 @@ const ManageListings = () => {
     try {
       setLoading(true);
       console.log("Loading listings for hostId:", user.uid);
-      const data = await getListings({ hostId: user.uid });
+      const data = await getListings({ hostId: user.uid }, user.uid);
       console.log("Loaded listings:", data);
-      // Filter out drafts - drafts should not appear in the listings management
-      const publishedListings = data.filter(listing => listing.status !== 'draft');
-      setListings(publishedListings);
+      
+      // Store all listings
+      setAllListings(data);
+      
+      // Apply filters
+      applyFilters(data, filterStatus, searchQuery);
     } catch (error: any) {
       console.error("Failed to load listings:", error);
       toast.error(`Failed to load listings: ${error.message || 'Unknown error'}`);
@@ -104,6 +111,47 @@ const ManageListings = () => {
       setLoading(false);
     }
   };
+
+  // Apply filters to listings
+  const applyFilters = (listingsToFilter: Listing[], statusFilter: typeof filterStatus, query: string) => {
+    let filtered = [...listingsToFilter];
+
+    // Filter by status
+    if (statusFilter === 'published') {
+      filtered = filtered.filter(listing => listing.status === 'approved');
+    } else if (statusFilter === 'drafts') {
+      // Only show manual drafts (isManualDraft === true)
+      filtered = filtered.filter(listing => 
+        listing.status === 'draft' && (listing as any).isManualDraft === true
+      );
+    } else if (statusFilter === 'pending') {
+      filtered = filtered.filter(listing => listing.status === 'pending');
+    } else if (statusFilter === 'all') {
+      // 'all' shows everything except auto-saved drafts
+      filtered = filtered.filter(listing => 
+        !(listing.status === 'draft' && (listing as any).isManualDraft !== true)
+      );
+    }
+
+    // Filter by search query
+    if (query.trim()) {
+      const lowerQuery = query.toLowerCase();
+      filtered = filtered.filter(listing =>
+        listing.title.toLowerCase().includes(lowerQuery) ||
+        listing.location.toLowerCase().includes(lowerQuery) ||
+        listing.description.toLowerCase().includes(lowerQuery)
+      );
+    }
+
+    setListings(filtered);
+  };
+
+  // Update filters when filterStatus or searchQuery changes
+  useEffect(() => {
+    if (allListings.length > 0) {
+      applyFilters(allListings, filterStatus, searchQuery);
+    }
+  }, [filterStatus, searchQuery]);
 
   const handleDelete = (id: string) => {
     setListingToDelete(id);
@@ -132,7 +180,7 @@ const ManageListings = () => {
     setLoadingListing(true);
     setDetailDialogOpen(true);
     try {
-      const listing = await getListing(listingId);
+      const listing = await getListing(listingId, user.uid);
       if (listing) {
         setSelectedListing(listing);
       } else {
@@ -150,7 +198,10 @@ const ManageListings = () => {
 
   const handleEditListing = (listingId: string) => {
     setDetailDialogOpen(false);
-    navigate(`/host/create-listing?edit=${listingId}`);
+    // Get the listing to determine its category
+    const listing = allListings.find(l => l.id === listingId);
+    const category = listing?.category || 'home';
+    navigate(`/host/create-listing/form?edit=${listingId}&category=${category}`);
   };
 
   return (
@@ -181,6 +232,79 @@ const ManageListings = () => {
       </header>
       
       <div className="max-w-7xl mx-auto p-4 sm:p-6">
+        {/* Statistics and Filters */}
+        {!loading && allListings.length > 0 && (
+          <div className="mb-6 space-y-4">
+            {/* Statistics */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+              <div className="bg-card border rounded-lg p-4">
+                <div className="text-2xl font-bold">{allListings.length}</div>
+                <div className="text-sm text-muted-foreground">Total</div>
+              </div>
+              <div className="bg-card border rounded-lg p-4">
+                <div className="text-2xl font-bold">
+                  {allListings.filter(l => l.status === 'approved').length}
+                </div>
+                <div className="text-sm text-muted-foreground">Published</div>
+              </div>
+              <div className="bg-card border rounded-lg p-4">
+                <div className="text-2xl font-bold">
+                  {allListings.filter(l => l.status === 'draft' && (l as any).isManualDraft === true).length}
+                </div>
+                <div className="text-sm text-muted-foreground">Drafts</div>
+              </div>
+              <div className="bg-card border rounded-lg p-4">
+                <div className="text-2xl font-bold">
+                  {allListings.filter(l => l.status === 'pending').length}
+                </div>
+                <div className="text-sm text-muted-foreground">Pending</div>
+              </div>
+            </div>
+
+            {/* Search and Filter Bar */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search listings by title, city, or description..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant={filterStatus === 'all' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setFilterStatus('all')}
+                >
+                  All {allListings.filter(l => !(l.status === 'draft' && (l as any).isManualDraft !== true)).length}
+                </Button>
+                <Button
+                  variant={filterStatus === 'published' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setFilterStatus('published')}
+                >
+                  Published {allListings.filter(l => l.status === 'approved').length}
+                </Button>
+                <Button
+                  variant={filterStatus === 'drafts' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setFilterStatus('drafts')}
+                >
+                  Drafts {allListings.filter(l => l.status === 'draft' && (l as any).isManualDraft === true).length}
+                </Button>
+                <Button
+                  variant={filterStatus === 'pending' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setFilterStatus('pending')}
+                >
+                  Pending {allListings.filter(l => l.status === 'pending').length}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
@@ -313,51 +437,148 @@ const ManageListings = () => {
                   <p className="text-muted-foreground whitespace-pre-wrap">{selectedListing.description}</p>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Price</p>
-                      <p className="font-semibold">{formatPHP(selectedListing.price)}/night</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Users className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Max Guests</p>
-                      <p className="font-semibold">{selectedListing.maxGuests}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Bed className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Bedrooms</p>
-                      <p className="font-semibold">{selectedListing.bedrooms || 'N/A'}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Bath className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Bathrooms</p>
-                      <p className="font-semibold">{selectedListing.bathrooms !== undefined ? selectedListing.bathrooms : 'N/A'}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 mb-4">
                   <Home className="h-5 w-5 text-muted-foreground" />
                   <div>
                     <p className="text-sm text-muted-foreground">Category</p>
-                    <Badge variant="secondary">{selectedListing.category}</Badge>
+                    <Badge variant="secondary" className="capitalize">{selectedListing.category}</Badge>
                   </div>
                 </div>
 
-                {selectedListing.amenities && selectedListing.amenities.length > 0 && (
+                {/* Category-specific fields */}
+                {selectedListing.category === 'home' && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Price</p>
+                        <p className="font-semibold">{formatPHP(selectedListing.price)}/night</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Users className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Max Guests</p>
+                        <p className="font-semibold">{selectedListing.maxGuests || 'N/A'}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Bed className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Bedrooms</p>
+                        <p className="font-semibold">{selectedListing.bedrooms || 'N/A'}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Bath className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Bathrooms</p>
+                        <p className="font-semibold">{selectedListing.bathrooms !== undefined ? selectedListing.bathrooms : 'N/A'}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {selectedListing.category === 'experience' && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Price</p>
+                        <p className="font-semibold">{formatPHP(selectedListing.pricePerPerson || selectedListing.price)}/person</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Users className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Capacity</p>
+                        <p className="font-semibold">{selectedListing.capacity || 'N/A'}</p>
+                      </div>
+                    </div>
+                    {(selectedListing as any).duration && (
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Duration</p>
+                          <p className="font-semibold">{(selectedListing as any).duration}</p>
+                        </div>
+                      </div>
+                    )}
+                    {(selectedListing as any).schedule && (
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Schedule</p>
+                          <p className="font-semibold text-sm">{(selectedListing as any).schedule}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {selectedListing.category === 'service' && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Service Price</p>
+                        <p className="font-semibold">{formatPHP((selectedListing as any).servicePrice || selectedListing.price)}</p>
+                      </div>
+                    </div>
+                    {(selectedListing as any).duration && (
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Duration</p>
+                          <p className="font-semibold">{(selectedListing as any).duration}</p>
+                        </div>
+                      </div>
+                    )}
+                    {(selectedListing as any).serviceType && (
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Service Type</p>
+                          <p className="font-semibold">{(selectedListing as any).serviceType}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* House-specific: House Type and Amenities */}
+                {selectedListing.category === 'home' && (
+                  <>
+                    {selectedListing.houseType && (
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-muted-foreground">House Type:</p>
+                        <Badge variant="outline">{selectedListing.houseType}</Badge>
+                      </div>
+                    )}
+                    {selectedListing.amenities && selectedListing.amenities.length > 0 && (
+                      <div>
+                        <h3 className="font-semibold mb-2">Amenities</h3>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedListing.amenities.map((amenity, index) => (
+                            <Badge key={index} variant="outline">{amenity}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Service-specific: Requirements */}
+                {selectedListing.category === 'service' && (selectedListing as any).requirements && (
                   <div>
-                    <h3 className="font-semibold mb-2">Amenities</h3>
+                    <h3 className="font-semibold mb-2">Requirements</h3>
+                    <p className="text-muted-foreground whitespace-pre-wrap">{(selectedListing as any).requirements}</p>
+                  </div>
+                )}
+
+                {/* Experience-specific: What's Included */}
+                {selectedListing.category === 'experience' && (selectedListing as any).whatsIncluded && Array.isArray((selectedListing as any).whatsIncluded) && (selectedListing as any).whatsIncluded.length > 0 && (
+                  <div>
+                    <h3 className="font-semibold mb-2">What's Included</h3>
                     <div className="flex flex-wrap gap-2">
-                      {selectedListing.amenities.map((amenity, index) => (
-                        <Badge key={index} variant="outline">{amenity}</Badge>
+                      {(selectedListing as any).whatsIncluded.map((item: string, index: number) => (
+                        <Badge key={index} variant="outline">{item}</Badge>
                       ))}
                     </div>
                   </div>

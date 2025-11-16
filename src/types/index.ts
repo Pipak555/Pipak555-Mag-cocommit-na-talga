@@ -4,16 +4,18 @@ export interface Listing {
   title: string;
   description: string;
   category: 'home' | 'experience' | 'service';
-  price: number;
+  price: number; // Base price (per night for home, per person for experience, total for service)
   discount?: number; // percentage discount
   promo?: string; // promo code or description
+  promoCode?: string;
+  promoDescription?: string;
+  promoDiscount?: number;
+  promoMaxUses?: number;
   location: string;
+  coordinates?: { lat: number; lng: number };
   images: string[];
-  amenities: string[];
-  maxGuests: number;
-  bedrooms?: number;
-  bathrooms?: number;
   status: 'draft' | 'pending' | 'approved' | 'rejected';
+  isManualDraft?: boolean; // true for manually saved drafts, false/undefined for auto-saved drafts
   availableDates?: string[]; // array of ISO date strings
   blockedDates?: string[]; // dates when property is not available
   createdAt: string;
@@ -21,6 +23,26 @@ export interface Listing {
   // Rating data (calculated from reviews)
   averageRating?: number;
   reviewCount?: number;
+  
+  // House-specific fields (category === 'home')
+  bedrooms?: number;
+  bathrooms?: number;
+  maxGuests?: number; // For house, this is maxGuests. For experience, use capacity instead.
+  houseType?: string; // e.g., "Apartment", "House", "Villa", "Condo"
+  amenities?: string[];
+  
+  // Service-specific fields (category === 'service')
+  servicePrice?: number; // Price for the service (alternative to price)
+  duration?: string; // e.g., "2 hours", "1 day"
+  serviceType?: string; // Category/type of service
+  requirements?: string; // Requirements for the service
+  locationRequired?: boolean; // Whether location is needed
+  
+  // Experience-specific fields (category === 'experience')
+  pricePerPerson?: number; // Price per person (alternative to price)
+  capacity?: number; // Maximum number of participants (alternative to maxGuests)
+  schedule?: string; // Schedule information
+  whatsIncluded?: string[]; // What's included in the experience
 }
 
 export interface Booking {
@@ -35,8 +57,11 @@ export interface Booking {
   originalPrice?: number; // Price before any discounts
   listingDiscount?: number; // Listing discount percentage
   listingDiscountAmount?: number; // Listing discount amount in PHP
+  promoCode?: string; // Applied promo code
+  promoCodeDiscount?: number; // Promo code discount percentage
+  promoCodeDiscountAmount?: number; // Promo code discount amount in PHP
   couponCode?: string; // Applied coupon code
-  discountAmount?: number; // Total discount amount applied (listing + coupon)
+  discountAmount?: number; // Total discount amount applied (listing + promo code + coupon)
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
   cancellationRequestId?: string; // ID of pending cancellation request
   createdAt: string;
@@ -84,13 +109,15 @@ export interface Transaction {
   description: string;
   status?: 'pending' | 'completed' | 'failed' | 'refunded' | 'pending_transfer';
   paymentMethod?: string;
-  paymentId?: string;
+  paymentId?: string; // PayPal order ID
+  captureId?: string; // PayPal capture ID (for deposits/payments)
   bookingId?: string; // Link to booking
   guestId?: string; // For platform transactions
   hostId?: string; // For platform transactions
   serviceFee?: number; // Service fee amount
   netAmount?: number; // Net amount after fees
   grossAmount?: number; // Gross amount before fees
+  paypalFee?: number; // PayPal fee deducted from gross amount
   cancelledBy?: 'guest' | 'host' | 'admin'; // Who cancelled
   originalTransactionId?: string; // For refunds
   refundedAt?: string; // When refund was processed

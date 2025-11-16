@@ -70,9 +70,15 @@ const TodaySchedule = () => {
             const checkOut = new Date(booking.checkOut);
             checkOut.setHours(0, 0, 0, 0);
             
-            // Include bookings that have check-in or check-out today
-            return (checkIn.getTime() === today.getTime() || 
-                    checkOut.getTime() === today.getTime()) &&
+            // Include bookings that:
+            // 1. Have check-in today, OR
+            // 2. Have check-out today, OR
+            // 3. Are currently in progress (check-in < today < check-out)
+            const isCheckInToday = checkIn.getTime() === today.getTime();
+            const isCheckOutToday = checkOut.getTime() === today.getTime();
+            const isCurrentlyInProgress = checkIn.getTime() < today.getTime() && checkOut.getTime() > today.getTime();
+            
+            return (isCheckInToday || isCheckOutToday || isCurrentlyInProgress) &&
                    (booking.status === 'confirmed' || booking.status === 'pending');
           })
           .sort((a, b) => new Date(a.checkIn).getTime() - new Date(b.checkIn).getTime());
@@ -94,7 +100,7 @@ const TodaySchedule = () => {
     try {
       // Load listing and guest information in parallel
       const [listing, guest] = await Promise.all([
-        booking.listingId ? getListing(booking.listingId).catch(() => null) : Promise.resolve(null),
+        booking.listingId ? getListing(booking.listingId, user?.uid).catch(() => null) : Promise.resolve(null),
         booking.guestId ? getUserProfile(booking.guestId).catch(() => null) : Promise.resolve(null),
       ]);
 
@@ -123,7 +129,7 @@ const TodaySchedule = () => {
         <CardTitle>Today's Schedule</CardTitle>
         <CardDescription>
           {todayBookings.length > 0 
-            ? `${todayBookings.length} booking${todayBookings.length > 1 ? 's' : ''} today`
+            ? `${todayBookings.length} booking${todayBookings.length > 1 ? 's' : ''} today or in progress`
             : 'No bookings scheduled for today'}
         </CardDescription>
       </CardHeader>
@@ -131,15 +137,21 @@ const TodaySchedule = () => {
         {todayBookings.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
-            <p>You're all set! No check-ins or check-outs today.</p>
+            <p>You're all set! No bookings happening today.</p>
           </div>
         ) : (
           <div className="space-y-3">
             {todayBookings.map((booking) => {
               const checkIn = new Date(booking.checkIn);
               const checkOut = new Date(booking.checkOut);
-              const isCheckIn = checkIn.toDateString() === new Date().toDateString();
-              const isCheckOut = checkOut.toDateString() === new Date().toDateString();
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              checkIn.setHours(0, 0, 0, 0);
+              checkOut.setHours(0, 0, 0, 0);
+              
+              const isCheckIn = checkIn.getTime() === today.getTime();
+              const isCheckOut = checkOut.getTime() === today.getTime();
+              const isInProgress = checkIn.getTime() < today.getTime() && checkOut.getTime() > today.getTime();
 
               return (
                 <div
@@ -154,7 +166,11 @@ const TodaySchedule = () => {
                           ? 'Check-in & Check-out'
                           : isCheckIn
                           ? 'Check-in'
-                          : 'Check-out'}
+                          : isCheckOut
+                          ? 'Check-out'
+                          : isInProgress
+                          ? 'Currently in progress'
+                          : 'Booking'}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {checkIn.toLocaleDateString()} - {checkOut.toLocaleDateString()}
@@ -405,7 +421,7 @@ const UpcomingBookings = () => {
     try {
       // Load listing and guest information in parallel
       const [listing, guest] = await Promise.all([
-        booking.listingId ? getListing(booking.listingId).catch(() => null) : Promise.resolve(null),
+        booking.listingId ? getListing(booking.listingId, user?.uid).catch(() => null) : Promise.resolve(null),
         booking.guestId ? getUserProfile(booking.guestId).catch(() => null) : Promise.resolve(null),
       ]);
 

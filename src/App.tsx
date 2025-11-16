@@ -25,6 +25,7 @@ const PayPalCallback = lazy(() => import("./pages/auth/PayPalCallback"));
 const HostDashboard = lazy(() => import("./pages/host/HostDashboard"));
 const GuestDashboard = lazy(() => import("./pages/guest/GuestDashboard"));
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const SelectListingCategory = lazy(() => import("./pages/host/SelectListingCategory"));
 const CreateListing = lazy(() => import("./pages/host/CreateListing"));
 const ManageListings = lazy(() => import("./pages/host/ManageListings"));
 const BrowseListings = lazy(() => import("./pages/guest/BrowseListings"));
@@ -92,7 +93,8 @@ const AppRoutes = () => {
             <Route path="/reset-password" element={<LazyRoute component={ResetPassword} />} />
             <Route path="/paypal-callback" element={<LazyRoute component={PayPalCallback} />} />
             <Route path="/host/dashboard" element={<LazyRoute component={HostDashboard} />} />
-            <Route path="/host/create-listing" element={<LazyRoute component={CreateListing} />} />
+            <Route path="/host/create-listing" element={<LazyRoute component={SelectListingCategory} />} />
+            <Route path="/host/create-listing/form" element={<LazyRoute component={CreateListing} />} />
             <Route path="/host/listings" element={<LazyRoute component={ManageListings} />} />
             <Route path="/host/bookings" element={<LazyRoute component={HostBookings} />} />
             <Route path="/host/calendar" element={<LazyRoute component={HostCalendar} />} />

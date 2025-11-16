@@ -1,6 +1,7 @@
 import { getDocs, collection, query, where, doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Listing, Booking } from '@/types';
+import { sanitizeListingForGuest } from './firestore';
 
 /**
  * Get personalized recommendations for a guest based on their booking history
@@ -14,7 +15,7 @@ export const getRecommendations = async (userId: string, limit: number = 6): Pro
 
     if (bookingsSnapshot.empty) {
       // If no booking history, return popular/featured listings
-      return getPopularListings(limit);
+      return getPopularListings(limit, userId);
     }
 
     const bookings = bookingsSnapshot.docs.map(doc => doc.data() as Booking);
@@ -32,7 +33,9 @@ export const getRecommendations = async (userId: string, limit: number = 6): Pro
     for (const listingId of bookedListingIds) {
       const listingDoc = await getDoc(doc(db, 'listing', listingId));
       if (listingDoc.exists()) {
-        bookedListings.push({ id: listingDoc.id, ...listingDoc.data() } as Listing);
+        const listing = { id: listingDoc.id, ...listingDoc.data() } as Listing;
+        // Sanitize listing for guests (remove promo codes if user is not the host)
+        bookedListings.push(sanitizeListingForGuest(listing, userId));
       }
     }
 
@@ -51,7 +54,11 @@ export const getRecommendations = async (userId: string, limit: number = 6): Pro
     );
 
     const allListings = allListingsSnapshot.docs
-      .map(doc => ({ id: doc.id, ...doc.data() } as Listing))
+      .map(doc => {
+        const listing = { id: doc.id, ...doc.data() } as Listing;
+        // Sanitize listing for guests (remove promo codes if user is not the host)
+        return sanitizeListingForGuest(listing, userId);
+      })
       .filter(l => !bookedListingIds.includes(l.id)); // Exclude already booked
 
     // Score and rank listings
@@ -93,21 +100,25 @@ export const getRecommendations = async (userId: string, limit: number = 6): Pro
   } catch (error) {
     console.error('Error getting recommendations:', error);
     // Fallback to popular listings
-    return getPopularListings(limit);
+    return getPopularListings(limit, userId);
   }
 };
 
 /**
  * Get popular/featured listings (fallback when no booking history)
  */
-const getPopularListings = async (limit: number): Promise<Listing[]> => {
+const getPopularListings = async (limit: number, userId?: string): Promise<Listing[]> => {
   try {
     const listingsSnapshot = await getDocs(
       query(collection(db, 'listing'), where('status', '==', 'approved'))
     );
 
     const listings = listingsSnapshot.docs
-      .map(doc => ({ id: doc.id, ...doc.data() } as Listing))
+      .map(doc => {
+        const listing = { id: doc.id, ...doc.data() } as Listing;
+        // Sanitize listing for guests (remove promo codes if user is not the host)
+        return sanitizeListingForGuest(listing, userId);
+      })
       .sort((a, b) => {
         // Sort by creation date (newest first) as a simple popularity metric
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -126,20 +137,27 @@ const getPopularListings = async (limit: number): Promise<Listing[]> => {
  */
 export const getSimilarListings = async (
   listingId: string,
-  limit: number = 4
+  limit: number = 4,
+  userId?: string
 ): Promise<Listing[]> => {
   try {
     const listingDoc = await getDoc(doc(db, 'listing', listingId));
     if (!listingDoc.exists()) return [];
 
-    const currentListing = { id: listingDoc.id, ...listingDoc.data() } as Listing;
+    const listingData = { id: listingDoc.id, ...listingDoc.data() } as Listing;
+    // Sanitize current listing for guests (remove promo codes if user is not the host)
+    const currentListing = sanitizeListingForGuest(listingData, userId);
 
     const listingsSnapshot = await getDocs(
       query(collection(db, 'listing'), where('status', '==', 'approved'))
     );
 
     const similarListings = listingsSnapshot.docs
-      .map(doc => ({ id: doc.id, ...doc.data() } as Listing))
+      .map(doc => {
+        const listing = { id: doc.id, ...doc.data() } as Listing;
+        // Sanitize listing for guests (remove promo codes if user is not the host)
+        return sanitizeListingForGuest(listing, userId);
+      })
       .filter(l => l.id !== listingId)
       .map(listing => {
         let score = 0;

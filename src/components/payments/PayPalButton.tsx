@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { createTransaction } from "@/lib/firestore";
 import { DollarSign } from "lucide-react";
 import { formatPHP, CURRENCY_CODE } from "@/lib/currency";
+import { processWalletTopUp, getAdminPayPalEmail } from "@/lib/walletService";
 
 interface PayPalButtonProps {
   amount: number;
@@ -29,14 +30,12 @@ interface PayPalButtonProps {
   onSuccess: () => void;
   bookingId?: string;
   redirectUrl?: string;
-  useRedirectFlow?: boolean; // If true, uses full-page redirect instead of popup
 }
 
-const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId, redirectUrl, useRedirectFlow = false }: PayPalButtonProps) => {
+
+const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId, redirectUrl }: PayPalButtonProps) => {
   const [{ isPending, isResolved, isRejected }] = usePayPalScriptReducer();
   const [sdkError, setSdkError] = useState(false);
-  const [processing, setProcessing] = useState(false);
-  const [redirectFlowFailed, setRedirectFlowFailed] = useState(false);
 
   useEffect(() => {
     // Check if PayPal SDK is available after a delay
@@ -138,169 +137,68 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
     };
   }, [isResolved]);
 
-  // Handle redirect flow (full-page redirect to PayPal)
-  // This uses a hidden PayPal button to create the order, then extracts the approval URL
-  const handleRedirectFlow = async () => {
-    if (!isResolved || !(window as any).paypal) {
-      toast.error("PayPal SDK not ready. Please try again.");
-      return;
-    }
-
-    setProcessing(true);
-    try {
-      const paypal = (window as any).paypal;
-      
-      // Check if Buttons API is available
-      if (!paypal.Buttons) {
-        throw new Error('PayPal Buttons API not available');
-      }
-      
-      // Create order using PayPal SDK's order API
-      // We need to use the SDK's order creation which requires the actions object
-      // Since we can't access actions directly, we'll create a temporary button
-      const tempContainer = document.createElement('div');
-      tempContainer.id = 'paypal-temp-button-container';
-      tempContainer.style.cssText = 'position: absolute; left: -9999px; opacity: 0; pointer-events: none;';
-      document.body.appendChild(tempContainer);
-
-      return new Promise<void>((resolve, reject) => {
-        let buttonRendered = false;
-        let timeoutId: NodeJS.Timeout;
-        
-        // Set a timeout to prevent hanging
-        timeoutId = setTimeout(() => {
-          if (!buttonRendered) {
-            if (document.body.contains(tempContainer)) {
-              document.body.removeChild(tempContainer);
-            }
-            setProcessing(false);
-            reject(new Error('PayPal button creation timed out. Please try again.'));
-          }
-        }, 10000); // 10 second timeout
-
-        try {
-        paypal.Buttons({
-          createOrder: (data: any, actions: any) => {
-            return actions.order.create({
-              purchase_units: [{
-                amount: {
-                  value: amount.toFixed(2),
-                  currency_code: CURRENCY_CODE
-                },
-                description: description
-              }],
-              application_context: {
-                return_url: redirectUrl || `${window.location.origin}/payment/success`,
-                cancel_url: `${window.location.origin}/payment/cancel`,
-                brand_name: "Mojo Dojo Casa House",
-                locale: "en-PH",
-                shipping_preference: "NO_SHIPPING"
-              }
-            });
-          },
-          onApprove: async (data: any, actions: any) => {
-            // This won't be called in redirect flow, but we need it for the button to work
-            // The actual processing happens after redirect
-          },
-          onError: (err: any) => {
-              clearTimeout(timeoutId);
-              if (document.body.contains(tempContainer)) {
-            document.body.removeChild(tempContainer);
-              }
-              setProcessing(false);
-            reject(err);
-          }
-        }).render(tempContainer).then((buttonInstance: any) => {
-            buttonRendered = true;
-            clearTimeout(timeoutId);
-            
-            // Wait a bit for the button to be fully rendered in the DOM
-            setTimeout(() => {
-              // Try multiple selectors to find the button
-              const button = tempContainer.querySelector('button') || 
-                           tempContainer.querySelector('[role="button"]') ||
-                           tempContainer.querySelector('a[href*="paypal"]');
-              
-              if (button) {
-                // Trigger the button click programmatically
-                (button as HTMLElement).click();
-                
-                // Wait a bit for the order to be created and popup/redirect to start
-                setTimeout(() => {
-                  // Clean up the temporary container
-                  if (document.body.contains(tempContainer)) {
-                    document.body.removeChild(tempContainer);
-                  }
-                  setProcessing(false);
-                  resolve();
-                }, 1000);
-              } else {
-                // Button not found, try to find any clickable element
-                const clickableElements = tempContainer.querySelectorAll('button, a, [role="button"], [onclick]');
-                if (clickableElements.length > 0) {
-                  (clickableElements[0] as HTMLElement).click();
-                  setTimeout(() => {
-                    if (document.body.contains(tempContainer)) {
-                      document.body.removeChild(tempContainer);
-                    }
-                    setProcessing(false);
-                    resolve();
-                  }, 1000);
-                } else {
-                  // Fallback: use regular PayPal button flow instead
-                  if (document.body.contains(tempContainer)) {
-                    document.body.removeChild(tempContainer);
-                  }
-                  setProcessing(false);
-                  toast.error("Could not initiate redirect flow. Please use the PayPal button below.");
-                  reject(new Error('PayPal button element not found. Please use the standard PayPal button.'));
-                }
-              }
-            }, 500); // Wait 500ms for button to render
-          }).catch((err: any) => {
-            clearTimeout(timeoutId);
-            buttonRendered = true;
-            if (document.body.contains(tempContainer)) {
-              document.body.removeChild(tempContainer);
-            }
-              setProcessing(false);
-            console.error('PayPal button render error:', err);
-            toast.error("Failed to create PayPal button. Please try again or use the standard button.");
-            reject(err);
-          });
-        } catch (renderError: any) {
-          clearTimeout(timeoutId);
-          if (document.body.contains(tempContainer)) {
-            document.body.removeChild(tempContainer);
-          }
-          setProcessing(false);
-          console.error('PayPal button creation error:', renderError);
-          toast.error("Failed to initialize PayPal. Please try again.");
-          reject(renderError);
-        }
-      });
-    } catch (error: any) {
-      console.error('Redirect flow error:', error);
-      toast.error(error?.message || "Failed to initiate payment. Please try again.");
-      setProcessing(false);
-      throw error;
-    }
-  };
-
   const createOrder = async (data: any, actions: any) => {
     try {
-      // In sandbox mode, we can't easily check balance client-side
-      // PayPal will handle insufficient funds on their end
-      // The order creation will succeed, but capture will fail if insufficient funds
-      const order = await actions.order.create({
+      // Determine if this is a deposit (wallet top-up)
+      const isDeposit = description.toLowerCase().includes('wallet deposit') || description.toLowerCase().includes('top-up');
+      
+      // For deposits, get admin PayPal email to set as payee
+      // Real money goes to Admin's PayPal account, virtual balance is credited separately
+      let payeeEmail: string | null = null;
+      if (isDeposit) {
+        try {
+          console.log('🔍 Retrieving admin PayPal email for deposit...');
+          payeeEmail = await getAdminPayPalEmail();
+          
+          if (!payeeEmail) {
+            console.error('❌ CRITICAL: Admin PayPal email not found!');
+            console.error('❌ Payment will NOT go to admin account. Please configure admin PayPal email in admin settings.');
+            toast.error('Admin PayPal account not configured. Please contact support.');
+            throw new Error('Admin PayPal email is required for deposits. Please configure it in admin settings.');
+          }
+          
+          // Validate email format
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(payeeEmail)) {
+            console.error('❌ CRITICAL: Invalid admin PayPal email format:', payeeEmail);
+            toast.error('Invalid admin PayPal email configuration. Please contact support.');
+            throw new Error('Invalid admin PayPal email format');
+          }
+          
+          console.log('✅ Admin PayPal email retrieved:', payeeEmail);
+        } catch (error: any) {
+          console.error('❌ Error getting admin PayPal email:', error);
+          // For deposits, we MUST have admin PayPal email - don't continue
+          if (isDeposit) {
+            toast.error('Cannot process deposit: Admin PayPal account not configured. Please contact support.');
+            throw new Error('Admin PayPal email is required for deposits. Error: ' + (error.message || 'Unknown error'));
+          }
+          // For non-deposits, continue without payee
+        }
+      }
+
+      // Charge exactly the amount the guest wants to deposit
+      // No fees - guest pays exact amount, admin receives exact same amount
+      const amountToCharge = Number(amount);
+      
+      // Validate amount is correct
+      if (isNaN(amountToCharge) || amountToCharge <= 0) {
+        throw new Error('Invalid payment amount');
+      }
+      
+      console.log('💰 Creating PayPal order:', {
+        amount: amountToCharge.toFixed(2),
+        isDeposit,
+        note: 'Guest pays exact amount, admin receives exact same amount (no fees)'
+      });
+      
+      const orderData: any = {
       purchase_units: [{
         amount: {
-          value: amount.toFixed(2),
+          value: amountToCharge.toFixed(2), // Exact amount - no fees
           currency_code: CURRENCY_CODE
         },
         description: description
-        // NOTE: We intentionally do NOT include any payer information here
-        // This ensures PayPal shows the login page first, not saved payment methods
       }],
       application_context: {
         return_url: redirectUrl || window.location.origin + '/payment/success',
@@ -318,9 +216,83 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
         // Force user to explicitly confirm payment (don't auto-select saved accounts)
         user_action: "PAY_NOW" // Requires explicit payment confirmation
       }
-      // NOTE: We intentionally do NOT include any payer object here
-      // This prevents PayPal from pre-filling account information
-    });
+      };
+
+      // For deposits, set admin PayPal email as payee so money goes to Admin's account
+      // CRITICAL: This is REQUIRED for deposits - money must go to admin account
+      if (isDeposit) {
+        if (!payeeEmail) {
+          console.error('❌ CRITICAL: Cannot create deposit order without admin PayPal email!');
+          toast.error('Cannot process deposit: Admin PayPal account not configured.');
+          throw new Error('Admin PayPal email is required for deposits');
+        }
+        
+        orderData.purchase_units[0].payee = {
+          email_address: payeeEmail
+        };
+        
+        // Log the order data being sent to PayPal
+        console.log('✅ PayPal order created with payee:', {
+          payeeEmail,
+          amount: amountToCharge.toFixed(2),
+          currency: CURRENCY_CODE,
+          description,
+          fullOrderData: JSON.stringify(orderData, null, 2),
+          note: 'Guest pays exact amount, admin receives exact same amount (no fees)'
+        });
+        
+        // Validate the order amount matches what we expect
+        const orderAmountValue = parseFloat(orderData.purchase_units[0].amount.value);
+        if (Math.abs(orderAmountValue - amountToCharge) > 0.01) {
+          console.error('❌ CRITICAL ERROR: Order amount does not match expected amount!', {
+            expectedAmount: amountToCharge,
+            actualOrderAmount: orderAmountValue,
+            difference: Math.abs(orderAmountValue - amountToCharge),
+            orderData: orderData.purchase_units[0]
+          });
+          throw new Error(`Order amount mismatch: Expected ${amountToCharge}, but order has ${orderAmountValue}`);
+        }
+        
+        console.log('✅ Amount validation passed:', {
+          amount: amountToCharge.toFixed(2),
+          orderAmount: orderAmountValue.toFixed(2),
+          match: Math.abs(orderAmountValue - amountToCharge) <= 0.01,
+          note: 'Guest pays exact amount, admin receives exact same amount (no fees)'
+        });
+      }
+
+      console.log('📤 Creating PayPal order:', {
+        isDeposit,
+        amount: amountToCharge.toFixed(2),
+        payeeEmail: payeeEmail || 'N/A (not a deposit)',
+        orderData: JSON.stringify(orderData, null, 2)
+      });
+
+      const order = await actions.order.create(orderData);
+      
+      // Verify the order response matches what we sent
+      const orderResponseAmount = parseFloat(order.purchase_units?.[0]?.amount?.value || '0');
+      console.log('✅ PayPal order created successfully:', {
+        orderId: order.id,
+        status: order.status,
+        payeeEmail: orderData.purchase_units[0].payee?.email_address || 'N/A',
+        amount: amountToCharge.toFixed(2),
+        orderResponseAmount: orderResponseAmount.toFixed(2),
+        amountMatch: Math.abs(orderResponseAmount - amountToCharge) <= 0.01,
+        fullOrderResponse: JSON.stringify(order, null, 2),
+        note: 'Guest pays exact amount, admin receives exact same amount (no fees)'
+      });
+      
+      // Warn if PayPal's response doesn't match what we sent
+      if (Math.abs(orderResponseAmount - amountToCharge) > 0.01) {
+        console.warn('⚠️ WARNING: PayPal order response amount does not match expected amount!', {
+          expectedAmount: amountToCharge,
+          orderResponseAmount: orderResponseAmount,
+          difference: Math.abs(orderResponseAmount - amountToCharge),
+          note: 'This may indicate a PayPal configuration issue'
+        });
+      }
+      
       return order;
     } catch (error: any) {
       console.error('Error creating PayPal order:', error);
@@ -405,7 +377,7 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
       }
       
       // Determine transaction type based on description
-      const isDeposit = description.toLowerCase().includes('wallet deposit');
+      const isDeposit = description.toLowerCase().includes('wallet deposit') || description.toLowerCase().includes('top-up');
       const isSubscription = description.toLowerCase().includes('host subscription') || description.toLowerCase().includes('subscription');
       const transactionType = isDeposit ? 'deposit' : 'payment';
       
@@ -438,7 +410,250 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
         }
       }
       
-      // Create transaction record
+      // Handle wallet top-up (deposit) - Client-side implementation
+      if (isDeposit) {
+        try {
+          // Extract actual amounts from PayPal order to ensure accuracy
+          // This is critical: we must use the actual PayPal amounts, not the form amount
+          const purchaseUnit = order.purchase_units?.[0];
+          const capture = purchaseUnit?.payments?.captures?.[0];
+          const breakdown = capture?.seller_receivable_breakdown;
+          
+          // DEBUG: Log full PayPal response to understand structure
+          console.log('🔍 DEBUG PayPal Order Structure:', {
+            orderId: order.id,
+            orderStatus: order.status,
+            purchaseUnit: {
+              amount: purchaseUnit?.amount,
+              payee: purchaseUnit?.payee,
+              payments: purchaseUnit?.payments ? {
+                captures: purchaseUnit.payments.captures?.map((c: any) => ({
+                  id: c.id,
+                  status: c.status,
+                  amount: c.amount,
+                  seller_receivable_breakdown: c.seller_receivable_breakdown,
+                  final_capture: c.final_capture
+                }))
+              } : null
+            },
+            fullOrder: JSON.stringify(order, null, 2)
+          });
+          
+          // No fees - guest pays exact amount, admin receives exact same amount
+          const depositAmount = Number(amount); // What guest wants to deposit
+          
+          // Get actual amount from PayPal response
+          const guestPaidAmount = parseFloat(capture?.amount?.value || purchaseUnit?.amount?.value || '0');
+          
+          // Wallet is credited with the exact deposit amount
+          const walletCreditAmount = depositAmount;
+          
+          // VALIDATION: Ensure amounts are correct
+          if (isNaN(depositAmount) || depositAmount <= 0) {
+            console.error('❌ CRITICAL: Invalid amount detected!', { 
+              amount, 
+              depositAmount, 
+              guestPaidAmount,
+              walletCreditAmount 
+            });
+            throw new Error('Invalid deposit amount - amount must be a positive number');
+          }
+          
+          console.log('✅ Processing deposit (no fees):', {
+            depositAmount: depositAmount.toFixed(2), // What guest wants to deposit
+            guestPaidAmount: guestPaidAmount.toFixed(2), // What guest actually paid
+            walletCreditAmount: walletCreditAmount.toFixed(2), // Wallet credited with exact amount
+            note: 'No fees - guest pays exact amount, admin receives exact same amount'
+          });
+          
+          // Log PayPal's breakdown for reference (should show no fees)
+          // CRITICAL: We extract PayPal's breakdown for logging only - we NEVER use PayPal's net_amount
+          // We always use the original depositAmount to ensure admin receives the full amount
+          let paypalNetFromBreakdown: number | null = null;
+          if (breakdown) {
+            const paypalGross = parseFloat(breakdown.gross_amount?.value || '0');
+            paypalNetFromBreakdown = parseFloat(breakdown.net_amount?.value || '0');
+            const paypalFee = parseFloat(breakdown.paypal_fee?.value || '0');
+            
+            console.log('📊 PayPal Breakdown (for reference only - NOT used for calculations):', {
+              paypalGrossAmount: paypalGross.toFixed(2),
+              paypalNetAmount: paypalNetFromBreakdown.toFixed(2),
+              paypalFee: paypalFee.toFixed(2),
+              depositAmount: depositAmount.toFixed(2),
+              note: 'CRITICAL: We use depositAmount for netAmount, NOT PayPal breakdown.net_amount'
+            });
+            
+            // Warn if PayPal shows fees (shouldn't happen in sandbox)
+            if (paypalFee > 0.01) {
+              console.warn(`⚠️ WARNING: PayPal shows fees (₱${paypalFee.toFixed(2)}) but system expects no fees!`, {
+                depositAmount: depositAmount,
+                paypalFee: paypalFee,
+                paypalNet: paypalNetFromBreakdown,
+                note: 'This may indicate PayPal sandbox is charging fees unexpectedly. System will use depositAmount instead.'
+              });
+            }
+            
+            // CRITICAL: Warn if PayPal's net_amount differs from deposit amount
+            // This ensures we catch any cases where PayPal might be deducting fees
+            if (Math.abs(paypalNetFromBreakdown - depositAmount) > 0.01) {
+              console.error(`❌ CRITICAL WARNING: PayPal breakdown.net_amount (₱${paypalNetFromBreakdown.toFixed(2)}) differs from deposit amount (₱${depositAmount.toFixed(2)})!`, {
+                depositAmount: depositAmount,
+                paypalNetAmount: paypalNetFromBreakdown,
+                difference: Math.abs(paypalNetFromBreakdown - depositAmount),
+                note: 'CRITICAL: System will use depositAmount (₱' + depositAmount.toFixed(2) + ') for netAmount to ensure admin receives full payment. PayPal breakdown.net_amount is IGNORED.'
+              });
+            }
+          }
+          
+          // CRITICAL VALIDATION: Ensure guestPaidAmount matches depositAmount
+          // If they don't match, something went wrong with the PayPal order
+          if (Math.abs(guestPaidAmount - depositAmount) > 0.01) {
+            console.error('❌ CRITICAL ERROR: Guest paid amount does not match deposit amount!', {
+              depositAmount: depositAmount,
+              guestPaidAmount: guestPaidAmount,
+              difference: Math.abs(guestPaidAmount - depositAmount),
+              note: 'This indicates the PayPal order amount was incorrect'
+            });
+            throw new Error(`Payment amount mismatch: Expected ₱${depositAmount.toFixed(2)}, but PayPal shows ₱${guestPaidAmount.toFixed(2)}. Please contact support.`);
+          }
+          
+          console.log('✅ Final amounts for processing:', {
+            depositAmount: depositAmount.toFixed(2),
+            guestPaidAmount: guestPaidAmount.toFixed(2),
+            walletCreditAmount: walletCreditAmount.toFixed(2),
+            paypalNetFromBreakdown: paypalNetFromBreakdown !== null ? paypalNetFromBreakdown.toFixed(2) : 'N/A',
+            note: 'CRITICAL: Using depositAmount for all calculations. PayPal breakdown.net_amount is IGNORED.',
+            adminWillReceive: depositAmount.toFixed(2) + ' (full amount, no deductions)'
+          });
+          
+          // Verify the order was actually completed and captured
+          if (!capture || capture.status !== 'COMPLETED') {
+            throw new Error('Payment capture not completed. Please try again.');
+          }
+          
+          // CRITICAL: Verify payee email matches admin PayPal email
+          // This ensures money is going to the correct admin account
+          const payeeEmail = purchaseUnit?.payee?.email_address;
+          
+          if (isDeposit) {
+            if (!payeeEmail) {
+              console.error('❌ CRITICAL: Deposit order has no payee email! Money may not reach admin account.');
+              console.error('❌ Order details:', {
+                orderId: order.id,
+                purchaseUnit: purchaseUnit,
+                warning: 'Payment may have gone to merchant account instead of admin account'
+              });
+              toast.error('Warning: Payment may not have reached admin account. Please verify.');
+            } else {
+              try {
+                const { getAdminPayPalEmail } = await import('@/lib/walletService');
+                const adminPayPalEmail = await getAdminPayPalEmail();
+                
+                if (adminPayPalEmail) {
+                  if (payeeEmail.toLowerCase() !== adminPayPalEmail.toLowerCase()) {
+                    console.error(`❌ CRITICAL: Payee email mismatch!`, {
+                      expected: adminPayPalEmail,
+                      actual: payeeEmail,
+                      orderId: order.id,
+                      warning: 'Money may have gone to wrong account!'
+                    });
+                    toast.error('Warning: Payment may have gone to incorrect account. Please verify.');
+                  } else {
+                    console.log('✅ Payee email verified:', {
+                      payeeEmail,
+                      adminPayPalEmail,
+                      match: true,
+                      note: 'Payment will reach correct admin account'
+                    });
+                  }
+                } else {
+                  console.warn('⚠️ Cannot verify payee: Admin PayPal email not found in system');
+                }
+              } catch (error) {
+                console.error('❌ Error verifying payee email:', error);
+                // Log but don't block - payment already processed
+              }
+            }
+          }
+          
+          // Log deposit details before processing
+          const actualPayeeEmail = purchaseUnit?.payee?.email_address;
+          console.log('💰 Processing wallet deposit:', {
+            orderId: order.id,
+            captureId: capture.id,
+            depositAmount: depositAmount.toFixed(2),
+            guestPaidAmount: guestPaidAmount.toFixed(2),
+            walletCreditAmount: walletCreditAmount.toFixed(2),
+            paypalNetFromBreakdown: paypalNetFromBreakdown !== null ? paypalNetFromBreakdown.toFixed(2) : 'N/A',
+            payeeEmailFromOrder: actualPayeeEmail,
+            userId,
+            isDeposit,
+            note: 'CRITICAL: Admin will receive ₱' + depositAmount.toFixed(2) + ' (full amount, no deductions). PayPal breakdown.net_amount is IGNORED.',
+            warning: isDeposit && !actualPayeeEmail ? '⚠️ CRITICAL: No payee email in order - payment may not reach admin!' : 'OK'
+          });
+
+          // Process wallet top-up
+          // CRITICAL: No fees - all amounts are the same:
+          // - Guest pays: depositAmount
+          // - Admin receives: depositAmount (exact same) - PayPal breakdown.net_amount is IGNORED
+          // - Wallet credited: depositAmount (exact same)
+          // We explicitly pass depositAmount as netAmount to ensure admin receives the full amount
+          // We NEVER use PayPal's breakdown.net_amount value - even if PayPal shows fees, we ignore them
+          // CRITICAL FIX: Always use depositAmount for netAmount, completely ignore PayPal's breakdown.net_amount
+          const result = await processWalletTopUp(
+            order.id,
+            walletCreditAmount, // Exact deposit amount (no fees)
+            description,
+            userId,
+            {
+              grossAmount: depositAmount, // What guest paid (always equals depositAmount - no fees)
+              paypalFee: 0, // No fees - explicitly set to 0 (ignore PayPal's fee if shown)
+              netAmount: depositAmount, // CRITICAL: Admin receives exact same amount (no fees deducted). This is ALWAYS depositAmount, NEVER PayPal breakdown.net_amount
+              captureId: capture.id,
+              payeeEmail: actualPayeeEmail || null
+            }
+          );
+          
+          // Log successful deposit processing
+          console.log('✅ Wallet deposit processed successfully:', {
+            orderId: order.id,
+            transactionId: result.transactionId,
+            depositAmount: depositAmount.toFixed(2),
+            guestPaidAmount: guestPaidAmount.toFixed(2),
+            walletCredited: walletCreditAmount.toFixed(2),
+            newBalance: result.newBalance,
+            payeeEmail: actualPayeeEmail,
+            note: actualPayeeEmail ? 
+              `Guest paid ₱${guestPaidAmount.toFixed(2)}, admin receives ₱${depositAmount.toFixed(2)} (no fees)` : 
+              '⚠️ WARNING: No payee email - verify admin received payment!'
+          });
+          
+          // Always log in development, and also log in production for debugging
+          console.log('✅ Wallet top-up processed:', {
+            depositAmount: depositAmount.toFixed(2),
+            guestPaidAmount: guestPaidAmount.toFixed(2),
+            walletCredited: walletCreditAmount.toFixed(2),
+            orderId: order.id,
+            captureId: capture.id,
+            transactionId: result.transactionId,
+            newBalance: result.newBalance,
+            payeeEmail: purchaseUnit?.payee?.email_address,
+            hasBreakdown: !!breakdown,
+            note: `Guest paid ₱${guestPaidAmount.toFixed(2)}, admin receives ₱${depositAmount.toFixed(2)}, wallet credited ₱${walletCreditAmount.toFixed(2)} (no fees)`
+          });
+          
+          toast.success(result.message || "Top-up successful! Your wallet balance has been updated.");
+          onSuccess();
+          return;
+        } catch (topUpError: any) {
+          console.error('❌ Error processing wallet top-up:', topUpError);
+          toast.error(topUpError.message || 'Payment successful but failed to credit wallet. Please contact support.');
+          // Payment was successful, but wallet credit failed - user should contact support
+          throw topUpError;
+        }
+      }
+      
+      // For booking payments, create transaction record and mark PayPal as verified
       const transactionData: any = {
         userId,
         type: transactionType,
@@ -456,44 +671,6 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
       
       await createTransaction(transactionData);
 
-      // If it's a deposit, update wallet balance
-      if (isDeposit) {
-        try {
-          const { doc, updateDoc, getDoc } = await import('firebase/firestore');
-          const { db } = await import('@/lib/firebase');
-          const userDoc = await getDoc(doc(db, 'users', userId));
-          if (userDoc.exists()) {
-            const currentBalance = userDoc.data().walletBalance || 0;
-            const newBalance = currentBalance + amount;
-            const updateData: any = {
-              walletBalance: newBalance
-            };
-            
-            // Mark PayPal account as verified on first successful payment
-            if (!userDoc.data().paypalEmailVerified) {
-              updateData.paypalEmailVerified = true;
-              updateData.paypalVerifiedAt = new Date().toISOString();
-            }
-            
-            await updateDoc(doc(db, 'users', userId), updateData);
-            
-            if (import.meta.env.DEV) {
-              console.log('✅ Deposit successful:', {
-                amount,
-                previousBalance: currentBalance,
-                newBalance,
-                orderId: order.id
-              });
-            }
-          } else {
-            throw new Error('User document not found');
-          }
-        } catch (depositError: any) {
-          console.error('❌ Error updating wallet balance:', depositError);
-          toast.error('Payment successful but failed to update wallet. Please contact support.');
-          // Still show success since payment went through
-        }
-      } else {
         // For booking payments, also mark as verified on first successful payment
         const { doc, updateDoc, getDoc } = await import('firebase/firestore');
         const { db } = await import('@/lib/firebase');
@@ -503,7 +680,6 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
             paypalEmailVerified: true,
             paypalVerifiedAt: new Date().toISOString()
           });
-        }
       }
 
       toast.success("Payment successful!");
@@ -589,78 +765,6 @@ const PayPalButtonContent = ({ amount, userId, description, onSuccess, bookingId
   // Only render PayPalButtons if SDK is resolved and loaded
   if (!isResolved) {
     return <div className="w-full h-10 bg-muted animate-pulse rounded" />;
-  }
-
-  // Use redirect flow if requested (avoids popup issues)
-  // Note: Redirect flow is complex and may not work in all browsers
-  // If it fails, we'll fall back to the regular PayPal button
-  if (useRedirectFlow) {
-    const handleRedirectClick = async () => {
-      try {
-        await handleRedirectFlow();
-      } catch (error: any) {
-        // Error is already handled in handleRedirectFlow with toast messages
-        // Fall back to regular button if redirect flow fails
-        if (import.meta.env.DEV) {
-          console.warn('Redirect flow failed, falling back to regular PayPal button:', error);
-        }
-        setRedirectFlowFailed(true);
-      }
-    };
-
-    // If redirect flow failed, show regular button instead
-    if (redirectFlowFailed) {
-      return (
-        <div className="w-full">
-          <div className="flex justify-center">
-            <div className="paypal-button-wrapper max-w-md w-full">
-            <PayPalButtons
-              createOrder={createOrder}
-              onApprove={onApprove}
-              onError={onError}
-              style={{ 
-                layout: "vertical",
-                color: "gold",
-                shape: "rect",
-                label: "paypal",
-                height: 50
-              }}
-            />
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground text-center mt-2">
-            Using standard PayPal checkout
-          </p>
-        </div>
-      );
-    }
-
-    return (
-      <div className="w-full">
-        <Button
-          onClick={handleRedirectClick}
-          disabled={processing || !isResolved}
-          className="w-full h-12 bg-[#FFC439] hover:bg-[#FFB300] text-[#003087] font-semibold"
-        >
-          {processing ? (
-            <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#003087] mr-2"></div>
-              Processing...
-            </>
-          ) : (
-            <>
-              <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.174 1.351 1.05 3.3.93 4.855v.006c-.015.115-.03.23-.043.344-.107.947-.212 1.84-.174 2.63.053 1.1.534 1.895 1.424 2.31.896.42 2.077.512 3.513.512h1.42c.96 0 1.72.64 1.982 1.577l.04.15c.12.47.18.96.18 1.45 0 2.85-2.33 5.17-5.2 5.17h-2.13c-1.05 0-1.95-.74-2.16-1.77l-.02-.1-.04-.2-.05-.25c-.1-.5-.2-1.05-.35-1.53-.15-.48-.35-.9-.6-1.25-.25-.35-.55-.6-.9-.75-.35-.15-.75-.2-1.2-.2h-2.1c-.5 0-.95.15-1.35.45-.4.3-.7.7-.9 1.2l-1.45 4.1c-.15.5-.5.9-1 1.15-.5.25-1.05.3-1.6.2z"/>
-              </svg>
-              Pay with PayPal
-            </>
-          )}
-        </Button>
-        <p className="text-xs text-muted-foreground text-center mt-2">
-          You will be redirected to PayPal's secure checkout
-        </p>
-      </div>
-    );
   }
 
   return (

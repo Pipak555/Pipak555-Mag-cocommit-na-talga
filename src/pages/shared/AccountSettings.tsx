@@ -81,7 +81,7 @@ const AccountSettings = () => {
       // Fetch each favorite listing individually
       const { getListing } = await import('@/lib/firestore');
       const favoriteDetails = await Promise.all(
-        profile.favorites.map(id => getListing(id))
+        profile.favorites.map(id => getListing(id, user?.uid))
       );
       setFavoriteListings(favoriteDetails.filter((l): l is Listing => l !== null));
     } catch (error) {
@@ -99,7 +99,7 @@ const AccountSettings = () => {
       // Fetch each wishlist listing individually
       const { getListing } = await import('@/lib/firestore');
       const wishlistDetails = await Promise.all(
-        profile.wishlist.map(id => getListing(id))
+        profile.wishlist.map(id => getListing(id, user?.uid))
       );
       setWishlistListings(wishlistDetails.filter((l): l is Listing => l !== null));
     } catch (error) {

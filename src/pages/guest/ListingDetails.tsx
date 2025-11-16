@@ -17,12 +17,13 @@ import { BackButton } from "@/components/shared/BackButton";
 import { ReviewList } from "@/components/reviews/ReviewList";
 import { SocialShare } from "@/components/shared/SocialShare";
 import { ListingCard } from "@/components/listings/ListingCard";
-import type { Listing, Coupon } from "@/types";
+import type { Listing } from "@/types";
 import { sendBookingConfirmationEmail } from '@/lib/emailjs';
 import { getDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { formatPHP } from '@/lib/currency';
 import LoadingScreen from "@/components/ui/loading-screen";
+import { validatePromoCode, calculatePromoDiscountAmount } from '@/lib/promoCodeService';
 
 const ListingDetails = () => {
   const { id } = useParams();
@@ -34,9 +35,9 @@ const ListingDetails = () => {
   const [loading, setLoading] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [hostInfo, setHostInfo] = useState<{ fullName?: string; email?: string } | null>(null);
-  const [coupons, setCoupons] = useState<Coupon[]>([]);
-  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
-  const [couponCode, setCouponCode] = useState("");
+  const [promoCode, setPromoCode] = useState("");
+  const [appliedPromoCode, setAppliedPromoCode] = useState<{ code: string; discount: number; description?: string } | null>(null);
+  const [validatingPromoCode, setValidatingPromoCode] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxImageIndex, setLightboxImageIndex] = useState(0);
@@ -52,7 +53,6 @@ const ListingDetails = () => {
     }
     if (user) {
       loadFavorites();
-      loadCoupons();
     }
   }, [id, user]);
 
@@ -82,7 +82,7 @@ const ListingDetails = () => {
 
   const loadListing = async () => {
     if (!id) return;
-    const data = await getListing(id);
+    const data = await getListing(id, user?.uid);
     
     if (data) {
       // Load rating for the listing
@@ -146,14 +146,6 @@ const ListingDetails = () => {
     }
   };
 
-  const loadCoupons = async () => {
-    if (!user) return;
-    const userDoc = await getDoc(doc(db, 'users', user.uid));
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      setCoupons(userData.coupons || []);
-    }
-  };
 
   const loadConfirmedBookings = async () => {
     if (!id) return;
@@ -249,9 +241,27 @@ const ListingDetails = () => {
 
 
   const calculateTotal = () => {
-    if (!dateRange?.from || !dateRange?.to || !listing) return 0;
-    const days = Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24));
-    const basePrice = days * listing.price;
+    if (!listing) return 0;
+    
+    let basePrice = 0;
+    
+    // Category-specific pricing calculation
+    if (listing.category === 'home') {
+      // Home: price per night * number of nights
+      if (!dateRange?.from || !dateRange?.to) return 0;
+      const days = Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24));
+      basePrice = days * listing.price;
+    } else if (listing.category === 'experience') {
+      // Experience: price per person * number of participants * number of days
+      if (!dateRange?.from || !dateRange?.to) return 0;
+      const days = Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24));
+      const pricePerPerson = listing.pricePerPerson || listing.price;
+      basePrice = days * pricePerPerson * guests;
+    } else if (listing.category === 'service') {
+      // Service: fixed price (date range optional, but if provided, use it)
+      basePrice = listing.servicePrice || listing.price;
+      // For services, date range might not be required, but if provided, it's still a fixed price
+    }
     
     // Apply listing discount first (percentage discount)
     let priceAfterListingDiscount = basePrice;
@@ -260,55 +270,77 @@ const ListingDetails = () => {
       priceAfterListingDiscount = Math.max(0, basePrice - discountAmount);
     }
     
-    // Then apply coupon discount if available
-    if (appliedCoupon && priceAfterListingDiscount >= (appliedCoupon.minSpend || 0)) {
-      return Math.max(0, priceAfterListingDiscount - appliedCoupon.discount);
+    // Then apply promo code discount if available (percentage discount)
+    let priceAfterPromoCode = priceAfterListingDiscount;
+    if (appliedPromoCode && appliedPromoCode.discount > 0) {
+      const promoDiscountAmount = calculatePromoDiscountAmount(priceAfterListingDiscount, appliedPromoCode.discount);
+      priceAfterPromoCode = Math.max(0, priceAfterListingDiscount - promoDiscountAmount);
     }
     
-    return priceAfterListingDiscount;
+    return priceAfterPromoCode;
   };
 
   const calculateListingDiscountAmount = () => {
-    if (!dateRange?.from || !dateRange?.to || !listing || !listing.discount || listing.discount <= 0) return 0;
-    const days = Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24));
-    const basePrice = days * listing.price;
+    if (!listing || !listing.discount || listing.discount <= 0) return 0;
+    
+    let basePrice = 0;
+    
+    // Category-specific pricing calculation
+    if (listing.category === 'home') {
+      if (!dateRange?.from || !dateRange?.to) return 0;
+      const days = Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24));
+      basePrice = days * listing.price;
+    } else if (listing.category === 'experience') {
+      if (!dateRange?.from || !dateRange?.to) return 0;
+      const days = Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24));
+      const pricePerPerson = listing.pricePerPerson || listing.price;
+      basePrice = days * pricePerPerson * guests;
+    } else if (listing.category === 'service') {
+      basePrice = listing.servicePrice || listing.price;
+    }
+    
     return (basePrice * listing.discount) / 100;
   };
 
-  const handleApplyCoupon = () => {
-    if (!couponCode.trim()) {
-      toast.error("Please enter a coupon code");
+
+  const handleApplyPromoCode = async () => {
+    if (!promoCode.trim()) {
+      toast.error("Please enter a promo code");
       return;
     }
 
-    const coupon = coupons.find(
-      c => c.code.toUpperCase() === couponCode.toUpperCase().trim() && 
-      !c.used && 
-      new Date(c.validUntil) > new Date()
-    );
-
-    if (!coupon) {
-      toast.error("Invalid, expired, or already used coupon");
+    if (!listing || !id) {
+      toast.error("Listing information is missing");
       return;
     }
 
-    const basePrice = dateRange?.from && dateRange?.to && listing 
-      ? Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24)) * listing.price
-      : 0;
+    setValidatingPromoCode(true);
+    try {
+      const validation = await validatePromoCode(promoCode.trim(), id);
+      
+      if (!validation.valid) {
+        toast.error(validation.error || "Invalid promo code");
+        return;
+      }
 
-    if (coupon.minSpend && basePrice < coupon.minSpend) {
-      toast.error(`This coupon requires a minimum spend of ${formatPHP(coupon.minSpend)}`);
-      return;
+      setAppliedPromoCode({
+        code: validation.promoCode!,
+        discount: validation.discount || 0,
+        description: validation.promoDescription
+      });
+      setPromoCode("");
+      toast.success(`Promo code ${validation.promoCode} applied! ${validation.discount}% discount`);
+    } catch (error: any) {
+      console.error('Error applying promo code:', error);
+      toast.error("Failed to validate promo code. Please try again.");
+    } finally {
+      setValidatingPromoCode(false);
     }
-
-    setAppliedCoupon(coupon);
-    setCouponCode("");
-    toast.success(`Coupon ${coupon.code} applied! ${formatPHP(coupon.discount)} discount`);
   };
 
-  const handleRemoveCoupon = () => {
-    setAppliedCoupon(null);
-    toast.info("Coupon removed");
+  const handleRemovePromoCode = () => {
+    setAppliedPromoCode(null);
+    toast.info("Promo code removed");
   };
 
   const handleBooking = async () => {
@@ -330,22 +362,29 @@ const ListingDetails = () => {
       return;
     }
 
-    // Check if dates are selected
-    if (!dateRange?.from || !dateRange?.to) {
-      toast.error("Please select your check-in and check-out dates");
-      return;
-    }
+    // Category-specific validation
+    if (listing.category === 'home' || listing.category === 'experience') {
+      // Check if dates are selected (required for home and experience)
+      if (!dateRange?.from || !dateRange?.to) {
+        toast.error("Please select your dates");
+        return;
+      }
 
-    // Check if number of guests is entered
-    if (!guests || guests < 1) {
-      toast.error("Please enter the number of guests (minimum 1)");
-      return;
-    }
+      // Check if number of guests/participants is entered
+      if (!guests || guests < 1) {
+        toast.error(`Please enter the number of ${listing.category === 'home' ? 'guests' : 'participants'} (minimum 1)`);
+        return;
+      }
 
-    // Check if guests exceed maximum
-    if (guests > listing.maxGuests) {
-      toast.error(`Maximum ${listing.maxGuests} guest${listing.maxGuests > 1 ? 's' : ''} allowed for this listing`);
-      return;
+      // Check if guests/participants exceed maximum
+      const maxValue = listing.category === 'home' ? listing.maxGuests : listing.capacity;
+      if (maxValue && guests > maxValue) {
+        toast.error(`Maximum ${maxValue} ${listing.category === 'home' ? 'guest' : 'participant'}${maxValue > 1 ? 's' : ''} allowed for this listing`);
+        return;
+      }
+    } else if (listing.category === 'service') {
+      // For services, date range is optional but recommended
+      // Still validate if dates are provided
     }
 
     // Check if host information exists
@@ -355,29 +394,27 @@ const ListingDetails = () => {
       return;
     }
 
-    // Validate that the selected dates are available
-    const isAvailable = isListingAvailableForDates(listing, dateRange.from, dateRange.to, confirmedBookings);
-    if (!isAvailable) {
-      toast.error("The selected dates are not available. Please choose different dates.");
-      return;
+    // Validate that the selected dates are available (for home and experience)
+    if ((listing.category === 'home' || listing.category === 'experience') && dateRange?.from && dateRange?.to) {
+      const isAvailable = isListingAvailableForDates(listing, dateRange.from, dateRange.to, confirmedBookings);
+      if (!isAvailable) {
+        toast.error("The selected dates are not available. Please choose different dates.");
+        return;
+      }
     }
 
-    // Calculate the total price first
-    const days = Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24));
-    const basePrice = days * listing.price;
-    const listingDiscountAmount = listing.discount && listing.discount > 0 
-      ? (basePrice * listing.discount) / 100 
-      : 0;
-    const priceAfterListingDiscount = basePrice - listingDiscountAmount;
-    const couponDiscountAmount = appliedCoupon ? appliedCoupon.discount : 0;
-    const finalPrice = calculateTotal();
+    // Calculate the total price (already handled in calculateTotal function)
+    const totalPrice = calculateTotal();
+    const listingDiscountAmount = calculateListingDiscountAmount();
+    const finalPrice = totalPrice;
 
     // Check if user has sufficient wallet balance
     try {
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (userDoc.exists()) {
         const userData = userDoc.data();
-        const walletBalance = userData.walletBalance || 0;
+        const { readWalletBalance } = await import('@/lib/financialUtils');
+        const walletBalance = readWalletBalance(userData.walletBalance);
         
         if (walletBalance < finalPrice) {
           const shortfall = finalPrice - walletBalance;
@@ -399,24 +436,43 @@ const ListingDetails = () => {
 
     setLoading(true);
     try {
+      // Calculate original price for booking record
+      let originalPrice = 0;
+      if (listing.category === 'home' && dateRange?.from && dateRange?.to) {
+        const days = Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24));
+        originalPrice = days * listing.price;
+      } else if (listing.category === 'experience' && dateRange?.from && dateRange?.to) {
+        const days = Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24));
+        const pricePerPerson = listing.pricePerPerson || listing.price;
+        originalPrice = days * pricePerPerson * guests;
+      } else if (listing.category === 'service') {
+        originalPrice = listing.servicePrice || listing.price;
+      }
+      
+      const promoCodeDiscountAmount = appliedPromoCode && appliedPromoCode.discount > 0
+        ? calculatePromoDiscountAmount(originalPrice - listingDiscountAmount, appliedPromoCode.discount)
+        : 0;
+
       const bookingData: any = {
         listingId: listing.id,
         guestId: user.uid,
         hostId: listing.hostId,
-        checkIn: dateRange.from.toISOString(),
-        checkOut: dateRange.to.toISOString(),
-        guests,
+        checkIn: dateRange?.from?.toISOString() || new Date().toISOString(),
+        checkOut: dateRange?.to?.toISOString() || new Date().toISOString(),
+        guests: listing.category === 'service' ? 1 : guests, // Services don't have guests, default to 1
         totalPrice: finalPrice,
-        originalPrice: basePrice,
+        originalPrice: originalPrice,
         listingDiscount: listing.discount || 0,
         listingDiscountAmount: listingDiscountAmount,
-        discountAmount: listingDiscountAmount + couponDiscountAmount,
+        discountAmount: listingDiscountAmount + promoCodeDiscountAmount,
         status: 'pending' as const, // Booking is pending host approval
       };
 
-      // Only include couponCode if a coupon was applied
-      if (appliedCoupon?.code) {
-        bookingData.couponCode = appliedCoupon.code;
+      // Include promo code if applied
+      if (appliedPromoCode?.code) {
+        bookingData.promoCode = appliedPromoCode.code;
+        bookingData.promoCodeDiscount = appliedPromoCode.discount;
+        bookingData.promoCodeDiscountAmount = promoCodeDiscountAmount;
       }
 
       console.log('📝 Creating booking with data:', {
@@ -429,8 +485,6 @@ const ListingDetails = () => {
       // Create booking and get the booking ID
       const bookingId = await createBooking(bookingData);
 
-      // Don't mark coupon as used yet - wait for payment to be processed
-      // The coupon will be marked as used in the payment service after successful payment
       
       console.log('✅ Booking created successfully:', bookingId);
       console.log('📊 Booking details:', {
@@ -654,14 +708,39 @@ const ListingDetails = () => {
               <span>{listing.location}</span>
             </div>
             
-            <div className="flex items-center gap-4 mb-4">
-              <span className="flex items-center gap-1">
-                <Users className="h-4 w-4" />
-                {listing.maxGuests} guests
-              </span>
-              {listing.bedrooms && <span>{listing.bedrooms} bedrooms</span>}
-              {listing.bathrooms && <span>{listing.bathrooms} bathrooms</span>}
-            </div>
+            {/* Category-specific details */}
+            {listing.category === 'home' && (
+              <div className="flex items-center gap-4 mb-4">
+                <span className="flex items-center gap-1">
+                  <Users className="h-4 w-4" />
+                  {listing.maxGuests} guests
+                </span>
+                {listing.bedrooms && <span>{listing.bedrooms} bedrooms</span>}
+                {listing.bathrooms && <span>{listing.bathrooms} bathrooms</span>}
+                {listing.houseType && <Badge variant="outline">{listing.houseType}</Badge>}
+              </div>
+            )}
+            {listing.category === 'experience' && (
+              <div className="flex items-center gap-4 mb-4">
+                <span className="flex items-center gap-1">
+                  <Users className="h-4 w-4" />
+                  {listing.capacity} max participants
+                </span>
+                {listing.duration && <span>{listing.duration}</span>}
+                {listing.schedule && <span className="text-sm text-muted-foreground">{listing.schedule}</span>}
+              </div>
+            )}
+            {listing.category === 'service' && (
+              <div className="flex items-center gap-4 mb-4">
+                {listing.duration && (
+                  <span className="flex items-center gap-1">
+                    <CalendarIcon className="h-4 w-4" />
+                    {listing.duration}
+                  </span>
+                )}
+                {listing.serviceType && <Badge variant="outline">{listing.serviceType}</Badge>}
+              </div>
+            )}
 
             {/* Host Information */}
             {listing.hostId && (
@@ -695,12 +774,33 @@ const ListingDetails = () => {
 
             <p className="text-muted-foreground mb-6">{listing.description}</p>
 
-            {listing.amenities.length > 0 && (
+            {/* House-specific: Amenities */}
+            {listing.category === 'home' && listing.amenities && listing.amenities.length > 0 && (
               <div className="mb-6">
                 <h3 className="font-semibold mb-2">Amenities</h3>
                 <div className="flex flex-wrap gap-2">
                   {listing.amenities.map((amenity, i) => (
                     <Badge key={i} variant="outline">{amenity}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Service-specific: Requirements */}
+            {listing.category === 'service' && listing.requirements && (
+              <div className="mb-6">
+                <h3 className="font-semibold mb-2">Requirements</h3>
+                <p className="text-muted-foreground whitespace-pre-wrap">{listing.requirements}</p>
+              </div>
+            )}
+
+            {/* Experience-specific: What's Included */}
+            {listing.category === 'experience' && listing.whatsIncluded && listing.whatsIncluded.length > 0 && (
+              <div className="mb-6">
+                <h3 className="font-semibold mb-2">What's Included</h3>
+                <div className="flex flex-wrap gap-2">
+                  {listing.whatsIncluded.map((item, i) => (
+                    <Badge key={i} variant="outline">{item}</Badge>
                   ))}
                 </div>
               </div>
@@ -736,7 +836,6 @@ const ListingDetails = () => {
                   blocked: "bg-red-500/20 text-red-600 dark:text-red-400",
                 }}
                 classNames={{
-                  months: "flex flex-row space-x-4 sm:space-x-6",
                   month: "space-y-4",
                   caption: "flex justify-center pt-1 relative items-center mb-2",
                   caption_label: "text-sm font-semibold",
@@ -759,7 +858,7 @@ const ListingDetails = () => {
                   day_range_middle: "bg-role-guest/10 text-role-guest hover:bg-role-guest/20 rounded-none",
                   day_hidden: "invisible",
                 }}
-                numberOfMonths={2}
+                numberOfMonths={1}
               />
             </div>
           </CardContent>
@@ -785,79 +884,70 @@ const ListingDetails = () => {
                       ) : (
                     <span className="text-2xl sm:text-3xl">{formatPHP(listing.price)}</span>
                       )}
-                    <span className="text-xs sm:text-sm font-normal text-muted-foreground">per night</span>
+                    <span className="text-xs sm:text-sm font-normal text-muted-foreground">
+                      {listing.category === 'home' && 'per night'}
+                      {listing.category === 'experience' && 'per person'}
+                      {listing.category === 'service' && ''}
+                    </span>
                     </div>
-                    {(listing.promo || listing.promoDescription) && (
-                      <p className="text-xs sm:text-sm text-primary font-medium">
-                        {listing.promoDescription || listing.promo}
-                      </p>
-                    )}
-                    {listing.promoCode && (
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant="outline" className="text-xs">
-                          Promo Code: {listing.promoCode}
-                        </Badge>
-                        {listing.promoDiscount && listing.promoDiscount > 0 && (
-                          <Badge className="bg-orange-500 text-white text-xs">
-                            -{listing.promoDiscount}% OFF
-                          </Badge>
-                        )}
-                      </div>
-                    )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4 px-4 sm:px-6 pb-4 sm:pb-6">
-                {/* Number of Guests */}
-                <div className="space-y-2">
-                  <Label htmlFor="guests" className="text-sm font-medium flex items-center gap-2">
-                    <Users className="h-4 w-4" />
-                    Number of Guests
-                  </Label>
-                  <Input
-                    id="guests"
-                    type="number"
-                    min="1"
-                    max={listing.maxGuests}
-                    value={guests}
-                    onChange={(e) => {
-                      const value = parseInt(e.target.value) || 1;
-                      if (value >= 1 && value <= listing.maxGuests) {
-                        setGuests(value);
-                      } else if (value > listing.maxGuests) {
-                        setGuests(listing.maxGuests);
-                        toast.error(`Maximum ${listing.maxGuests} guest${listing.maxGuests > 1 ? 's' : ''} allowed`);
-                      } else if (value < 1) {
-                        setGuests(1);
-                      }
-                    }}
-                    placeholder="Enter number of guests"
-                    className="w-full"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Maximum {listing.maxGuests} guest{listing.maxGuests > 1 ? 's' : ''} allowed
-                  </p>
-                </div>
+                {/* Number of Guests/Participants (only for home and experience) */}
+                {(listing.category === 'home' || listing.category === 'experience') && (
+                  <div className="space-y-2">
+                    <Label htmlFor="guests" className="text-sm font-medium flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      {listing.category === 'home' ? 'Number of Guests' : 'Number of Participants'}
+                    </Label>
+                    <Input
+                      id="guests"
+                      type="number"
+                      min="1"
+                      max={listing.category === 'home' ? listing.maxGuests : listing.capacity}
+                      value={guests}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value) || 1;
+                        const maxValue = listing.category === 'home' ? listing.maxGuests : listing.capacity;
+                        if (value >= 1 && value <= maxValue) {
+                          setGuests(value);
+                        } else if (value > maxValue) {
+                          setGuests(maxValue || 1);
+                          toast.error(`Maximum ${maxValue} ${listing.category === 'home' ? 'guest' : 'participant'}${maxValue && maxValue > 1 ? 's' : ''} allowed`);
+                        } else if (value < 1) {
+                          setGuests(1);
+                        }
+                      }}
+                      placeholder={`Enter number of ${listing.category === 'home' ? 'guests' : 'participants'}`}
+                      className="w-full"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Maximum {listing.category === 'home' ? listing.maxGuests : listing.capacity} {listing.category === 'home' ? 'guest' : 'participant'}{(listing.category === 'home' ? listing.maxGuests : listing.capacity) && ((listing.category === 'home' ? listing.maxGuests : listing.capacity) > 1) ? 's' : ''} allowed
+                    </p>
+                  </div>
+                )}
 
-                {/* Coupon Application */}
+                {/* Promo Code Application */}
                 <div className="pt-4 border-t">
-                  {!appliedCoupon ? (
+                  {!appliedPromoCode ? (
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Have a coupon code?</label>
+                      <label className="text-sm font-medium">Have a promo code?</label>
                       <div className="flex gap-2">
                         <Input
-                          placeholder="Enter coupon code"
-                          value={couponCode}
-                          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                          onKeyDown={(e) => e.key === 'Enter' && handleApplyCoupon()}
+                          placeholder="Enter promo code"
+                          value={promoCode}
+                          onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                          onKeyDown={(e) => e.key === 'Enter' && handleApplyPromoCode()}
+                          disabled={validatingPromoCode}
                         />
                         <Button 
                           type="button"
                           variant="outline" 
-                          onClick={handleApplyCoupon}
-                          disabled={!couponCode.trim()}
+                          onClick={handleApplyPromoCode}
+                          disabled={!promoCode.trim() || validatingPromoCode}
                         >
                           <Ticket className="h-4 w-4 mr-2" />
-                          Apply
+                          {validatingPromoCode ? "Validating..." : "Apply"}
                         </Button>
                       </div>
                     </div>
@@ -865,16 +955,21 @@ const ListingDetails = () => {
                     <div className="p-3 bg-primary/10 rounded-lg flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Ticket className="h-4 w-4 text-primary" />
-                        <span className="text-sm font-medium">{appliedCoupon.code}</span>
+                        <span className="text-sm font-medium">{appliedPromoCode.code}</span>
                         <span className="text-xs text-muted-foreground">
-                          -{formatPHP(appliedCoupon.discount)}
+                          -{appliedPromoCode.discount}%
                         </span>
+                        {appliedPromoCode.description && (
+                          <span className="text-xs text-muted-foreground">
+                            ({appliedPromoCode.description})
+                          </span>
+                        )}
                       </div>
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={handleRemoveCoupon}
+                        onClick={handleRemovePromoCode}
                       >
                         <X className="h-4 w-4" />
                       </Button>
@@ -882,20 +977,39 @@ const ListingDetails = () => {
                   )}
                 </div>
 
-                {dateRange?.from && dateRange?.to && (
+                {(((listing.category === 'home' || listing.category === 'experience') && dateRange?.from && dateRange?.to) || listing.category === 'service') && (
                   <div className="pt-4 border-t space-y-2">
                     {(() => {
-                      const days = Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24));
-                      const basePrice = days * listing.price;
+                      let basePrice = 0;
+                      let subtitle = '';
+                      
+                      if (listing.category === 'home' && dateRange?.from && dateRange?.to) {
+                        const days = Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24));
+                        basePrice = days * listing.price;
+                        subtitle = `Subtotal (${days} ${days === 1 ? 'night' : 'nights'})`;
+                      } else if (listing.category === 'experience' && dateRange?.from && dateRange?.to) {
+                        const days = Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24));
+                        const pricePerPerson = listing.pricePerPerson || listing.price;
+                        basePrice = days * pricePerPerson * guests;
+                        subtitle = `Subtotal (${days} ${days === 1 ? 'day' : 'days'} × ${guests} ${guests === 1 ? 'person' : 'people'})`;
+                      } else if (listing.category === 'service') {
+                        basePrice = listing.servicePrice || listing.price;
+                        subtitle = 'Service Price';
+                      }
+                      
                       const listingDiscountAmount = calculateListingDiscountAmount();
                       const priceAfterListingDiscount = basePrice - listingDiscountAmount;
-                      const showBreakdown = listingDiscountAmount > 0 || appliedCoupon;
+                      const promoCodeDiscountAmount = appliedPromoCode && appliedPromoCode.discount > 0
+                        ? calculatePromoDiscountAmount(priceAfterListingDiscount, appliedPromoCode.discount)
+                        : 0;
+                      const priceAfterPromoCode = priceAfterListingDiscount - promoCodeDiscountAmount;
+                      const showBreakdown = listingDiscountAmount > 0 || appliedPromoCode;
                       
                       return (
                         <>
                           {showBreakdown && (
                       <div className="flex justify-between text-sm">
-                              <span className="text-muted-foreground">Subtotal ({days} {days === 1 ? 'night' : 'nights'})</span>
+                              <span className="text-muted-foreground">{subtitle}</span>
                               <span>{formatPHP(basePrice)}</span>
                             </div>
                           )}
@@ -905,22 +1019,29 @@ const ListingDetails = () => {
                               <span>-{formatPHP(listingDiscountAmount)}</span>
                             </div>
                           )}
-                          {listingDiscountAmount > 0 && (appliedCoupon || !showBreakdown) && (
+                          {listingDiscountAmount > 0 && (appliedPromoCode || !showBreakdown) && (
                             <div className="flex justify-between text-sm">
-                              <span className="text-muted-foreground">After Discount</span>
+                              <span className="text-muted-foreground">After Listing Discount</span>
                               <span>{formatPHP(priceAfterListingDiscount)}</span>
                       </div>
                     )}
-                    {appliedCoupon && (
+                    {appliedPromoCode && (
                       <div className="flex justify-between text-sm text-primary">
-                              <span>Coupon Discount ({appliedCoupon.code})</span>
-                        <span>-{formatPHP(appliedCoupon.discount)}</span>
+                              <span>Promo Code Discount ({appliedPromoCode.code}) - {appliedPromoCode.discount}%</span>
+                        <span>-{formatPHP(promoCodeDiscountAmount)}</span>
+                      </div>
+                    )}
+                    {appliedPromoCode && !showBreakdown && (
+                      <div className="flex justify-between text-sm">
+                              <span className="text-muted-foreground">After Promo Code</span>
+                              <span>{formatPHP(priceAfterPromoCode)}</span>
                       </div>
                     )}
                     <div className="flex justify-between font-bold pt-2 border-t">
                       <span>Total</span>
                       <span>{formatPHP(calculateTotal())}</span>
                     </div>
+                    
                         </>
                       );
                     })()}
@@ -1070,7 +1191,7 @@ const SimilarListings = ({ listingId }: { listingId: string }) => {
     try {
       const { getSimilarListings } = await import('@/lib/recommendations');
       const { getListingsRatings } = await import('@/lib/firestore');
-      const similar = await getSimilarListings(listingId, 4);
+      const similar = await getSimilarListings(listingId, 4, user?.uid);
       
       // Fetch ratings for similar listings
       if (similar.length > 0) {

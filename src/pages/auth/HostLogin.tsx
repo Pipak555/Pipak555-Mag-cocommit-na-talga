@@ -116,7 +116,7 @@ const HostLogin = () => {
         confirmPassword: data.confirmPassword
       }));
       
-      toast.info('Please accept our policies and terms to continue creating your host account.');
+      toast.error('You must accept our Policies & Compliance terms before creating a host account. Please review and accept them to continue.');
       navigate('/host/policies', { state: { returnTo: '/host/login', showSignup: true } });
       setLoading(false);
       return;
@@ -150,6 +150,14 @@ const HostLogin = () => {
 
   const handleGoogleAutofill = async () => {
     if (googleLoading || loading) return;
+    
+    // Check if policies have been accepted before allowing Google autofill
+    const policyAccepted = sessionStorage.getItem('hostPolicyAccepted');
+    if (!policyAccepted) {
+      toast.error('You must accept our Policies & Compliance terms before creating a host account. Please review and accept them first.');
+      navigate('/host/policies', { state: { returnTo: '/host/login', showSignup: true } });
+      return;
+    }
     
     setGoogleLoading(true);
     try {

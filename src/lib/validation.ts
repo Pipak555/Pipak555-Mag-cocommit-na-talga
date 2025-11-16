@@ -50,11 +50,12 @@ export const listingFormSchema = z.object({
     .min(5, "Location must be at least 5 characters")
     .max(200, "Location must not exceed 200 characters")
     .trim(),
+  // House-specific fields
   maxGuests: z
     .string()
-    .min(1, "Max guests is required")
+    .optional()
     .refine(
-      (val) => !isNaN(Number(val)) && Number(val) > 0 && Number.isInteger(Number(val)),
+      (val) => !val || val.trim() === "" || (!isNaN(Number(val)) && Number(val) > 0 && Number.isInteger(Number(val))),
       "Max guests must be a positive integer"
     ),
   bedrooms: z
@@ -71,7 +72,25 @@ export const listingFormSchema = z.object({
       (val) => !val || val.trim() === "" || (!isNaN(Number(val)) && Number(val) >= 0 && Number.isInteger(Number(val))),
       "Bathrooms must be a non-negative integer"
     ),
+  houseType: z.string().optional(),
   amenities: z.string().optional().default(""),
+  
+  // Service-specific fields
+  duration: z.string().optional(),
+  serviceType: z.string().optional(),
+  requirements: z.string().optional(),
+  locationRequired: z.boolean().optional(),
+  
+  // Experience-specific fields
+  capacity: z
+    .string()
+    .optional()
+    .refine(
+      (val) => !val || val.trim() === "" || (!isNaN(Number(val)) && Number(val) > 0 && Number.isInteger(Number(val))),
+      "Capacity must be a positive integer"
+    ),
+  schedule: z.string().optional(),
+  whatsIncluded: z.string().optional(),
   dateRange: z
     .object({
       from: z.date().optional(),
@@ -109,6 +128,21 @@ export const listingFormSchema = z.object({
     .max(10, "Maximum 10 images allowed")
     .optional()
     .default([]),
+}).refine((data) => {
+  // Category-specific validation
+  if (data.category === 'home') {
+    // For home, maxGuests is required
+    return !!(data.maxGuests && data.maxGuests.trim() && Number(data.maxGuests) > 0);
+  }
+  if (data.category === 'experience') {
+    // For experience, capacity is required
+    return !!(data.capacity && data.capacity.trim() && Number(data.capacity) > 0);
+  }
+  // Service has no required category-specific fields
+  return true;
+}, {
+  message: "Please fill in all required fields for this category",
+  path: ["category"],
 });
 
 export type ListingFormData = z.infer<typeof listingFormSchema>;

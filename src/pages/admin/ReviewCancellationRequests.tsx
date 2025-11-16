@@ -90,7 +90,7 @@ const ReviewCancellationRequests = () => {
             // Load listing
             let listing: Listing | null = null;
             if (booking?.listingId) {
-              listing = await getListing(booking.listingId);
+              listing = await getListing(booking.listingId, undefined); // Admin sees all data including promo codes
             }
 
             // Load guest info

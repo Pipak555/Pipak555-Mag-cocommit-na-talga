@@ -107,14 +107,15 @@ const AdminPayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified }
         onVerified(''); // Empty string signals that email needs to be entered
       }
 
-      // Clean up URL
-      navigate(window.location.pathname, { replace: true });
+      // Clean up URL - explicitly navigate to admin PayPal settings page
+      navigate('/admin/paypal-settings', { replace: true });
     } catch (error: any) {
       if (import.meta.env.DEV) {
         console.error('Admin PayPal verification error:', error);
       }
       toast.error('Failed to verify admin PayPal account. Please try again.');
-      navigate(window.location.pathname, { replace: true });
+      // Navigate back to admin PayPal settings page on error
+      navigate('/admin/paypal-settings', { replace: true });
     } finally {
       setVerifying(false);
     }

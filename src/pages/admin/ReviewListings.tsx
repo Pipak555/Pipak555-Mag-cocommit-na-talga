@@ -53,7 +53,7 @@ const ReviewListings = () => {
     try {
       setLoading(true);
       console.log('ReviewListings: Loading pending listings...');
-      const data = await getListings({ status: 'pending' });
+      const data = await getListings({ status: 'pending' }, undefined); // Admin sees all data including promo codes
       console.log(`ReviewListings: Found ${data.length} pending listings:`, data);
       setListings(data);
     } catch (error: any) {
@@ -108,7 +108,7 @@ const ReviewListings = () => {
     if (!listingToReview) return;
     try {
       // Get listing details before updating
-      const listing = await getListing(listingToReview);
+      const listing = await getListing(listingToReview, undefined); // Admin sees all data including promo codes
       if (!listing) {
         toast.error('Listing not found');
         return;
@@ -408,51 +408,148 @@ const ReviewListings = () => {
                   <p className="text-muted-foreground whitespace-pre-wrap">{selectedListing.description}</p>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Price</p>
-                      <p className="font-semibold">{formatPHP(selectedListing.price)}/night</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Users className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Max Guests</p>
-                      <p className="font-semibold">{selectedListing.maxGuests}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Bed className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Bedrooms</p>
-                      <p className="font-semibold">{selectedListing.bedrooms || 'N/A'}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Bath className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Bathrooms</p>
-                      <p className="font-semibold">{selectedListing.bathrooms !== undefined ? selectedListing.bathrooms : 'N/A'}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 mb-4">
                   <Home className="h-5 w-5 text-muted-foreground" />
                   <div>
                     <p className="text-sm text-muted-foreground">Category</p>
-                    <Badge variant="secondary">{selectedListing.category}</Badge>
+                    <Badge variant="secondary" className="capitalize">{selectedListing.category}</Badge>
                   </div>
                 </div>
 
-                {selectedListing.amenities && selectedListing.amenities.length > 0 && (
+                {/* Category-specific fields */}
+                {selectedListing.category === 'home' && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Price</p>
+                        <p className="font-semibold">{formatPHP(selectedListing.price)}/night</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Users className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Max Guests</p>
+                        <p className="font-semibold">{selectedListing.maxGuests || 'N/A'}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Bed className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Bedrooms</p>
+                        <p className="font-semibold">{selectedListing.bedrooms !== undefined ? selectedListing.bedrooms : 'N/A'}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Bath className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Bathrooms</p>
+                        <p className="font-semibold">{selectedListing.bathrooms !== undefined ? selectedListing.bathrooms : 'N/A'}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {selectedListing.category === 'experience' && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Price</p>
+                        <p className="font-semibold">{formatPHP(selectedListing.pricePerPerson || selectedListing.price)}/person</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Users className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Capacity</p>
+                        <p className="font-semibold">{selectedListing.capacity || 'N/A'}</p>
+                      </div>
+                    </div>
+                    {(selectedListing as any).duration && (
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Duration</p>
+                          <p className="font-semibold">{(selectedListing as any).duration}</p>
+                        </div>
+                      </div>
+                    )}
+                    {(selectedListing as any).schedule && (
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Schedule</p>
+                          <p className="font-semibold text-sm">{(selectedListing as any).schedule}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {selectedListing.category === 'service' && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Service Price</p>
+                        <p className="font-semibold">{formatPHP((selectedListing as any).servicePrice || selectedListing.price)}</p>
+                      </div>
+                    </div>
+                    {(selectedListing as any).duration && (
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Duration</p>
+                          <p className="font-semibold">{(selectedListing as any).duration}</p>
+                        </div>
+                      </div>
+                    )}
+                    {(selectedListing as any).serviceType && (
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Service Type</p>
+                          <p className="font-semibold">{(selectedListing as any).serviceType}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* House-specific: House Type and Amenities */}
+                {selectedListing.category === 'home' && (
+                  <>
+                    {selectedListing.houseType && (
+                      <div className="flex items-center gap-2 mb-2">
+                        <p className="text-sm text-muted-foreground">House Type:</p>
+                        <Badge variant="outline">{selectedListing.houseType}</Badge>
+                      </div>
+                    )}
+                    {selectedListing.amenities && selectedListing.amenities.length > 0 && (
+                      <div>
+                        <h3 className="font-semibold mb-2">Amenities</h3>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedListing.amenities.map((amenity, index) => (
+                            <Badge key={index} variant="outline">{amenity}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Service-specific: Requirements */}
+                {selectedListing.category === 'service' && (selectedListing as any).requirements && (
                   <div>
-                    <h3 className="font-semibold mb-2">Amenities</h3>
+                    <h3 className="font-semibold mb-2">Requirements</h3>
+                    <p className="text-muted-foreground whitespace-pre-wrap">{(selectedListing as any).requirements}</p>
+                  </div>
+                )}
+
+                {/* Experience-specific: What's Included */}
+                {selectedListing.category === 'experience' && (selectedListing as any).whatsIncluded && Array.isArray((selectedListing as any).whatsIncluded) && (selectedListing as any).whatsIncluded.length > 0 && (
+                  <div>
+                    <h3 className="font-semibold mb-2">What's Included</h3>
                     <div className="flex flex-wrap gap-2">
-                      {selectedListing.amenities.map((amenity, index) => (
-                        <Badge key={index} variant="outline">{amenity}</Badge>
+                      {(selectedListing as any).whatsIncluded.map((item: string, index: number) => (
+                        <Badge key={index} variant="outline">{item}</Badge>
                       ))}
                     </div>
                   </div>

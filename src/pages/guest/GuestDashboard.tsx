@@ -58,13 +58,14 @@ const GuestDashboard = () => {
     loadDashboardData();
 
     // Real-time listener for favorites and wishlist
-    const userUnsubscribe = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
+    const userUnsubscribe = onSnapshot(doc(db, 'users', user.uid), async (docSnap) => {
       if (docSnap.exists()) {
         const userData = docSnap.data();
+        const { readWalletBalance } = await import('@/lib/financialUtils');
         setStats(prev => ({
           ...prev,
           favorites: userData.favorites?.length || 0,
-          walletBalance: userData.walletBalance || 0,
+          walletBalance: readWalletBalance(userData.walletBalance),
         }));
         setFavorites(userData.favorites || []);
       }

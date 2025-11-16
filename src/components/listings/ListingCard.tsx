@@ -37,6 +37,28 @@ export const ListingCard = memo(({ listing, onView, onFavorite, isFavorite }: Li
   const reviewCount = listing.reviewCount && listing.reviewCount > 0 
     ? `(${listing.reviewCount})` 
     : '';
+  
+  // Category-specific price label
+  const getPriceLabel = () => {
+    if (listing.category === 'home') return '/night';
+    if (listing.category === 'experience') return '/person';
+    if (listing.category === 'service') return '';
+    return '/night';
+  };
+  
+  // Category-specific capacity/guest info
+  const getCapacityInfo = () => {
+    if (listing.category === 'home') {
+      return listing.maxGuests ? `${listing.maxGuests} guests` : null;
+    }
+    if (listing.category === 'experience') {
+      return listing.capacity ? `${listing.capacity} max` : null;
+    }
+    if (listing.category === 'service') {
+      return listing.duration || null;
+    }
+    return null;
+  };
   return (
     <Card className="group relative overflow-hidden border-0 shadow-sm hover:shadow-xl transition-all duration-500 hover:-translate-y-1 active:scale-[0.98] h-full flex flex-col touch-manipulation">
       {/* Image Container with Gradient Overlay */}
@@ -93,7 +115,9 @@ export const ListingCard = memo(({ listing, onView, onFavorite, isFavorite }: Li
               <span className="text-[10px] sm:text-xs line-through text-gray-500">{originalPrice}</span>
             )}
             <span className="text-base sm:text-lg font-bold text-gray-900">{formattedPrice}</span>
-            <span className="text-[10px] sm:text-xs text-gray-700 font-medium">/night</span>
+            {getPriceLabel() && (
+              <span className="text-[10px] sm:text-xs text-gray-700 font-medium">{getPriceLabel()}</span>
+            )}
           </div>
         </div>
       </div>
@@ -123,10 +147,12 @@ export const ListingCard = memo(({ listing, onView, onFavorite, isFavorite }: Li
                 )}
               </span>
             </div>
-            <div className="flex items-center gap-1">
-              <Users className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-foreground/80" />
-              <span>{listing.maxGuests} guests</span>
-            </div>
+            {getCapacityInfo() && (
+              <div className="flex items-center gap-1">
+                <Users className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-foreground/80" />
+                <span>{getCapacityInfo()}</span>
+              </div>
+            )}
           </div>
         </div>
       </CardContent>

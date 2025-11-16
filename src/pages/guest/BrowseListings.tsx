@@ -99,7 +99,7 @@ const BrowseListings = () => {
       const listingFilters = filters.category !== 'all' 
         ? { category: filters.category, status: 'approved' } 
         : { status: 'approved' };
-      const data = await getListings(listingFilters);
+      const data = await getListings(listingFilters, user?.uid);
       
       // Fetch ratings for all listings
       if (data.length > 0) {
@@ -227,10 +227,13 @@ const BrowseListings = () => {
         return false;
       }
       
-      // Guest capacity filter
-      if (filters.guests > listing.maxGuests) {
+      // Guest capacity filter (category-aware)
+      if (listing.category === 'home' && listing.maxGuests && filters.guests > listing.maxGuests) {
+        return false;
+      } else if (listing.category === 'experience' && listing.capacity && filters.guests > listing.capacity) {
         return false;
       }
+      // Service listings don't have capacity requirements
       
       // Price range filter
       if (filters.minPrice && listing.price < filters.minPrice) {

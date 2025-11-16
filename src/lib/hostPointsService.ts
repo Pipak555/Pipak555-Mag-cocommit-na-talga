@@ -8,6 +8,13 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import { createTransaction } from './firestore';
 import type { Booking, Review } from '@/types';
+import { 
+  phpToCentavos, 
+  centavosToPHP, 
+  addCentavos, 
+  readWalletBalanceCentavos,
+  roundMoney 
+} from './financialUtils';
 
 /**
  * Award points to host for completed booking
@@ -30,8 +37,8 @@ export const awardHostPointsForBooking = async (
     const hostData = hostDoc.data();
     const currentPoints = hostData.hostPoints || 0;
     
-    // Award points based on booking amount (1 point per ₱100, minimum 50 points)
-    const basePoints = Math.max(50, Math.floor(bookingAmount / 100));
+    // Award 10 points for completing a booking
+    const basePoints = 10;
     const newPoints = currentPoints + basePoints;
 
     await updateDoc(doc(db, 'users', hostId), {
@@ -90,8 +97,8 @@ export const awardHostPointsForRating = async (
     const hostData = hostDoc.data();
     const currentPoints = hostData.hostPoints || 0;
     
-    // Award 25 bonus points for 5-star rating
-    const bonusPoints = 25;
+    // Award 5 bonus points for 5-star rating
+    const bonusPoints = 5;
     const newPoints = currentPoints + bonusPoints;
 
     await updateDoc(doc(db, 'users', hostId), {
@@ -143,8 +150,8 @@ export const awardHostPointsForListingApproval = async (
     const hostData = hostDoc.data();
     const currentPoints = hostData.hostPoints || 0;
     
-    // Award 100 points for listing approval
-    const approvalPoints = 100;
+    // Award 5 points for listing approval
+    const approvalPoints = 5;
     const newPoints = currentPoints + approvalPoints;
 
     await updateDoc(doc(db, 'users', hostId), {
@@ -177,12 +184,12 @@ export const awardHostPointsForListingApproval = async (
 };
 
 /**
- * Redeem host points for subscription discount
+ * Redeem host points for e-wallet money
  * @param hostId - Host user ID
  * @param pointsToRedeem - Points to redeem
- * @returns Discount amount in PHP
+ * @returns Amount added to e-wallet in PHP
  */
-export const redeemHostPointsForSubscriptionDiscount = async (
+export const redeemHostPointsForEwallet = async (
   hostId: string,
   pointsToRedeem: number
 ): Promise<number> => {
@@ -194,42 +201,71 @@ export const redeemHostPointsForSubscriptionDiscount = async (
 
     const hostData = hostDoc.data();
     const currentPoints = hostData.hostPoints || 0;
+    // Read balance in centavos (handles both old float and new int formats)
+    const currentWalletBalanceCentavos = readWalletBalanceCentavos(hostData.walletBalance);
 
     if (currentPoints < pointsToRedeem) {
       throw new Error('Insufficient points');
     }
 
-    // Convert points to discount (100 points = ₱50 discount)
-    const discountAmount = Math.floor((pointsToRedeem / 100) * 50);
+    // Convert points to e-wallet money (10 points = ₱1)
+    // Convert to centavos for storage
+    const walletAmountPHP = pointsToRedeem / 10;
+    const walletAmountCentavos = phpToCentavos(walletAmountPHP);
     const newPoints = currentPoints - pointsToRedeem;
+    const newWalletBalanceCentavos = addCentavos(currentWalletBalanceCentavos, walletAmountCentavos);
 
+    // Update both points and wallet balance
     await updateDoc(doc(db, 'users', hostId), {
-      hostPoints: newPoints
+      hostPoints: newPoints,
+      walletBalance: newWalletBalanceCentavos // Store as integer centavos
     });
 
-    // Create transaction for redemption
+    // Create transaction for points redemption (negative amount for points deduction)
     await createTransaction({
       userId: hostId,
       type: 'reward',
       amount: -pointsToRedeem,
-      description: `Host points redeemed for subscription discount (₱${discountAmount.toFixed(2)})`,
+      description: `Host points redeemed for e-wallet (${pointsToRedeem} points = ₱${walletAmountPHP.toFixed(2)})`,
+      status: 'completed'
+    });
+
+    // Create transaction for wallet deposit
+    await createTransaction({
+      userId: hostId,
+      type: 'deposit',
+      amount: walletAmountCentavos, // Store as integer centavos
+      description: `E-wallet deposit from points redemption (${pointsToRedeem} points)`,
       status: 'completed'
     });
 
     if (import.meta.env.DEV) {
-      console.log('✅ Host points redeemed:', {
+      console.log('✅ Host points redeemed for e-wallet:', {
         hostId,
         pointsRedeemed: pointsToRedeem,
-        discountAmount,
-        newPoints
+        walletAmount,
+        newPoints,
+        newWalletBalance
       });
     }
 
-    return discountAmount;
+    return walletAmount;
   } catch (error: any) {
-    console.error('Error redeeming host points:', error);
+    console.error('Error redeeming host points for e-wallet:', error);
     throw error;
   }
+};
+
+/**
+ * @deprecated Use redeemHostPointsForEwallet instead
+ * Redeem host points for subscription discount (legacy function)
+ */
+export const redeemHostPointsForSubscriptionDiscount = async (
+  hostId: string,
+  pointsToRedeem: number
+): Promise<number> => {
+  // Redirect to new e-wallet redemption function
+  return redeemHostPointsForEwallet(hostId, pointsToRedeem);
 };
 
 /**

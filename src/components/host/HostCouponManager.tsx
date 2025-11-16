@@ -53,7 +53,7 @@ export const HostCouponManager = ({ onCouponDeleted }: HostCouponManagerProps) =
     if (!user) return;
     setLoading(true);
     try {
-      const listings = await getListings({ hostId: user.uid });
+      const listings = await getListings({ hostId: user.uid }, user.uid);
       
       // Extract coupons from listings that have promoCode
       const hostCoupons: HostCoupon[] = listings

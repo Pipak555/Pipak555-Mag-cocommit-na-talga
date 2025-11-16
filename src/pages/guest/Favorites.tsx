@@ -80,7 +80,7 @@ const Favorites = () => {
     try {
       const { getListing } = await import('@/lib/firestore');
       const favoriteDetails = await Promise.all(
-        profile.favorites.map(id => getListing(id))
+        profile.favorites.map(id => getListing(id, user?.uid))
       );
       setFavoriteListings(favoriteDetails.filter((l): l is Listing => l !== null));
     } catch (error) {

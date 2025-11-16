@@ -59,13 +59,13 @@ const HostRewards = () => {
         <HostPointsDisplay 
           points={profile?.hostPoints || 0}
           userId={user?.uid || ''}
-          onRedeem={(discountAmount) => {
-            // Refresh profile to update points
+          onRedeem={(walletAmount) => {
+            // Refresh profile to update points and wallet balance
             if (user) {
               loadProfile();
               refreshUserProfile();
             }
-            toast.info(`You've earned ${formatPHP(discountAmount)} discount! Use it on your next subscription purchase.`);
+            toast.info(`${formatPHP(walletAmount)} has been added to your e-wallet!`);
           }}
         />
       </div>

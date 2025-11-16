@@ -1,6 +1,7 @@
 import { collection, query, where, getDocs, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Listing } from '@/types';
+import { sanitizeListingForGuest } from './firestore';
 
 export interface SearchFilters {
   query?: string;
@@ -40,7 +41,7 @@ export interface SearchResult {
  * @returns SearchResult with listings, total count, and pagination info
  * @throws Error if search fails
  */
-export const searchListings = async (filters: SearchFilters = {}): Promise<SearchResult> => {
+export const searchListings = async (filters: SearchFilters = {}, userId?: string): Promise<SearchResult> => {
   try {
     // Start with base query
     let q: any = query(collection(db, 'listing'));
@@ -60,10 +61,14 @@ export const searchListings = async (filters: SearchFilters = {}): Promise<Searc
 
     // Execute base query
     const snapshot = await getDocs(q);
-    let listings = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as Listing));
+    let listings = snapshot.docs.map(doc => {
+      const listing = {
+        id: doc.id,
+        ...doc.data()
+      } as Listing;
+      // Sanitize listing for guests (remove promo codes if user is not the host)
+      return sanitizeListingForGuest(listing, userId);
+    });
 
     // Client-side filtering for fields that don't support Firestore queries
     if (filters.location) {
@@ -82,7 +87,16 @@ export const searchListings = async (filters: SearchFilters = {}): Promise<Searc
     }
 
     if (filters.maxGuests !== undefined) {
-      listings = listings.filter(listing => listing.maxGuests >= filters.maxGuests!);
+      listings = listings.filter(listing => {
+        // For home listings, use maxGuests; for experience, use capacity
+        if (listing.category === 'home') {
+          return listing.maxGuests ? listing.maxGuests >= filters.maxGuests! : false;
+        } else if (listing.category === 'experience') {
+          return listing.capacity ? listing.capacity >= filters.maxGuests! : false;
+        }
+        // Service listings don't have capacity requirements
+        return true;
+      });
     }
 
     if (filters.minRating !== undefined) {
@@ -172,13 +186,13 @@ export const searchListings = async (filters: SearchFilters = {}): Promise<Searc
 /**
  * Get popular listings (by rating and review count)
  */
-export const getPopularListings = async (limitCount: number = 10): Promise<Listing[]> => {
+export const getPopularListings = async (limitCount: number = 10, userId?: string): Promise<Listing[]> => {
   try {
     const result = await searchListings({
       status: 'approved',
       sortBy: 'rating_desc',
       limit: limitCount
-    });
+    }, userId);
     return result.listings;
   } catch (error) {
     console.error('Error getting popular listings:', error);
@@ -189,14 +203,14 @@ export const getPopularListings = async (limitCount: number = 10): Promise<Listi
 /**
  * Get trending listings (recent with high ratings)
  */
-export const getTrendingListings = async (limitCount: number = 10): Promise<Listing[]> => {
+export const getTrendingListings = async (limitCount: number = 10, userId?: string): Promise<Listing[]> => {
   try {
     const result = await searchListings({
       status: 'approved',
       minRating: 4.0,
       sortBy: 'newest',
       limit: limitCount
-    });
+    }, userId);
     return result.listings;
   } catch (error) {
     console.error('Error getting trending listings:', error);
@@ -207,14 +221,14 @@ export const getTrendingListings = async (limitCount: number = 10): Promise<List
 /**
  * Get budget-friendly listings
  */
-export const getBudgetListings = async (maxPrice: number, limitCount: number = 10): Promise<Listing[]> => {
+export const getBudgetListings = async (maxPrice: number, limitCount: number = 10, userId?: string): Promise<Listing[]> => {
   try {
     const result = await searchListings({
       status: 'approved',
       maxPrice,
       sortBy: 'price_asc',
       limit: limitCount
-    });
+    }, userId);
     return result.listings;
   } catch (error) {
     console.error('Error getting budget listings:', error);

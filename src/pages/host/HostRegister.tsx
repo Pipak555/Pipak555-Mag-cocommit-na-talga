@@ -31,26 +31,20 @@ const HostRegister = () => {
 
   const plans = getAvailablePlans();
 
-  // Check if policies have been accepted
+  // Check if policies have been accepted - REQUIRED for all users
   useEffect(() => {
     const policyAccepted = sessionStorage.getItem('hostPolicyAccepted');
     if (!policyAccepted) {
-      // If user is already logged in and has host role, they've already accepted policies
-      if (user && hasRole('host')) {
-        // Set policy accepted in session so we don't redirect
-        sessionStorage.setItem('hostPolicyAccepted', 'true');
-      } else {
-        // Redirect to policy acceptance page first
-        navigate('/host/policies', { 
-          state: { 
-            returnTo: '/host/register',
-            planId: new URLSearchParams(window.location.search).get('planId'),
-            from: cameFromDashboard ? 'dashboard' : undefined
-          } 
-        });
-      }
+      // Always redirect to policy acceptance page first - no exceptions
+      navigate('/host/policies', { 
+        state: { 
+          returnTo: '/host/register',
+          planId: new URLSearchParams(window.location.search).get('planId'),
+          from: cameFromDashboard ? 'dashboard' : undefined
+        } 
+      });
     }
-  }, [navigate, user, hasRole, cameFromDashboard]);
+  }, [navigate, cameFromDashboard]);
 
   // Check if user is already logged in and has a planId in URL - go directly to payment
   useEffect(() => {

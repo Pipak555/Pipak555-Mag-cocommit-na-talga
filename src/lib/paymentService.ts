@@ -3,6 +3,19 @@ import { db } from './firebase';
 import { createTransaction } from './firestore';
 import type { Transaction, Booking } from '@/types';
 import { 
+  phpToCentavos, 
+  centavosToPHP, 
+  addCentavos, 
+  subtractCentavos, 
+  isLessThanCentavos,
+  readWalletBalanceCentavos,
+  // Legacy functions for UI calculations
+  addMoney, 
+  subtractMoney, 
+  roundMoney, 
+  isLessThan 
+} from './financialUtils';
+import { 
   notifyBookingConfirmed, 
   notifyPayment, 
   notifyBookingCancelled 
@@ -40,48 +53,141 @@ export const processBookingPayment = async (booking: Booking, paymentMethod: 'wa
     }
 
     const guestData = guestDoc.data();
-    const currentBalance = guestData.walletBalance || 0;
+    // Read balance in centavos (handles both old float and new int formats)
+    const currentBalanceCentavos = readWalletBalanceCentavos(guestData.walletBalance);
 
-    let newBalance = currentBalance;
-    
-    // If payment method is PayPal, check for PayPal payment transaction
-    if (paymentMethod === 'paypal') {
-      // No need to check for linked PayPal account - user enters it when paying
-      // Check if PayPal payment was already made
-      const paypalTransactionsQuery = query(
-        collection(db, 'transactions'),
-        where('bookingId', '==', bookingId),
-        where('type', '==', 'payment'),
-        where('paymentMethod', '==', 'paypal'),
-        where('status', '==', 'completed')
-      );
-      const paypalTx = await getDocs(paypalTransactionsQuery);
-      
-      if (paypalTx.empty) {
-        throw new Error('PayPal payment not found. Please complete the PayPal payment first.');
+    // Re-validate promo code if one was applied (ensure it's still valid when host confirms)
+    // Keep price calculations in PHP for promo code validation, then convert to centavos
+    let validatedTotalPrice = roundMoney(totalPrice);
+    if (booking.promoCode && booking.listingId) {
+      try {
+        const { validatePromoCode } = await import('./promoCodeService');
+        const validation = await validatePromoCode(booking.promoCode, booking.listingId);
+        
+        if (!validation.valid) {
+          // Promo code is no longer valid - recalculate price without promo code
+          console.warn('⚠️ Promo code no longer valid, recalculating price:', {
+            promoCode: booking.promoCode,
+            error: validation.error,
+            bookingId
+          });
+          
+          // Recalculate total price without promo code discount
+          const originalPrice = roundMoney(booking.originalPrice || booking.totalPrice);
+          const listingDiscountAmount = roundMoney(booking.listingDiscountAmount || 0);
+          const priceAfterListingDiscount = subtractMoney(originalPrice, listingDiscountAmount);
+          
+          // Update booking with corrected price
+          const correctedTotalPrice = priceAfterListingDiscount;
+          const priceDifference = subtractMoney(roundMoney(booking.totalPrice), correctedTotalPrice);
+          
+          // Update booking
+          await updateDoc(doc(db, 'bookings', bookingId), {
+            totalPrice: correctedTotalPrice,
+            promoCode: null,
+            promoCodeDiscount: null,
+            promoCodeDiscountAmount: null,
+            discountAmount: listingDiscountAmount
+          });
+          
+          // Use corrected price for payment
+          validatedTotalPrice = correctedTotalPrice;
+          
+          console.log('✅ Booking price corrected:', {
+            originalTotal: booking.totalPrice,
+            correctedTotal: correctedTotalPrice,
+            priceDifference
+          });
+        }
+      } catch (promoError) {
+        console.error('Error validating promo code during payment:', promoError);
+        // Continue with original price if validation fails (don't block payment)
       }
-      
-      // PayPal payment was successful, proceed with processing
-      // No wallet deduction needed for PayPal payments
-    } else {
-      // Check if guest has sufficient balance for wallet payment
-      if (currentBalance < totalPrice) {
-        throw new Error(`Insufficient wallet balance. Required: ₱${totalPrice.toFixed(2)}, Available: ₱${currentBalance.toFixed(2)}. Please use PayPal to complete the payment.`);
-      }
-
-      // Deduct from guest wallet
-      newBalance = currentBalance - totalPrice;
-      await updateDoc(doc(db, 'users', guestId), {
-        walletBalance: newBalance
-      });
     }
 
-    // Create payment transaction for guest (if not already created by PayPal)
+    // Convert final price to centavos for storage
+    const finalTotalPriceCentavos = phpToCentavos(roundMoney(validatedTotalPrice));
+    const finalTotalPrice = centavosToPHP(finalTotalPriceCentavos); // Keep PHP version for display
+
+    // Use atomic transaction for all wallet updates
+    const paymentResult = await runTransaction(db, async (transaction) => {
+      // Re-read guest balance within transaction
+      const guestRef = doc(db, 'users', guestId);
+      const guestDocTx = await transaction.get(guestRef);
+      if (!guestDocTx.exists()) {
+        throw new Error('Guest user not found');
+      }
+      const guestDataTx = guestDocTx.data();
+      const currentBalanceCentavosTx = readWalletBalanceCentavos(guestDataTx.walletBalance);
+
+      let guestNewBalanceCentavos = currentBalanceCentavosTx;
+
+      // If payment method is wallet, deduct from guest balance
+      if (paymentMethod === 'wallet') {
+        // Check if guest has sufficient balance for wallet payment
+        if (isLessThanCentavos(currentBalanceCentavosTx, finalTotalPriceCentavos)) {
+          const currentBalancePHP = centavosToPHP(currentBalanceCentavosTx);
+          throw new Error(`Insufficient wallet balance. Required: ₱${finalTotalPrice.toFixed(2)}, Available: ₱${currentBalancePHP.toFixed(2)}. Please use PayPal to complete the payment.`);
+        }
+
+        // Deduct from guest wallet using integer subtraction
+        guestNewBalanceCentavos = subtractCentavos(currentBalanceCentavosTx, finalTotalPriceCentavos);
+        transaction.update(guestRef, {
+          walletBalance: guestNewBalanceCentavos, // Store as integer centavos
+        });
+      } else {
+        // PayPal payment - verify payment exists
+        const paypalTransactionsQuery = query(
+          collection(db, 'transactions'),
+          where('bookingId', '==', bookingId),
+          where('type', '==', 'payment'),
+          where('paymentMethod', '==', 'paypal'),
+          where('status', '==', 'completed')
+        );
+        const paypalTx = await getDocs(paypalTransactionsQuery);
+        
+        if (paypalTx.empty) {
+          throw new Error('PayPal payment not found. Please complete the PayPal payment first.');
+        }
+      }
+
+      // Get host's current wallet balance
+      const hostRef = doc(db, 'users', booking.hostId);
+      const hostDocTx = await transaction.get(hostRef);
+      if (!hostDocTx.exists()) {
+        throw new Error('Host user not found');
+      }
+      const hostDataTx = hostDocTx.data();
+      const hostCurrentBalanceCentavos = readWalletBalanceCentavos(hostDataTx.walletBalance);
+      const earningsPayoutMethod = hostDataTx.earningsPayoutMethod || 'wallet';
+      
+      let hostNewBalanceCentavos = hostCurrentBalanceCentavos;
+
+      // Check host's payment preference
+      if (earningsPayoutMethod === 'paypal' && hostDataTx.paypalEmail && hostDataTx.paypalEmailVerified) {
+        // Host wants PayPal payout - don't add to wallet (will be processed separately)
+        hostNewBalanceCentavos = hostCurrentBalanceCentavos;
+      } else {
+        // Host wants earnings in wallet (default behavior)
+        hostNewBalanceCentavos = addCentavos(hostCurrentBalanceCentavos, finalTotalPriceCentavos);
+        transaction.update(hostRef, {
+          walletBalance: hostNewBalanceCentavos, // Store as integer centavos
+        });
+      }
+
+      return {
+        guestNewBalanceCentavos,
+        hostNewBalanceCentavos,
+        earningsPayoutMethod,
+      };
+    });
+
+    // Create transaction records (outside of Firestore transaction for simplicity)
     if (paymentMethod === 'wallet') {
       await createTransaction({
         userId: guestId,
         type: 'payment',
-        amount: totalPrice,
+        amount: finalTotalPriceCentavos, // Store as integer centavos
         description: `Booking payment for booking #${bookingId.slice(0, 8)}`,
         status: 'completed',
         paymentMethod: 'wallet',
@@ -89,68 +195,25 @@ export const processBookingPayment = async (booking: Booking, paymentMethod: 'wa
       });
     }
 
-    // Get host's current wallet balance and payment preference
-    const hostDoc = await getDoc(doc(db, 'users', booking.hostId));
-    if (!hostDoc.exists()) {
-      throw new Error('Host user not found');
-    }
-
-    const hostData = hostDoc.data();
-    const earningsPayoutMethod = hostData.earningsPayoutMethod || 'wallet'; // Default to wallet if not set
-    const hostCurrentBalance = hostData.walletBalance || 0;
-    let hostNewBalance = hostCurrentBalance;
-
-    // Check host's payment preference
-    if (earningsPayoutMethod === 'paypal') {
-      // Host wants earnings sent directly to PayPal
-      // Check if PayPal account is linked and verified
-      if (!hostData.paypalEmail || !hostData.paypalEmailVerified) {
-        // Fallback to wallet if PayPal not verified
-        console.warn('Host PayPal not verified, falling back to wallet');
-        hostNewBalance = hostCurrentBalance + totalPrice;
-        await updateDoc(doc(db, 'users', booking.hostId), {
-          walletBalance: hostNewBalance
-        });
-      } else {
-        // Create transaction with payoutStatus: 'pending' - Firebase Function will process PayPal payout
-        // Don't add to wallet, let the Firebase Function handle PayPal payout
-        await createTransaction({
-          userId: booking.hostId,
-          type: 'deposit',
-          amount: totalPrice,
-          description: `Earnings from booking #${bookingId.slice(0, 8)}`,
-          status: 'completed',
-          bookingId: bookingId,
-          payoutStatus: 'pending', // Will be processed by Firebase Function
-          payoutMethod: 'paypal' // Indicate this should go to PayPal
-        });
-        // Keep hostNewBalance as currentBalance since we're not adding to wallet
-        hostNewBalance = hostCurrentBalance;
-      }
-    } else {
-      // Host wants earnings in wallet (default behavior)
-      hostNewBalance = hostCurrentBalance + totalPrice;
-    await updateDoc(doc(db, 'users', booking.hostId), {
-      walletBalance: hostNewBalance
-    });
-
     // Create earnings transaction for host
     await createTransaction({
       userId: booking.hostId,
       type: 'deposit',
-      amount: totalPrice,
+      amount: finalTotalPriceCentavos, // Store as integer centavos
       description: `Earnings from booking #${bookingId.slice(0, 8)}`,
       status: 'completed',
       bookingId: bookingId,
-        payoutStatus: 'completed', // No payout needed, already in wallet
-        payoutMethod: 'wallet'
+      payoutStatus: paymentResult.earningsPayoutMethod === 'paypal' ? 'pending' : 'completed',
+      payoutMethod: paymentResult.earningsPayoutMethod === 'paypal' ? 'paypal' : 'wallet',
     });
-    }
+
+    const guestNewBalance = centavosToPHP(paymentResult.guestNewBalanceCentavos);
+    const hostNewBalance = centavosToPHP(paymentResult.hostNewBalanceCentavos);
 
     // Award host points for completed booking
     try {
       const { awardHostPointsForBooking } = await import('./hostPointsService');
-      await awardHostPointsForBooking(booking.hostId, bookingId, totalPrice);
+      await awardHostPointsForBooking(booking.hostId, bookingId, finalTotalPrice);
     } catch (pointsError) {
       console.error('Error awarding host points:', pointsError);
       // Don't fail payment if points award fails
@@ -162,13 +225,19 @@ export const processBookingPayment = async (booking: Booking, paymentMethod: 'wa
         bookingId,
         guestId,
         hostId: booking.hostId,
-        totalPrice,
-        guestNewBalance: newBalance,
-        hostNewBalance
+        finalTotalPricePHP: finalTotalPrice,
+        finalTotalPriceCentavos,
+        guestOldBalanceCentavos: currentBalanceCentavos,
+        guestNewBalanceCentavos: paymentResult.guestNewBalanceCentavos,
+        hostNewBalanceCentavos: paymentResult.hostNewBalanceCentavos,
+        totalPrice: finalTotalPrice,
+        guestNewBalance,
+        hostNewBalance,
+        note: 'All amounts stored as INTEGER CENTAVOS in Firestore'
       });
     }
 
-    // Mark coupon as used if one was applied to this booking
+    // Mark coupon as used if one was applied to this booking (for backward compatibility)
     if (booking.couponCode && guestData.coupons) {
       try {
         const updatedCoupons = guestData.coupons.map((coupon: any) => 
@@ -240,7 +309,7 @@ export const processBookingPayment = async (booking: Booking, paymentMethod: 'wa
       await notifyBookingConfirmed(guestId, bookingId, listingTitle);
       
       // Notify guest about payment
-      await notifyPayment(guestId, bookingId, totalPrice, 'completed');
+      await notifyPayment(guestId, bookingId, finalTotalPrice, 'completed');
     } catch (notificationError) {
       console.error('Error sending notifications:', notificationError);
       // Don't fail payment if notification fails
@@ -319,8 +388,9 @@ export const processBookingRefund = async (
 
       const guestData = guestDoc.data();
       const hostData = hostDoc.data();
-      const guestCurrentBalance = guestData.walletBalance || 0;
-      const hostCurrentBalance = hostData.walletBalance || 0;
+      // Read balances in centavos (handles both old float and new int formats)
+      const guestCurrentBalanceCentavos = readWalletBalanceCentavos(guestData.walletBalance);
+      const hostCurrentBalanceCentavos = readWalletBalanceCentavos(hostData.walletBalance);
 
       // Restore coupon if one was used for this booking
       if (booking.couponCode && guestData.coupons) {
@@ -347,19 +417,22 @@ export const processBookingRefund = async (
         }
       }
 
-      // Refund full amount to guest
-      const guestNewBalance = guestCurrentBalance + totalPrice;
+      // Convert total price to centavos for refund
+      const totalPriceCentavos = phpToCentavos(roundMoney(totalPrice));
+      
+      // Refund full amount to guest using integer addition
+      const guestNewBalanceCentavos = addCentavos(guestCurrentBalanceCentavos, totalPriceCentavos);
       transactionRef.update(doc(db, 'users', guestId), {
-        walletBalance: guestNewBalance
+        walletBalance: guestNewBalanceCentavos // Store as integer centavos
       });
 
       // Deduct full amount from host (if they already received it)
       // Only deduct if host balance is sufficient, otherwise just record the debt
-      let hostNewBalance = hostCurrentBalance;
-      if (hostCurrentBalance >= totalPrice) {
-        hostNewBalance = hostCurrentBalance - totalPrice;
+      let hostNewBalanceCentavos = hostCurrentBalanceCentavos;
+      if (!isLessThanCentavos(hostCurrentBalanceCentavos, totalPriceCentavos)) {
+        hostNewBalanceCentavos = subtractCentavos(hostCurrentBalanceCentavos, totalPriceCentavos);
         transactionRef.update(doc(db, 'users', hostId), {
-          walletBalance: hostNewBalance
+          walletBalance: hostNewBalanceCentavos // Store as integer centavos
         });
       } else {
         // Record negative balance or debt
@@ -367,20 +440,22 @@ export const processBookingRefund = async (
           console.warn('⚠️ Host balance insufficient for refund, recording debt');
         }
         // Still update host balance to negative (debt tracking)
-        hostNewBalance = hostCurrentBalance - totalPrice;
+        hostNewBalanceCentavos = subtractCentavos(hostCurrentBalanceCentavos, totalPriceCentavos);
         transactionRef.update(doc(db, 'users', hostId), {
-          walletBalance: hostNewBalance
+          walletBalance: hostNewBalanceCentavos // Store as integer centavos
         });
       }
 
       return {
-        guestNewBalance,
-        hostNewBalance,
+        guestNewBalance: centavosToPHP(guestNewBalanceCentavos), // Return PHP for UI
+        hostNewBalance: centavosToPHP(hostNewBalanceCentavos), // Return PHP for UI
+        guestNewBalanceCentavos, // Also return centavos for logging
+        hostNewBalanceCentavos, // Also return centavos for logging
         refundAmount: totalPrice
       };
     });
 
-    const { guestNewBalance, hostNewBalance, refundAmount } = refundResult;
+    const { guestNewBalance, hostNewBalance, refundAmount, guestNewBalanceCentavos, hostNewBalanceCentavos } = refundResult;
 
     // Only log in development
     if (import.meta.env.DEV) {
@@ -389,9 +464,13 @@ export const processBookingRefund = async (
         guestId,
         hostId,
         totalPrice,
+        refundAmountCentavos: phpToCentavos(roundMoney(totalPrice)),
         guestNewBalance,
+        guestNewBalanceCentavos,
         hostNewBalance,
-        cancelledBy
+        hostNewBalanceCentavos,
+        cancelledBy,
+        note: 'All amounts stored as INTEGER CENTAVOS in Firestore'
       });
     }
 
@@ -516,8 +595,9 @@ export const processTransactionRefund = async (
       }
 
       const userData = userDoc.data();
-      const currentBalance = userData.walletBalance || 0;
-      const newBalance = currentBalance + amount;
+      const currentBalance = roundMoney(userData.walletBalance || 0);
+      const amountRounded = roundMoney(amount);
+      const newBalance = addMoney(currentBalance, amountRounded);
 
       // Update wallet balance atomically
       transactionRef.update(doc(db, 'users', userId), {
@@ -614,8 +694,11 @@ export const confirmTransaction = async (transactionId: string) => {
       const userDoc = await getDoc(doc(db, 'users', transaction.userId));
       if (userDoc.exists()) {
         const userData = userDoc.data();
-        const currentBalance = userData.walletBalance || 0;
-        const newBalance = currentBalance + (transaction.type === 'deposit' || transaction.type === 'reward' ? transaction.amount : -transaction.amount);
+        const currentBalance = roundMoney(userData.walletBalance || 0);
+        const transactionAmount = roundMoney(transaction.amount);
+        const newBalance = (transaction.type === 'deposit' || transaction.type === 'reward') 
+          ? addMoney(currentBalance, transactionAmount)
+          : subtractMoney(currentBalance, transactionAmount);
         
         await updateDoc(doc(db, 'users', transaction.userId), {
           walletBalance: newBalance
