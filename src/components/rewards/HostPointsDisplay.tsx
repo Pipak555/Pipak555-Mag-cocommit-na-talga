@@ -5,6 +5,16 @@ import { Gift, Award, Loader2 } from "lucide-react";
 import { formatPHP } from "@/lib/currency";
 import { toast } from "sonner";
 import { redeemHostPointsForEwallet } from "@/lib/hostPointsService";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface HostPointsDisplayProps {
   points: number;
@@ -14,6 +24,8 @@ interface HostPointsDisplayProps {
 
 export const HostPointsDisplay = ({ points, userId, onRedeem }: HostPointsDisplayProps) => {
   const [redeeming, setRedeeming] = useState<string | null>(null);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [selectedTier, setSelectedTier] = useState<{ points: number; amount: number } | null>(null);
 
   // Reward tiers with conversion rate: 10 points = ₱1
   const rewardTiers = [
@@ -24,13 +36,27 @@ export const HostPointsDisplay = ({ points, userId, onRedeem }: HostPointsDispla
     { points: 1000, amount: 100, description: "₱100 e-wallet money" }
   ];
 
-  const handleRedeem = async (pointsToRedeem: number, walletAmount: number) => {
+  const handleRedeemClick = (pointsToRedeem: number, walletAmount: number) => {
     if (!userId) {
       toast.error("User ID is required to redeem points");
       return;
     }
+    
+    // Show confirmation dialog
+    console.log('Opening confirmation dialog for:', { pointsToRedeem, walletAmount });
+    setSelectedTier({ points: pointsToRedeem, amount: walletAmount });
+    setConfirmDialogOpen(true);
+  };
 
+  const handleConfirmRedeem = async () => {
+    if (!userId || !selectedTier) {
+      return;
+    }
+
+    const { points: pointsToRedeem, amount: walletAmount } = selectedTier;
+    setConfirmDialogOpen(false);
     setRedeeming(`${pointsToRedeem}`);
+    
     try {
       const actualAmount = await redeemHostPointsForEwallet(
         userId,
@@ -49,6 +75,7 @@ export const HostPointsDisplay = ({ points, userId, onRedeem }: HostPointsDispla
       toast.error(`Failed to redeem points: ${error.message || 'Unknown error'}`);
     } finally {
       setRedeeming(null);
+      setSelectedTier(null);
     }
   };
 
@@ -86,7 +113,7 @@ export const HostPointsDisplay = ({ points, userId, onRedeem }: HostPointsDispla
                 size="sm"
                 variant="role-host"
                 disabled={points < tier.points || redeeming === `${tier.points}`}
-                onClick={() => handleRedeem(tier.points, tier.amount)}
+                onClick={() => handleRedeemClick(tier.points, tier.amount)}
               >
                 {redeeming === `${tier.points}` ? (
                   <>
@@ -115,6 +142,56 @@ export const HostPointsDisplay = ({ points, userId, onRedeem }: HostPointsDispla
           </ul>
         </div>
       </CardContent>
+
+      {/* Confirmation Dialog */}
+      <AlertDialog 
+        open={confirmDialogOpen} 
+        onOpenChange={(open) => {
+          setConfirmDialogOpen(open);
+          if (!open) {
+            setSelectedTier(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Points Redemption</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                <p>Are you sure you want to redeem your points?</p>
+                {selectedTier && (
+                  <div className="mt-4 space-y-2 p-3 bg-muted rounded-md">
+                    <div className="flex justify-between">
+                      <span className="text-sm font-medium">Points to redeem:</span>
+                      <span className="text-sm font-bold">{selectedTier.points} points</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm font-medium">E-wallet credit:</span>
+                      <span className="text-sm font-bold text-primary">{formatPHP(selectedTier.amount)}</span>
+                    </div>
+                    <div className="flex justify-between pt-2 border-t">
+                      <span className="text-sm font-medium">Remaining points:</span>
+                      <span className="text-sm font-bold">{points - selectedTier.points} points</span>
+                    </div>
+                  </div>
+                )}
+                <p className="mt-3 text-xs text-muted-foreground">
+                  This action cannot be undone. The points will be deducted and the amount will be added to your e-wallet balance.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmRedeem}
+              className="bg-role-host hover:bg-role-host/90"
+            >
+              Confirm Redemption
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 };

@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { EmailVerificationBanner } from "@/components/guest/EmailVerificationBanner";
 import { getListing, createBooking, getListingRating, getBookings } from "@/lib/firestore";
 import { isListingAvailableForDates } from "@/lib/availabilityUtils";
+import { getPendingBookingForGuest, getOverlappingBookings } from "@/lib/bookingValidation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -42,7 +43,10 @@ const ListingDetails = () => {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxImageIndex, setLightboxImageIndex] = useState(0);
   const [confirmedBookings, setConfirmedBookings] = useState<any[]>([]);
+  const [pendingBookings, setPendingBookings] = useState<any[]>([]);
   const [reviewRefreshTrigger, setReviewRefreshTrigger] = useState(0);
+  const [pendingBooking, setPendingBooking] = useState<{ id: string; checkIn: string; checkOut: string } | null>(null);
+  const [hasOverlappingBookings, setHasOverlappingBookings] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -116,6 +120,11 @@ const ListingDetails = () => {
       
       // Load confirmed bookings for this listing
       await loadConfirmedBookings();
+      
+      // Check for pending booking from this guest
+      if (user) {
+        await loadPendingBooking();
+      }
     }
   };
   
@@ -153,20 +162,69 @@ const ListingDetails = () => {
       // Fetch confirmed bookings for this specific listing
       const listingBookings = await getBookings({ listingId: id, status: 'confirmed' });
       setConfirmedBookings(listingBookings);
+      
+      // Also fetch pending bookings to check for conflicts
+      const pendingListingBookings = await getBookings({ listingId: id, status: 'pending' });
+      setPendingBookings(pendingListingBookings);
     } catch (error) {
-      console.error('Error loading confirmed bookings:', error);
+      console.error('Error loading bookings:', error);
       setConfirmedBookings([]);
+      setPendingBookings([]);
     }
   };
 
-  // Check if a date is booked (confirmed by host)
+  const loadPendingBooking = async () => {
+    if (!id || !user) return;
+    try {
+      const pending = await getPendingBookingForGuest(user.uid, id);
+      if (pending) {
+        setPendingBooking({
+          id: pending.id,
+          checkIn: pending.checkIn,
+          checkOut: pending.checkOut
+        });
+      } else {
+        setPendingBooking(null);
+      }
+    } catch (error) {
+      console.error('Error loading pending booking:', error);
+      setPendingBooking(null);
+    }
+  };
+
+  // Check for overlapping bookings when date range changes
+  useEffect(() => {
+    const checkOverlappingBookings = async () => {
+      if (!id || !dateRange?.from || !dateRange?.to) {
+        setHasOverlappingBookings(false);
+        return;
+      }
+      
+      try {
+        const overlapping = await getOverlappingBookings(
+          id,
+          dateRange.from,
+          dateRange.to
+        );
+        setHasOverlappingBookings(overlapping.length > 0);
+      } catch (error) {
+        console.error('Error checking overlapping bookings:', error);
+        setHasOverlappingBookings(false);
+      }
+    };
+    
+    checkOverlappingBookings();
+  }, [id, dateRange]);
+
+  // Check if a date is booked (confirmed or pending)
   const isDateBooked = (date: Date): boolean => {
-    if (!confirmedBookings.length) return false;
+    const allBookings = [...confirmedBookings, ...pendingBookings];
+    if (!allBookings.length) return false;
     
     const dateStr = date.toISOString().split('T')[0];
     const dateTime = date.getTime();
     
-    return confirmedBookings.some(booking => {
+    return allBookings.some(booking => {
       const checkIn = new Date(booking.checkIn);
       const checkOut = new Date(booking.checkOut);
       checkIn.setHours(0, 0, 0, 0);
@@ -394,11 +452,24 @@ const ListingDetails = () => {
       return;
     }
 
+    // Check if guest has a pending booking for this listing
+    if (pendingBooking) {
+      toast.error("You already have a pending booking request for this listing. Please wait for the host to respond to your previous request before making a new one.");
+      return;
+    }
+
     // Validate that the selected dates are available (for home and experience)
     if ((listing.category === 'home' || listing.category === 'experience') && dateRange?.from && dateRange?.to) {
-      const isAvailable = isListingAvailableForDates(listing, dateRange.from, dateRange.to, confirmedBookings);
+      // Check availability including both confirmed and pending bookings
+      const isAvailable = isListingAvailableForDates(listing, dateRange.from, dateRange.to, confirmedBookings, pendingBookings);
       if (!isAvailable) {
         toast.error("The selected dates are not available. Please choose different dates.");
+        return;
+      }
+      
+      // Additional check for overlapping bookings (this is redundant but provides better error messages)
+      if (hasOverlappingBookings) {
+        toast.error("The selected dates have conflicting bookings. Please choose different dates.");
         return;
       }
     }
@@ -1048,13 +1119,37 @@ const ListingDetails = () => {
                   </div>
                 )}
 
-                <Button 
-                  className="w-full h-12 sm:h-auto text-base sm:text-sm touch-manipulation" 
-                  onClick={handleBooking}
-                  disabled={!dateRange?.from || !dateRange?.to || !guests || guests < 1 || guests > listing.maxGuests || loading}
-                >
-                  {loading ? "Booking..." : "Request to Book"}
-                </Button>
+                {pendingBooking ? (
+                  <div className="space-y-2">
+                    <Button 
+                      className="w-full h-12 sm:h-auto text-base sm:text-sm touch-manipulation" 
+                      disabled={true}
+                      variant="outline"
+                    >
+                      Booking Request Pending
+                    </Button>
+                    <p className="text-xs text-muted-foreground text-center">
+                      You have a pending booking request for this listing (Check-in: {new Date(pendingBooking.checkIn).toLocaleDateString()}, Check-out: {new Date(pendingBooking.checkOut).toLocaleDateString()}). 
+                      Please wait for the host to respond before making a new request.
+                    </p>
+                  </div>
+                ) : (
+                  <Button 
+                    className="w-full h-12 sm:h-auto text-base sm:text-sm touch-manipulation" 
+                    onClick={handleBooking}
+                    disabled={
+                      !dateRange?.from || 
+                      !dateRange?.to || 
+                      !guests || 
+                      guests < 1 || 
+                      guests > (listing.category === 'home' ? listing.maxGuests : listing.capacity || 1) || 
+                      loading ||
+                      hasOverlappingBookings
+                    }
+                  >
+                    {loading ? "Booking..." : hasOverlappingBookings ? "Dates Not Available" : "Request to Book"}
+                  </Button>
+                )}
               </CardContent>
             </Card>
 

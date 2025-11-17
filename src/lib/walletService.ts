@@ -5,7 +5,7 @@
  * Client-side implementation (no Cloud Functions required)
  */
 
-import { doc, getDoc, collection, addDoc, updateDoc, query, where, getDocs, runTransaction } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, updateDoc, query, where, getDocs, runTransaction, orderBy, limit } from 'firebase/firestore';
 import { db } from './firebase';
 import { 
   phpToCentavos, 
@@ -19,6 +19,7 @@ import {
   roundMoney 
 } from './financialUtils';
 import { createTransaction } from './firestore';
+import { notifyWalletDeposit, notifyAdminDepositReceived } from './notifications';
 
 /**
  * PayPal breakdown details from order capture
@@ -270,6 +271,21 @@ export const processWalletTopUp = async (
         const adminRef = doc(db, 'users', adminUserId);
         const adminNewBalanceCentavos = addCentavos(adminCurrentBalanceCentavos, adminReceivedAmountCentavos);
         
+        // DIAGNOSTIC: Log admin balance update inside transaction
+        console.log(`🔍 DIAGNOSTIC - Admin Balance Update (inside transaction):`, {
+          adminUserId,
+          adminCurrentBalanceCentavos,
+          adminCurrentBalancePHP: centavosToPHP(adminCurrentBalanceCentavos),
+          adminReceivedAmountCentavos,
+          adminReceivedAmountPHP: centavosToPHP(adminReceivedAmountCentavos),
+          adminNewBalanceCentavos,
+          adminNewBalancePHP: centavosToPHP(adminNewBalanceCentavos),
+          guestSentAmountCentavos: walletCreditAmountCentavos,
+          guestSentAmountPHP: centavosToPHP(walletCreditAmountCentavos),
+          amountsMatch: adminReceivedAmountCentavos === walletCreditAmountCentavos,
+          note: 'Updating admin balance inside Firestore transaction'
+        });
+        
         // Update admin wallet balance atomically
         transaction.update(adminRef, {
           walletBalance: adminNewBalanceCentavos, // Store as integer centavos
@@ -277,6 +293,12 @@ export const processWalletTopUp = async (
         
         // Note: Admin transaction record will be created after the transaction commits
         // (outside transaction to avoid size limits)
+      } else {
+        console.warn('⚠️ DIAGNOSTIC - Admin balance NOT updated:', {
+          adminUserId: adminUserId || 'NULL',
+          adminDocExists: adminDoc?.exists() || false,
+          note: 'Admin balance will NOT be updated in this transaction!'
+        });
       }
 
       return {
@@ -298,6 +320,24 @@ export const processWalletTopUp = async (
         if (adminDoc.exists()) {
           const adminData = adminDoc.data();
           const adminCurrentBalanceCentavos = readWalletBalanceCentavos(adminData?.walletBalance || 0);
+          
+          // CRITICAL DIAGNOSTIC: Calculate expected balance
+          // The balance should have been updated in the transaction above
+          // Expected balance = what we read before transaction + adminReceivedAmountCentavos
+          // But we're reading AFTER the transaction, so it should already include the update
+          const expectedAdminBalanceCentavos = adminCurrentBalanceCentavos; // This should already include the update
+          
+          // DIAGNOSTIC: Log what we expect vs what we see
+          console.log(`🔍 DIAGNOSTIC - Admin Balance Check:`, {
+            adminUserId,
+            adminReceivedAmountPHP: centavosToPHP(adminReceivedAmountCentavos),
+            adminReceivedAmountCentavos,
+            adminCurrentBalancePHP: centavosToPHP(adminCurrentBalanceCentavos),
+            adminCurrentBalanceCentavos,
+            expectedBalancePHP: centavosToPHP(expectedAdminBalanceCentavos),
+            expectedBalanceCentavos: expectedAdminBalanceCentavos,
+            note: 'Admin balance should have been updated in the transaction above. This is the balance AFTER the update.'
+          });
           
           // Create admin transaction record showing they received the full amount
           await createTransaction({
@@ -323,17 +363,44 @@ export const processWalletTopUp = async (
             adminCurrentBalancePHP: centavosToPHP(adminCurrentBalanceCentavos),
             adminCurrentBalanceCentavos,
             guestTransactionId: result.transactionId,
+            guestSentAmountPHP: centavosToPHP(walletCreditAmountCentavos),
+            guestSentAmountCentavos: walletCreditAmountCentavos,
+            amountsMatch: adminReceivedAmountCentavos === walletCreditAmountCentavos,
             note: 'CRITICAL: Admin receives 100% of what guest paid - no fees, no deductions'
+          });
+          
+          // CRITICAL VALIDATION: Verify amounts match
+          if (adminReceivedAmountCentavos !== walletCreditAmountCentavos) {
+            console.error(`❌ CRITICAL MISMATCH DETECTED:`, {
+              guestSentCentavos: walletCreditAmountCentavos,
+              guestSentPHP: centavosToPHP(walletCreditAmountCentavos),
+              adminReceivedCentavos: adminReceivedAmountCentavos,
+              adminReceivedPHP: centavosToPHP(adminReceivedAmountCentavos),
+              differenceCentavos: Math.abs(adminReceivedAmountCentavos - walletCreditAmountCentavos),
+              differencePHP: Math.abs(centavosToPHP(adminReceivedAmountCentavos) - centavosToPHP(walletCreditAmountCentavos)),
+              note: 'THIS SHOULD NEVER HAPPEN - adminReceivedAmountCentavos should equal walletCreditAmountCentavos'
+            });
+          }
+        } else {
+          console.error('❌ CRITICAL: Admin document does not exist after transaction!', {
+            adminUserId,
+            note: 'This should not happen - admin document should exist'
           });
         }
       } catch (adminError: any) {
         console.error('❌ Error creating admin transaction:', adminError);
+        console.error('❌ Error details:', {
+          message: adminError.message,
+          code: adminError.code,
+          stack: adminError.stack
+        });
         // Don't fail the guest transaction if admin transaction creation fails
         // But log it as a critical error
         console.error('❌ CRITICAL: Guest deposit processed but admin transaction not created!');
       }
     } else {
       console.warn('⚠️ WARNING: Admin user not found - admin transaction not created');
+      console.warn('⚠️ This means admin balance was NOT updated and admin transaction was NOT created!');
     }
 
     // Verify the balance calculation is correct (using centavos for exact comparison)
@@ -407,6 +474,42 @@ export const processWalletTopUp = async (
     // CRITICAL: Final validation - admin_received MUST equal guest_sent
     if (adminReceivedAmountCentavos !== walletCreditAmountCentavos) {
       throw new Error(`CRITICAL VALIDATION FAILED: Admin received (${adminReceivedAmountCentavos} centavos) does not equal guest sent (${walletCreditAmountCentavos} centavos). This is a system error!`);
+    }
+
+    // Send notifications
+    try {
+      // Get user role for notification
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      const userData = userDoc.exists() ? userDoc.data() : null;
+      const userRole = userData?.role || 'guest';
+      
+      // Notify user about successful deposit
+      await notifyWalletDeposit(userId, result.transactionId, walletCreditAmount, userRole as 'host' | 'guest' | 'admin');
+      
+      // Notify admin about received payment
+      if (adminUserId) {
+        // Find admin transaction ID (created after guest transaction)
+        try {
+          const adminTransactionsQuery = query(
+            collection(db, 'transactions'),
+            where('userId', '==', adminUserId),
+            where('paymentId', '==', orderId),
+            where('type', '==', 'deposit'),
+            orderBy('createdAt', 'desc'),
+            limit(1)
+          );
+          const adminTransactions = await getDocs(adminTransactionsQuery);
+          const adminTransactionId = adminTransactions.empty ? result.transactionId : adminTransactions.docs[0].id;
+          
+          await notifyAdminDepositReceived(adminUserId, adminTransactionId, walletCreditAmount, userId);
+        } catch (adminNotifError) {
+          console.error('Error sending admin deposit notification:', adminNotifError);
+          // Don't fail the transaction if notification fails
+        }
+      }
+    } catch (notificationError) {
+      console.error('Error sending deposit notifications:', notificationError);
+      // Don't fail the transaction if notification fails
     }
 
     return {

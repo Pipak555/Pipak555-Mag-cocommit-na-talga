@@ -45,6 +45,18 @@ export interface Listing {
   whatsIncluded?: string[]; // What's included in the experience
 }
 
+export type PayPalRole = 'guest' | 'host' | 'admin';
+
+export interface PayPalLinkInfo {
+  email: string | null;
+  payerId?: string | null;
+  accessToken?: string | null;
+  refreshToken?: string | null;
+  linkedAt?: string | null;
+}
+
+export type PayPalLinks = Partial<Record<PayPalRole, PayPalLinkInfo>>;
+
 export interface Booking {
   id: string;
   listingId: string;
@@ -64,6 +76,10 @@ export interface Booking {
   discountAmount?: number; // Total discount amount applied (listing + promo code + coupon)
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
   cancellationRequestId?: string; // ID of pending cancellation request
+  refundStatus?: 'not_eligible' | 'eligible' | 'processing' | 'refunded' | 'failed'; // Refund status
+  refundAmount?: number; // Amount refunded (in PHP)
+  refundedAt?: string; // When refund was processed
+  refundTransactionId?: string; // Transaction ID of the refund
   createdAt: string;
 }
 
@@ -132,6 +148,11 @@ export interface Transaction {
   payoutProcessedAt?: string; // When payout was processed
   payoutMethod?: 'paypal'; // Payout method
   payoutError?: string; // Error message if payout failed
+  payoutNote?: string; // Note about manual PayPal transfer (for cost-free implementation)
+  // Withdrawal-specific fields
+  walletDeduction?: number; // Amount to deduct from wallet (in centavos) when withdrawal is confirmed
+  adminAbsorbsFees?: boolean; // Whether admin absorbs PayPal fees
+  paypalEmail?: string; // PayPal email for withdrawal transactions
   createdAt: string;
 }
 
@@ -194,9 +215,21 @@ export interface UserProfile {
   notifications?: NotificationPreferences;
   policyAccepted?: boolean;
   policyAcceptedDate?: string;
+  
+  // PayPal accounts (unified)
+  paypalLinks?: PayPalLinks;
+  
+  // Legacy PayPal fields (kept for backward compatibility)
   paypalEmail?: string;
   paypalEmailVerified?: boolean;
+  paypalOAuthVerified?: boolean;
+  hostPayPalEmail?: string;
+  hostPayPalEmailVerified?: boolean;
+  hostPayPalOAuthVerified?: boolean;
   adminPayPalEmail?: string;
+  adminPayPalEmailVerified?: boolean;
+  adminPayPalOAuthVerified?: boolean;
+  
   earningsPayoutMethod?: 'wallet' | 'paypal'; // Host preference: where earnings should go
 }
 

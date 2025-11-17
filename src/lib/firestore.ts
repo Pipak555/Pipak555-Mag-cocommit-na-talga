@@ -247,6 +247,21 @@ export const createBooking = async (data: Omit<Booking, 'id' | 'createdAt'>) => 
     throw new Error('Booking must have a listingId');
   }
   
+  // Validate booking to prevent duplicates and conflicts
+  if (data.checkIn && data.checkOut) {
+    const { validateBookingCreation } = await import('./bookingValidation');
+    const validation = await validateBookingCreation(
+      data.guestId,
+      data.listingId,
+      data.checkIn,
+      data.checkOut
+    );
+    
+    if (!validation.valid) {
+      throw new Error(validation.error || 'Booking validation failed');
+    }
+  }
+  
   const bookingData = {
     ...data,
     hostId: String(data.hostId), // Ensure hostId is a string

@@ -8,7 +8,7 @@
  * This creates a pending withdrawal request that admin processes manually.
  */
 
-import { doc, getDoc, updateDoc, collection, addDoc, query, where, getDocs, orderBy, runTransaction } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, addDoc, query, where, getDocs, orderBy, runTransaction, or } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Transaction } from '@/types';
 import { 
@@ -21,6 +21,9 @@ import {
   calculatePayPalPayoutFee,
   calculateWithdrawalWithFees
 } from './financialUtils';
+import { notifyWithdrawalRequest, notifyAdminWithdrawalRequest } from './notifications';
+import { logPayPalEvent } from './paypalLogger';
+import { getPayPalLink } from './paypalLinks';
 
 /**
  * Get withdrawal fee configuration
@@ -64,59 +67,115 @@ const getFeeConfiguration = async (): Promise<{ adminAbsorbsFees: boolean }> => 
  * 
  * @param userId - User ID requesting withdrawal
  * @param amount - Amount guest wants to receive (in PHP) - admin will send this full amount
- * @param paypalEmail - PayPal email to send money to
  * @param guestPaysFees - Optional: Override fee configuration (if true, guest pays fees)
  * @returns Transaction ID and success status
+ * 
+ * CRITICAL REQUIREMENTS:
+ * - Guest MUST have a linked PayPal account (paypalEmail and paypalEmailVerified or paypalOAuthVerified)
+ * - Admin MUST have a linked PayPal account (adminPayPalEmail and adminPayPalEmailVerified or adminPayPalOAuthVerified)
+ * - Uses guest's linked PayPal email (not manual input)
+ * - Uses admin's linked PayPal email as source of funds
  */
 export const requestGuestWithdrawal = async (
   userId: string,
-  amount: number,
-  paypalEmail: string,
-  guestPaysFees?: boolean
+  amount: number
 ): Promise<{ success: boolean; transactionId: string; newBalance: number; message: string; fee: number; amountReceived: number }> => {
   try {
+    console.log(`🔄 Guest withdrawal request initiated:`, {
+      userId,
+      amount,
+      note: 'No fees - exact amount transfer'
+    });
+
     if (amount <= 0) {
       throw new Error('Withdrawal amount must be greater than 0');
     }
 
-    if (!paypalEmail || !paypalEmail.includes('@')) {
-      throw new Error('Valid PayPal email is required');
+    // Get user document to verify linked PayPal account
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    if (!userDoc.exists()) {
+      throw new Error('User not found');
     }
 
-    // Get fee configuration
-    const feeConfig = await getFeeConfiguration();
-    const adminAbsorbsFees = guestPaysFees === undefined ? feeConfig.adminAbsorbsFees : !guestPaysFees;
-
-    // Determine amounts based on who pays fees
-    let walletDeductionAmount: number;
-    let amountGuestReceives: number;
-    let amountToSend: number; // Amount admin will send via PayPal
-    let fee: number;
+    const userData = userDoc.data();
+    const guestLink = getPayPalLink(userData as any, 'guest');
+    const paypalEmail = guestLink?.email?.toLowerCase().trim();
+    const isGuestPayPalLinked = !!paypalEmail;
     
-    if (adminAbsorbsFees) {
-      // Admin absorbs fees: guest receives full amount, wallet deducted only the withdrawal amount
-      // Amount to send = what guest wants to receive
-      amountToSend = amount;
-      fee = calculatePayPalPayoutFee(amountToSend);
-      walletDeductionAmount = amount;
-      amountGuestReceives = amount; // Guest receives full amount
-    } else {
-      // Guest pays fees: guest wants to receive 'amount' after fees
-      // We need to calculate how much to send so guest receives 'amount' after fees
-      // If we send X, fee = calculatePayPalPayoutFee(X), guest receives X - fee
-      // We want: X - fee = amount, so X = amount + fee
-      // But fee depends on X, so we need to iterate or approximate
-      // For simplicity, calculate fee on the desired amount, then add it
-      fee = calculatePayPalPayoutFee(amount);
-      amountToSend = amount; // Send the amount guest wants (fees will be deducted by PayPal)
-      walletDeductionAmount = amount + fee; // Deduct withdrawal + fees from wallet
-      amountGuestReceives = amount - fee; // Guest receives amount minus fees
+    console.log(`🔍 Guest PayPal verification (AUTOMATIC):`, {
+      guestPayPalEmail: paypalEmail || 'NOT SET',
+      payerId: guestLink?.payerId,
+      isLinked: isGuestPayPalLinked,
+      source: 'Automatically retrieved from user profile'
+    });
+
+    if (!isGuestPayPalLinked || !paypalEmail) {
+      throw new Error('You must link your PayPal account before requesting a withdrawal. Please link your PayPal account in your account settings.');
     }
+
+    console.log(`✅ Guest PayPal automatically retrieved and verified: ${paypalEmail}`);
+
+    // NO FEES - Simple withdrawal: guest receives exactly what they request
+    // Amount to send = what guest wants to receive = what gets deducted from both wallets
+    const amountToSend = amount;
+    const walletDeductionAmount = amount;
+    const amountGuestReceives = amount;
+    const fee = 0; // No fees
 
     // Convert to centavos for storage
     const walletDeductionCentavos = phpToCentavos(walletDeductionAmount);
     const amountCentavos = phpToCentavos(amount);
-    const feeCentavos = phpToCentavos(fee);
+    const feeCentavos = 0; // No fees
+
+    // AUTOMATIC: Get admin's linked PayPal account (source of funds)
+    // No manual input required - system automatically uses the admin's linked PayPal
+    const adminUsersQuery = query(
+      collection(db, 'users'),
+      or(
+        where('role', '==', 'admin'),
+        where('roles', 'array-contains', 'admin')
+      )
+    );
+    const adminUsersSnapshot = await getDocs(adminUsersQuery);
+    
+    if (adminUsersSnapshot.empty) {
+      throw new Error('Admin account not found. Cannot process withdrawal.');
+    }
+    
+    const adminUserDoc = adminUsersSnapshot.docs[0];
+    const adminData = adminUserDoc.data();
+    const adminLink = getPayPalLink(adminData as any, 'admin');
+    const adminPayPalEmail = adminLink?.email || null;
+    const isAdminPayPalLinked = !!adminPayPalEmail;
+    
+    console.log(`🔍 Admin PayPal verification (AUTOMATIC):`, {
+      adminUserId: adminUserDoc.id,
+      adminPayPalEmail: adminPayPalEmail || 'NOT SET',
+      payerId: adminLink?.payerId,
+      isLinked: isAdminPayPalLinked,
+      source: 'Automatically retrieved from admin profile'
+    });
+
+    if (!isAdminPayPalLinked || !adminPayPalEmail) {
+      throw new Error('Admin PayPal account is not linked. Please contact support.');
+    }
+
+    console.log(`✅ Admin PayPal automatically retrieved and verified: ${adminPayPalEmail}`);
+
+    // Check if user already has a pending withdrawal request
+    const pendingWithdrawalsQuery = query(
+      collection(db, 'transactions'),
+      where('userId', '==', userId),
+      where('type', '==', 'withdrawal'),
+      where('status', '==', 'pending')
+    );
+    const pendingWithdrawalsSnapshot = await getDocs(pendingWithdrawalsQuery);
+    
+    if (!pendingWithdrawalsSnapshot.empty) {
+      throw new Error('You already have a pending withdrawal request. Please wait for it to be approved before requesting another withdrawal.');
+    }
+
+    console.log(`✅ No pending withdrawals found - proceeding with new request`);
 
     // Use Firestore transaction for atomic operations
     const result = await runTransaction(db, async (transaction) => {
@@ -132,55 +191,58 @@ export const requestGuestWithdrawal = async (
       // Read balance in centavos (handles both old float and new int formats)
       const currentBalanceCentavos = readWalletBalanceCentavos(userData?.walletBalance);
 
-      // Validate sufficient balance (check if balance covers withdrawal + fees if guest pays)
+      // Validate sufficient balance
+      // NOTE: Balance is NOT deducted here - it will be deducted when admin confirms the withdrawal
       if (isLessThanCentavos(currentBalanceCentavos, walletDeductionCentavos)) {
         const currentBalancePHP = centavosToPHP(currentBalanceCentavos);
-        if (adminAbsorbsFees) {
-          throw new Error(`Insufficient balance. Available: ₱${currentBalancePHP.toFixed(2)}, Required: ₱${walletDeductionAmount.toFixed(2)}`);
-        } else {
-          throw new Error(`Insufficient balance. Available: ₱${currentBalancePHP.toFixed(2)}, Required: ₱${walletDeductionAmount.toFixed(2)} (withdrawal: ₱${amount.toFixed(2)} + fees: ₱${fee.toFixed(2)})`);
-        }
+        throw new Error(`Insufficient balance. Available: ₱${currentBalancePHP.toFixed(2)}, Required: ₱${walletDeductionAmount.toFixed(2)}`);
       }
 
-      // Calculate new balance using integer subtraction (no rounding errors)
-      const newBalanceCentavos = subtractCentavos(currentBalanceCentavos, walletDeductionCentavos);
-
       // Create withdrawal transaction record
+      // Balance will be deducted when admin confirms the withdrawal
       const transactionRef = doc(collection(db, 'transactions'));
       const transactionId = transactionRef.id;
 
       const transactionData: any = {
         userId,
         type: 'withdrawal',
-        amount: phpToCentavos(amountToSend), // Amount admin will send (what guest receives if admin absorbs fees)
-        walletDeduction: walletDeductionCentavos, // Amount deducted from wallet
-        fee: feeCentavos, // PayPal payout fee
-        adminAbsorbsFees, // Who pays the fees
+        amount: phpToCentavos(amountToSend), // Amount admin will send (exact amount, no fees)
+        walletDeduction: walletDeductionCentavos, // Amount to deduct from wallet when confirmed
+        fee: 0, // No fees
+        adminAbsorbsFees: true, // Not used anymore but kept for compatibility
         description: `Withdrawal request to ${paypalEmail}`,
         status: 'pending', // Admin will process and update to 'completed' or 'failed'
         paymentMethod: 'paypal',
-        paypalEmail: paypalEmail.toLowerCase().trim(), // Store normalized email
+        paypalEmail: paypalEmail, // Guest's linked PayPal email (destination)
+        adminPayPalEmail: adminPayPalEmail, // Admin's linked PayPal email (source)
         createdAt: new Date().toISOString(),
         // Payout tracking fields
         payoutStatus: 'pending', // Will be updated by admin when processing
         payoutMethod: 'paypal',
       };
 
-      // Add transaction record atomically
-      transaction.set(transactionRef, transactionData);
-
-      // Update wallet balance atomically
-      // Store as INTEGER CENTAVOS (no floats, no rounding errors)
-      transaction.update(userRef, {
-        walletBalance: newBalanceCentavos, // Store as integer centavos
+      console.log(`📝 Transaction data prepared:`, {
+        transactionId: transactionRef.id,
+        amountToSendCentavos: phpToCentavos(amountToSend),
+        amountToSendPHP: amountToSend.toFixed(2),
+        walletDeductionCentavos,
+        walletDeductionPHP: walletDeductionAmount.toFixed(2),
+        fee: 0,
+        guestPayPalEmail: paypalEmail,
+        adminPayPalEmail: adminPayPalEmail,
+        note: 'No fees - exact amount transfer'
       });
+
+      // Add transaction record atomically
+      // NOTE: Wallet balance is NOT updated here - it will be deducted when admin confirms
+      transaction.set(transactionRef, transactionData);
 
       return {
         transactionId,
         currentBalance: centavosToPHP(currentBalanceCentavos), // Return PHP for UI
-        newBalance: centavosToPHP(newBalanceCentavos), // Return PHP for UI
+        newBalance: centavosToPHP(currentBalanceCentavos), // Balance unchanged until confirmed
         currentBalanceCentavos, // Also return centavos for logging
-        newBalanceCentavos, // Also return centavos for logging
+        newBalanceCentavos: currentBalanceCentavos, // Balance unchanged until confirmed
       };
     });
 
@@ -188,26 +250,74 @@ export const requestGuestWithdrawal = async (
       userId,
       transactionId: result.transactionId,
       withdrawalAmount: amount,
-      fee: fee,
       walletDeduction: walletDeductionAmount,
       amountGuestReceives: amountGuestReceives,
-      adminAbsorbsFees,
-      paypalEmail,
+      guestPayPalEmail: paypalEmail,
+      adminPayPalEmail: adminPayPalEmail,
       oldBalancePHP: result.currentBalance,
       newBalancePHP: result.newBalance,
       status: 'pending',
-      note: 'All amounts stored as INTEGER CENTAVOS in Firestore'
+      note: 'No fees - exact amount transfer. All amounts stored as INTEGER CENTAVOS in Firestore. Admin wallet will be deducted when withdrawal is approved.'
     });
 
-    const message = adminAbsorbsFees
-      ? `Withdrawal request of ₱${amount.toFixed(2)} submitted successfully! You will receive ₱${amountGuestReceives.toFixed(2)} (fees paid by admin). Funds will be sent to ${paypalEmail} once processed.`
-      : `Withdrawal request submitted! You will receive ₱${amountGuestReceives.toFixed(2)} after ₱${fee.toFixed(2)} PayPal fees. Total deducted from wallet: ₱${walletDeductionAmount.toFixed(2)}. Funds will be sent to ${paypalEmail} once processed.`;
+    await logPayPalEvent({
+      action: 'guest-withdrawal-request',
+      payerRole: 'admin',
+      payerEmail: adminPayPalEmail,
+      receiverRole: 'guest',
+      receiverEmail: paypalEmail,
+      amountPHP: amount,
+      transactionId: result.transactionId,
+      status: 'pending',
+      notes: {
+        walletBalanceBefore: result.currentBalance,
+        walletBalanceAfter: result.newBalance
+      }
+    });
+
+    // Send notifications
+    try {
+      // Notify guest about withdrawal request
+      await notifyWithdrawalRequest(userId, result.transactionId, amount, paypalEmail, 'guest');
+      
+      // Notify all admins about withdrawal request
+      try {
+        const { getDocs, collection, query, where, or } = await import('firebase/firestore');
+        const { db } = await import('./firebase');
+        
+        // Query users with admin role
+        const usersQuery = query(
+          collection(db, 'users'),
+          or(
+            where('role', '==', 'admin'),
+            where('roles', 'array-contains', 'admin')
+          )
+        );
+        const usersSnapshot = await getDocs(usersQuery);
+        const admins = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Notify all admins
+        await Promise.all(
+          admins.map(admin =>
+            notifyAdminWithdrawalRequest(admin.id, result.transactionId, amount, userId, paypalEmail, 'guest')
+          )
+        );
+      } catch (adminNotifError) {
+        console.error('Error sending admin withdrawal request notification:', adminNotifError);
+        // Don't fail the withdrawal if notification fails
+      }
+    } catch (notificationError) {
+      console.error('Error sending withdrawal request notifications:', notificationError);
+      // Don't fail the withdrawal if notification fails
+    }
+
+    const message = `Withdrawal request of ₱${amount.toFixed(2)} submitted successfully! You will receive ₱${amountGuestReceives.toFixed(2)} (no fees). Your wallet balance will be deducted once the admin confirms the withdrawal. Funds will be sent to ${paypalEmail} once processed.`;
 
     return {
       success: true,
       transactionId: result.transactionId,
       newBalance: result.newBalance, // Return PHP for UI
-      fee: fee,
+      fee: 0, // No fees
       amountReceived: amountGuestReceives,
       message,
     };

@@ -588,6 +588,51 @@ const HostBookings = () => {
       </header>
       
       <div className="max-w-6xl mx-auto p-6">
+        {/* Filter Tabs */}
+        <div className="mb-6">
+          <div className="flex flex-wrap gap-2 border-b pb-2">
+            <Button
+              variant={filter === 'all' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => navigate('/host/bookings?filter=all')}
+              className="rounded-full"
+            >
+              All
+            </Button>
+            <Button
+              variant={filter === 'pending' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => navigate('/host/bookings?filter=pending')}
+              className="rounded-full"
+            >
+              Pending
+            </Button>
+            <Button
+              variant={filter === 'confirmed' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => navigate('/host/bookings?filter=confirmed')}
+              className="rounded-full"
+            >
+              Confirmed
+            </Button>
+            <Button
+              variant={filter === 'upcoming' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => navigate('/host/bookings?filter=upcoming')}
+              className="rounded-full"
+            >
+              Upcoming
+            </Button>
+            <Button
+              variant={filter === 'cancelled' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => navigate('/host/bookings?filter=cancelled')}
+              className="rounded-full"
+            >
+              Cancelled
+            </Button>
+          </div>
+        </div>
 
         {loading ? (
           <LoadingScreen />

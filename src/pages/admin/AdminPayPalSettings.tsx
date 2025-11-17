@@ -1,17 +1,19 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, setDoc, deleteField } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, CreditCard, AlertCircle } from "lucide-react";
+import { ArrowLeft, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 import LoadingScreen from "@/components/ui/loading-screen";
-import AdminPayPalIdentity from "@/components/payments/AdminPayPalIdentity";
+import UnifiedPayPalLinker from "@/components/payments/UnifiedPayPalLinker";
+import { getPayPalLink, getPayPalLinkPath } from "@/lib/paypalLinks";
+import type { PayPalLinkInfo } from "@/types";
 
 interface AdminPayPalSettings {
   paypalEmail?: string;
@@ -24,9 +26,7 @@ const AdminPayPalSettings = () => {
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<AdminPayPalSettings>({});
   const [paypalEmail, setPaypalEmail] = useState('');
-  const [paypalVerified, setPaypalVerified] = useState(false);
-  const [needsEmailInput, setNeedsEmailInput] = useState(false);
-  const [emailInput, setEmailInput] = useState('');
+  const [paypalLink, setPaypalLink] = useState<PayPalLinkInfo | null>(null);
 
   useEffect(() => {
     if (!user || userRole !== 'admin') {
@@ -61,14 +61,17 @@ const AdminPayPalSettings = () => {
       setPaypalEmail(adminSettings.paypalEmail || '');
       
       // Check if admin PayPal is verified (ONLY check admin fields, not guest fields)
+      // Check both adminPayPalEmailVerified and adminPayPalOAuthVerified (same as guests)
       if (userDoc.exists()) {
         const userData = userDoc.data();
-        setPaypalVerified(!!userData.adminPayPalEmailVerified);
-        // Make sure we're using admin PayPal email, not guest PayPal email
-        if (userData.adminPayPalEmail && !adminSettings.paypalEmail) {
-          setPaypalEmail(userData.adminPayPalEmail);
-          setSettings({ paypalEmail: userData.adminPayPalEmail });
+        const link = getPayPalLink(userData as any, 'admin');
+        setPaypalLink(link);
+        if (link?.email && !adminSettings.paypalEmail) {
+          setPaypalEmail(link.email);
+          setSettings({ paypalEmail: link.email });
         }
+      } else {
+        setPaypalLink(null);
       }
     } catch (error: any) {
       console.error('Error loading PayPal settings:', error);
@@ -78,84 +81,14 @@ const AdminPayPalSettings = () => {
     }
   };
 
-  const handlePayPalVerified = useCallback(async (email: string) => {
+  const handlePayPalVerified = useCallback(async () => {
     if (!user) return;
     
-    // If email is empty, it means OAuth succeeded but email wasn't extracted
-    // Show input field for admin to enter their business PayPal email
-    if (!email || email === '') {
-      setNeedsEmailInput(true);
-      return;
-    }
-    
-    try {
-      const updatedSettings: AdminPayPalSettings = {
-        paypalEmail: email,
-        updatedAt: new Date().toISOString(),
-      };
-
-      // Save to adminSettings collection
-      await setDoc(doc(db, 'adminSettings', 'paypal'), updatedSettings, { merge: true });
-
-      // Also save to admin user document for easy access
-      await updateDoc(doc(db, 'users', user.uid), {
-        adminPayPalEmail: email,
-        adminPayPalEmailVerified: true,
-      });
-
-      setSettings(updatedSettings);
-      setPaypalEmail(email);
-      setPaypalVerified(true);
-      setNeedsEmailInput(false);
-      toast.success('PayPal account linked successfully! All payments will go to this account.');
-    } catch (error: any) {
-      console.error('Error saving PayPal settings:', error);
-      toast.error('Failed to save PayPal settings');
-    }
+    // Email is automatically set by PayPalIdentity component (same as guests)
+    // Just reload settings to reflect the changes
+    await loadSettings();
   }, [user]);
 
-  const handleSaveEmail = async () => {
-    if (!user) return;
-    
-    if (!emailInput.trim()) {
-      toast.error('Please enter your PayPal business email address');
-      return;
-    }
-
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(emailInput.trim())) {
-      toast.error('Please enter a valid email address');
-      return;
-    }
-
-    try {
-      const email = emailInput.trim();
-      const updatedSettings: AdminPayPalSettings = {
-        paypalEmail: email,
-        updatedAt: new Date().toISOString(),
-      };
-
-      // Save to adminSettings collection
-      await setDoc(doc(db, 'adminSettings', 'paypal'), updatedSettings, { merge: true });
-
-      // Also save to admin user document
-      await updateDoc(doc(db, 'users', user.uid), {
-        adminPayPalEmail: email,
-        adminPayPalEmailVerified: true,
-      });
-
-      setSettings(updatedSettings);
-      setPaypalEmail(email);
-      setPaypalVerified(true);
-      setNeedsEmailInput(false);
-      setEmailInput('');
-      toast.success('PayPal account linked! All payments will go to this account.');
-    } catch (error: any) {
-      console.error('Error saving PayPal email:', error);
-      toast.error('Failed to save PayPal email');
-    }
-  };
 
   const handleUnlinkPayPal = async () => {
     if (!user) return;
@@ -167,15 +100,21 @@ const AdminPayPalSettings = () => {
         updatedAt: new Date().toISOString(),
       }, { merge: true });
 
-      // Clear from user document
-      await updateDoc(doc(db, 'users', user.uid), {
+      // Clear from user document - both new unified structure and legacy fields
+      const updateData: Record<string, unknown> = {
+        // Clear new unified structure (use deleteField to actually remove the field)
+        [getPayPalLinkPath('admin')]: deleteField(),
+        // Clear legacy fields
         adminPayPalEmail: null,
         adminPayPalEmailVerified: false,
-      });
+        adminPayPalOAuthVerified: false,
+      };
 
-      setPaypalEmail('');
-      setPaypalVerified(false);
-      setSettings({});
+      await updateDoc(doc(db, 'users', user.uid), updateData);
+
+      // Reload settings to reflect the changes
+      await loadSettings();
+      
       toast.success("PayPal account unlinked");
     } catch (error) {
       console.error('Error unlinking PayPal:', error);
@@ -215,75 +154,25 @@ const AdminPayPalSettings = () => {
           <CardContent>
             {user ? (
               <>
-                <AdminPayPalIdentity
+                <UnifiedPayPalLinker
                   userId={user.uid}
-                  onVerified={handlePayPalVerified}
-                  paypalEmail={paypalEmail}
-                  paypalVerified={paypalVerified}
+                  role="admin"
+                  linkedInfo={paypalLink ?? undefined}
+                  onLinked={handlePayPalVerified}
+                  onUnlink={handleUnlinkPayPal}
+                  unlinkMessage="Unlinking will disable all payouts until you connect a new admin PayPal account."
                 />
                 
-                {/* Show email input if OAuth verified but email not set */}
-                {needsEmailInput && !paypalEmail && (
-                  <div className="mt-4 pt-4 border-t space-y-4">
-                    <div className="p-4 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-900 rounded-lg">
-                      <div className="flex items-start gap-3">
-                        <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-yellow-900 dark:text-yellow-100 mb-1">
-                            Complete Account Setup
-                          </p>
-                          <p className="text-xs text-yellow-800 dark:text-yellow-200">
-                            Your PayPal account has been verified. Enter the email address of the PayPal account you just logged into. This account will receive all platform revenue (subscriptions + service fees).
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="paypal-email">
-                        PayPal Account Email Address <span className="text-destructive">*</span>
-                      </Label>
-                      <Input
-                        id="paypal-email"
-                        type="email"
-                        placeholder="your-paypal@example.com"
-                        value={emailInput}
-                        onChange={(e) => setEmailInput(e.target.value)}
-                        className="max-w-md"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Enter the email address of the PayPal account you just logged into
-                      </p>
-                    </div>
-                    
-                    <div className="flex gap-2">
-                      <Button onClick={handleSaveEmail} size="sm">
-                        Save Email
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => {
-                          setNeedsEmailInput(false);
-                          setEmailInput('');
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                )}
-                
-                {paypalVerified && paypalEmail && (
+                {paypalLink?.email && (
                   <div className="mt-4 pt-4 border-t">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium mb-1">Platform Payment Account</p>
                         <p className="text-xs text-muted-foreground font-mono bg-muted p-2 rounded mt-1">
-                          {paypalEmail}
+                          {paypalLink.email}
                         </p>
                         <p className="text-xs text-muted-foreground mt-2">
-                          Receiving: Subscription payments • Service fees (10% commission)
+                          This account will be used as the source of funds for all withdrawals. All platform revenue (subscriptions + service fees) will also be received here.
                         </p>
                       </div>
                       <Button variant="outline" size="sm" onClick={handleUnlinkPayPal}>

@@ -354,21 +354,23 @@ const ReviewCancellationRequests = () => {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Approve Cancellation Request</AlertDialogTitle>
-            <AlertDialogDescription>
-              Approving this request will:
-              <ul className="list-disc list-inside mt-2 space-y-1">
-                <li>Cancel the booking</li>
-                <li>Process a refund to the guest's wallet</li>
-                <li>Notify the guest and host</li>
-              </ul>
-              {requestToReview?.booking && (
-                <div className="mt-4 p-3 bg-primary/10 rounded-md">
-                  <p className="text-sm font-medium">Refund Amount:</p>
-                  <p className="text-lg font-bold text-primary">
-                    {formatPHP(requestToReview.booking.totalPrice || 0)}
-                  </p>
-                </div>
-              )}
+            <AlertDialogDescription asChild>
+              <div>
+                <p>Approving this request will:</p>
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                  <li>Cancel the booking</li>
+                  <li>Process a refund to the guest's wallet</li>
+                  <li>Notify the guest and host</li>
+                </ul>
+                {requestToReview?.booking && (
+                  <div className="mt-4 p-3 bg-primary/10 rounded-md">
+                    <p className="text-sm font-medium">Refund Amount:</p>
+                    <p className="text-lg font-bold text-primary">
+                      {formatPHP(requestToReview.booking.totalPrice || 0)}
+                    </p>
+                  </div>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-4">
@@ -411,8 +413,10 @@ const ReviewCancellationRequests = () => {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Reject Cancellation Request</AlertDialogTitle>
-            <AlertDialogDescription>
-              Rejecting this request will keep the booking active. The guest will be notified of the rejection.
+            <AlertDialogDescription asChild>
+              <div>
+                <p>Rejecting this request will keep the booking active. The guest will be notified of the rejection.</p>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-4">

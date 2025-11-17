@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Booking Cancellation Notification</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f5f5f5;">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                <!-- Main Container -->
+                <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
+                    
+                    <!-- Header with Logo and Gradient -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%); padding: 40px 30px; text-align: center;">
+                            <!-- Logo -->
+                            <div style="margin-bottom: 20px;">
+                                <img src="https://mojo-dojo-casa-house-f31a5.web.app/logo.png" alt="{{logo_alt}}" style="width: 80px; height: 80px; object-fit: contain; display: block; margin: 0 auto; border: 0; background-color: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px;" />
+                            </div>
+                            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
+                                ⚠️ Booking Cancelled
+                            </h1>
+                            <p style="margin: 10px 0 0 0; color: #ffffff; font-size: 16px; opacity: 0.9;">
+                                A guest has cancelled their reservation
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Greeting -->
+                    <tr>
+                        <td style="padding: 40px 30px 20px 30px;">
+                            <h2 style="margin: 0; color: #1a1a1a; font-size: 22px; font-weight: 600;">
+                                Hi {{to_name}},
+                            </h2>
+                            <p style="margin: 15px 0 0 0; color: #666666; font-size: 16px; line-height: 1.6;">
+                                We wanted to inform you that <strong>{{guest_name}}</strong> has cancelled their booking for <strong>{{listing_title}}</strong>.
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Booking Details Card -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f8f9fa; border-radius: 8px; padding: 25px; border: 1px solid #e9ecef;">
+                                <tr>
+                                    <td colspan="2" style="padding-bottom: 20px;">
+                                        <h3 style="margin: 0; color: #1a1a1a; font-size: 18px; font-weight: 600; border-bottom: 2px solid #f44336; padding-bottom: 10px; display: inline-block;">
+                                            Cancelled Booking Details
+                                        </h3>
+                                    </td>
+                                </tr>
+                                
+                                <tr>
+                                    <td style="padding: 12px 0; color: #666666; font-size: 14px; width: 140px;">
+                                        <strong style="color: #1a1a1a;">Guest Name:</strong>
+                                    </td>
+                                    <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px; font-weight: 500;">
+                                        {{guest_name}}
+                                    </td>
+                                </tr>
+                                
+                                <tr>
+                                    <td style="padding: 12px 0; color: #666666; font-size: 14px;">
+                                        <strong style="color: #1a1a1a;">Property:</strong>
+                                    </td>
+                                    <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px; font-weight: 500;">
+                                        {{listing_title}}
+                                    </td>
+                                </tr>
+                                
+                                <tr>
+                                    <td style="padding: 12px 0; color: #666666; font-size: 14px;">
+                                        <strong style="color: #1a1a1a;">Location:</strong>
+                                    </td>
+                                    <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px; font-weight: 500;">
+                                        {{listing_location}}
+                                    </td>
+                                </tr>
+                                
+                                <tr>
+                                    <td style="padding: 12px 0; color: #666666; font-size: 14px;">
+                                        <strong style="color: #1a1a1a;">Check-in:</strong>
+                                    </td>
+                                    <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px; font-weight: 500;">
+                                        {{check_in}}
+                                    </td>
+                                </tr>
+                                
+                                <tr>
+                                    <td style="padding: 12px 0; color: #666666; font-size: 14px;">
+                                        <strong style="color: #1a1a1a;">Check-out:</strong>
+                                    </td>
+                                    <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px; font-weight: 500;">
+                                        {{check_out}}
+                                    </td>
+                                </tr>
+                                
+                                <tr>
+                                    <td style="padding: 12px 0; color: #666666; font-size: 14px;">
+                                        <strong style="color: #1a1a1a;">Guests:</strong>
+                                    </td>
+                                    <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px; font-weight: 500;">
+                                        {{guests}}
+                                    </td>
+                                </tr>
+                                
+                                <tr>
+                                    <td style="padding: 12px 0; color: #666666; font-size: 14px;">
+                                        <strong style="color: #1a1a1a;">Total Price:</strong>
+                                    </td>
+                                    <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px; font-weight: 500;">
+                                        {{total_price}}
+                                    </td>
+                                </tr>
+                                
+                                <tr>
+                                    <td style="padding: 12px 0; color: #666666; font-size: 14px;">
+                                        <strong style="color: #1a1a1a;">Refund Amount:</strong>
+                                    </td>
+                                    <td style="padding: 12px 0; color: #f44336; font-size: 18px; font-weight: 700;">
+                                        {{refund_amount}}
+                                    </td>
+                                </tr>
+                                
+                                <tr>
+                                    <td style="padding: 12px 0; color: #666666; font-size: 14px;">
+                                        <strong style="color: #1a1a1a;">Booking ID:</strong>
+                                    </td>
+                                    <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px; font-family: monospace; background-color: #ffffff; padding: 4px 8px; border-radius: 4px; display: inline-block;">
+                                        {{booking_id}}
+                                    </td>
+                                </tr>
+                                
+                                <tr>
+                                    <td style="padding: 12px 0; color: #666666; font-size: 14px; vertical-align: top;">
+                                        <strong style="color: #1a1a1a;">Cancellation Reason:</strong>
+                                    </td>
+                                    <td style="padding: 12px 0; color: #1a1a1a; font-size: 14px; font-weight: 500;">
+                                        {{cancellation_reason}}
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Cancellation Message -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <div style="background-color: #fff3e0; border-left: 4px solid #ff9800; padding: 20px; border-radius: 6px;">
+                                <p style="margin: 0; color: #e65100; font-size: 15px; line-height: 1.6;">
+                                    <strong>ℹ️ Important Information</strong><br>
+                                    The booking has been cancelled and any applicable refund has been processed according to our cancellation policy. The dates are now available for other guests to book.
+                                </p>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- CTA Button -->
+                    <tr>
+                        <td style="padding: 0 30px 40px 30px; text-align: center;">
+                            <a href="{{booking_link}}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);">
+                                View My Bookings
+                            </a>
+                        </td>
+                    </tr>
+
+                    <!-- Additional Info -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <p style="margin: 0; color: #666666; font-size: 14px; line-height: 1.6;">
+                                If you have any questions about this cancellation or need assistance, please don't hesitate to contact us. We're here to help!
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f8f9fa; padding: 30px; text-align: center; border-top: 1px solid #e9ecef;">
+                            <!-- Logo in Footer -->
+                            <div style="margin-bottom: 15px;">
+                                <img src="https://mojo-dojo-casa-house-f31a5.web.app/logo.png" alt="{{logo_alt}}" style="width: 60px; height: 60px; object-fit: contain; display: block; margin: 0 auto; border: 0; background-color: #ffffff; border-radius: 6px; padding: 6px;" />
+                            </div>
+                            <p style="margin: 0 0 10px 0; color: #666666; font-size: 14px;">
+                                <strong>{{platform_name}}</strong>
+                            </p>
+                            <p style="margin: 0 0 10px 0; color: #999999; font-size: 12px;">
+                                Need help? Contact us at <a href="mailto:{{support_email}}" style="color: #667eea; text-decoration: none;">{{support_email}}</a>
+                            </p>
+                            <p style="margin: 0; color: #999999; font-size: 12px;">
+                                © {{year}} {{platform_name}}. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+

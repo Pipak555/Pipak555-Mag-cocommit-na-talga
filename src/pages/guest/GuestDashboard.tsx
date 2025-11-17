@@ -12,7 +12,7 @@ import { formatPHP } from '@/lib/currency';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
 import { ListingCard } from '@/components/listings/ListingCard';
-import { getRecommendations } from '@/lib/recommendations';
+import { getGuestDashboardRecommendations } from '@/lib/recommendations';
 import { getBookings, toggleFavorite, getListingsRatings } from '@/lib/firestore';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -101,8 +101,8 @@ const GuestDashboard = () => {
         pastBookings,
       }));
 
-      // Load recommendations
-      const recs = await getRecommendations(user.uid, 6);
+      // Load recommendations - strictly based on booking history
+      const recs = await getGuestDashboardRecommendations(user.uid, 6);
       
       // Fetch ratings for recommendations
       if (recs.length > 0) {
@@ -121,7 +121,8 @@ const GuestDashboard = () => {
         
         setRecommendations(recsWithRatings);
       } else {
-        setRecommendations(recs);
+        // No recommendations (no booking history or no matches)
+        setRecommendations([]);
       }
     } catch (error) {
       console.error('Error loading dashboard data:', error);

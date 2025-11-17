@@ -1,23 +1,25 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUserTransactions } from "@/lib/firestore";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, deleteField, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Wallet as WalletIcon, TrendingUp, TrendingDown, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
+import { Wallet as WalletIcon, TrendingUp, TrendingDown, ArrowDownCircle, ArrowUpCircle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { BackButton } from "@/components/shared/BackButton";
 import { CouponManager } from "@/components/coupons/CouponManager";
 import { PayPalButton } from "@/components/payments/PayPalButton";
+import UnifiedPayPalLinker from "@/components/payments/UnifiedPayPalLinker";
 import { requestGuestWithdrawal } from "@/lib/guestPayoutService";
-import { calculatePayPalPayoutFee, calculateWithdrawalWithFees } from "@/lib/financialUtils";
-import type { Transaction, Coupon } from "@/types";
+// Fees removed - no longer needed
+import type { Transaction, Coupon, PayPalLinkInfo } from "@/types";
 import { formatPHP } from "@/lib/currency";
 import { readWalletBalance, centavosToPHP, phpToCentavos } from "@/lib/financialUtils";
+import { getPayPalLink } from "@/lib/paypalLinks";
 
 const Wallet = () => {
   const { user } = useAuth();
@@ -27,10 +29,10 @@ const Wallet = () => {
   const [amount, setAmount] = useState("");
   const [activeTab, setActiveTab] = useState<"deposit" | "withdraw">("deposit");
   const [withdrawAmount, setWithdrawAmount] = useState("");
-  const [paypalEmail, setPaypalEmail] = useState("");
+  const [linkedPayPal, setLinkedPayPal] = useState<PayPalLinkInfo | null>(null);
   const [withdrawing, setWithdrawing] = useState(false);
-  const [adminAbsorbsFees, setAdminAbsorbsFees] = useState(true);
 
+  // Load wallet data when component mounts or user changes
   useEffect(() => {
     if (user) {
       loadWallet();
@@ -38,14 +40,96 @@ const Wallet = () => {
     }
   }, [user]);
 
+  // Set up real-time listener for PayPal link changes
+  useEffect(() => {
+    if (!user) return;
+
+    const unsubscribe = onSnapshot(
+      doc(db, 'users', user.uid),
+      (docSnapshot) => {
+        if (docSnapshot.exists()) {
+          const data = docSnapshot.data();
+          const link = getPayPalLink(data as any, 'guest');
+          setLinkedPayPal(link);
+          
+          if (import.meta.env.DEV) {
+            console.log('🔄 Real-time PayPal Status Update:', {
+              email: link?.email || null,
+              verified: !!link?.email,
+              source: 'real-time listener'
+            });
+          }
+        }
+      },
+      (error) => {
+        console.error('Error in PayPal real-time listener:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user]);
+
   const loadWallet = async () => {
     if (!user) return;
-    const userDoc = await getDoc(doc(db, 'users', user.uid));
-    if (userDoc.exists()) {
-      const data = userDoc.data();
-      // Read wallet balance (handles both old float and new int centavos formats)
-      setBalance(readWalletBalance(data.walletBalance));
-      setCoupons(data.coupons || []);
+    try {
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        // Read wallet balance (handles both old float and new int centavos formats)
+        setBalance(readWalletBalance(data.walletBalance));
+        setCoupons(data.coupons || []);
+        const link = getPayPalLink(data as any, 'guest');
+        setLinkedPayPal(link);
+        
+        // Debug log (always log to catch issues)
+        console.log('🔍 Wallet PayPal Status (loadWallet):', {
+          email: link?.email || null,
+          verified: !!link?.email,
+          canWithdraw: !!link?.email,
+          paypalLinks: data.paypalLinks ? 'Present' : 'Missing',
+          paypalLinksGuest: data.paypalLinks?.guest ? 'Present' : 'Missing',
+          legacyPaypalEmail: data.paypalEmail || null,
+          rawData: import.meta.env.DEV ? {
+            paypalLinks: data.paypalLinks,
+            paypalEmail: data.paypalEmail,
+            paypalEmailVerified: data.paypalEmailVerified
+          } : 'Hidden in production'
+        });
+      } else {
+        console.warn('⚠️ User document does not exist');
+        setLinkedPayPal(null);
+      }
+    } catch (error) {
+      console.error('Error loading wallet:', error);
+      toast.error('Failed to load wallet balance');
+    }
+  };
+
+  const handlePayPalVerified = async () => {
+    // Small delay to ensure Firestore has updated
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Reload wallet to ensure all data is fresh
+    await loadWallet();
+    toast.success('PayPal account linked successfully! You can now request withdrawals.');
+  };
+
+  const handleUnlinkPayPal = async () => {
+    if (!user) return;
+
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        [ 'paypalLinks.guest' ]: deleteField(),
+        paypalEmail: null,
+        paypalEmailVerified: false,
+        paypalOAuthVerified: false,
+      });
+
+      setLinkedPayPal(null);
+      toast.success("PayPal account unlinked");
+    } catch (error) {
+      console.error('Error unlinking PayPal:', error);
+      toast.error("Failed to unlink PayPal account");
     }
   };
 
@@ -83,23 +167,7 @@ const Wallet = () => {
     toast.success(`Successfully deposited ${formatPHP(Number(depositedAmount))} to your wallet!`);
   };
 
-  // Load fee configuration
-  useEffect(() => {
-    const loadFeeConfig = async () => {
-      try {
-        const { getDoc, doc } = await import('firebase/firestore');
-        const adminSettingsDoc = await getDoc(doc(db, 'adminSettings', 'withdrawal'));
-        if (adminSettingsDoc.exists()) {
-          const settings = adminSettingsDoc.data();
-          setAdminAbsorbsFees(settings?.adminAbsorbsFees !== false); // Default to true
-        }
-      } catch (error) {
-        // Default to admin absorbs fees
-        setAdminAbsorbsFees(true);
-      }
-    };
-    loadFeeConfig();
-  }, []);
+  // Fees removed - no fee configuration needed
 
   const handleWithdraw = async () => {
     if (!user) return;
@@ -109,27 +177,22 @@ const Wallet = () => {
       return;
     }
 
-    if (!paypalEmail || !paypalEmail.includes('@')) {
-      toast.error("Enter a valid PayPal email address");
-      return;
-    }
+    // PayPal email is now automatically retrieved from linked account
+    // No manual input required - uses guest's linked PayPal
+    // NO FEES - exact amount transfer
 
     const amount = Number(withdrawAmount);
-    const fee = calculatePayPalPayoutFee(amount);
-    const totalRequired = adminAbsorbsFees ? amount : calculateWithdrawalWithFees(amount);
     
-    if (totalRequired > balance) {
-      if (adminAbsorbsFees) {
-        toast.error(`Insufficient balance. Available: ${formatPHP(balance)}, Required: ${formatPHP(amount)}`);
-      } else {
-        toast.error(`Insufficient balance. Available: ${formatPHP(balance)}, Required: ${formatPHP(totalRequired)} (withdrawal: ${formatPHP(amount)} + fees: ${formatPHP(fee)})`);
-      }
+    if (amount > balance) {
+      toast.error(`Insufficient balance. Available: ${formatPHP(balance)}, Required: ${formatPHP(amount)}`);
       return;
     }
 
     setWithdrawing(true);
     try {
-      const result = await requestGuestWithdrawal(user.uid, amount, paypalEmail, !adminAbsorbsFees);
+      // requestGuestWithdrawal now automatically uses guest's linked PayPal account
+      // No fees - exact amount transfer
+      const result = await requestGuestWithdrawal(user.uid, amount);
       
       // Reload wallet and transactions
       await loadWallet();
@@ -137,7 +200,6 @@ const Wallet = () => {
       
       // Clear form
       setWithdrawAmount("");
-      setPaypalEmail("");
       
       toast.success(result.message);
     } catch (error: any) {
@@ -207,18 +269,24 @@ const Wallet = () => {
                 </div>
                 
                 {user && amount && Number(amount) > 0 ? (
-                  <div className="space-y-3">
-                    <PayPalButton
-                      amount={Number(amount)}
-                      userId={user.uid}
-                      description={`Wallet deposit: ${formatPHP(Number(amount))}`}
-                      onSuccess={handlePayPalDepositSuccess}
-                      redirectUrl={window.location.origin + '/guest/wallet'}
-                    />
-                    <p className="text-xs text-muted-foreground text-center">
-                      Secure payment powered by PayPal
-                    </p>
-                  </div>
+                  linkedPayPal?.email ? (
+                    <div className="space-y-3">
+                      <PayPalButton
+                        amount={Number(amount)}
+                        userId={user.uid}
+                        description={`Wallet deposit: ${formatPHP(Number(amount))}`}
+                        onSuccess={handlePayPalDepositSuccess}
+                        redirectUrl={window.location.origin + '/guest/wallet'}
+                      />
+                      <p className="text-xs text-muted-foreground text-center">
+                        Secure payment powered by PayPal
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-yellow-100 text-yellow-900 rounded-lg text-sm">
+                      Link your PayPal account in the Withdraw tab before making deposits.
+                    </div>
+                  )
                 ) : (
                   <Button 
                     onClick={handleDeposit} 
@@ -251,48 +319,20 @@ const Wallet = () => {
                     <div className="mt-2 p-3 bg-muted rounded-lg space-y-1">
                       {(() => {
                         const amount = Number(withdrawAmount);
-                        const fee = calculatePayPalPayoutFee(amount);
-                        const totalRequired = adminAbsorbsFees ? amount : calculateWithdrawalWithFees(amount);
-                        const amountReceived = adminAbsorbsFees ? amount : amount - fee;
                         
                         return (
                           <>
                             <div className="flex justify-between text-sm">
-                              <span className="text-muted-foreground">PayPal Fee:</span>
-                              <span className="font-medium">{formatPHP(fee)}</span>
+                              <span className="text-muted-foreground">You will receive:</span>
+                              <span className="font-semibold text-green-600 dark:text-green-400">{formatPHP(amount)}</span>
                             </div>
-                            {adminAbsorbsFees ? (
-                              <>
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-muted-foreground">You will receive:</span>
-                                  <span className="font-semibold text-green-600 dark:text-green-400">{formatPHP(amountReceived)}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-muted-foreground">Deducted from wallet:</span>
-                                  <span className="font-medium">{formatPHP(amount)}</span>
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-2 pt-2 border-t">
-                                  ✓ Fees paid by admin
-                                </p>
-                              </>
-                            ) : (
-                              <>
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-muted-foreground">You will receive:</span>
-                                  <span className="font-semibold text-green-600 dark:text-green-400">{formatPHP(amountReceived)}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-muted-foreground">Total deducted from wallet:</span>
-                                  <span className="font-medium">{formatPHP(totalRequired)}</span>
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-2 pt-2 border-t">
-                                  Fees deducted from your wallet
-                                </p>
-                              </>
-                            )}
-                            {totalRequired > balance && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-muted-foreground">Deducted from wallet:</span>
+                              <span className="font-medium">{formatPHP(amount)}</span>
+                            </div>
+                            {amount > balance && (
                               <p className="text-xs text-destructive mt-1">
-                                Insufficient balance. Need {formatPHP(totalRequired - balance)} more.
+                                Insufficient balance. Need {formatPHP(amount - balance)} more.
                               </p>
                             )}
                           </>
@@ -308,20 +348,25 @@ const Wallet = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="paypal-email" className="text-sm font-medium mb-2 block">
-                    PayPal Email
+                  <Label className="text-sm font-medium mb-2 block">
+                    Linked PayPal Account
                   </Label>
-                  <Input
-                    id="paypal-email"
-                    type="email"
-                    placeholder="your.email@example.com"
-                    value={paypalEmail}
-                    onChange={(e) => setPaypalEmail(e.target.value)}
-                    className="h-12 text-base sm:text-sm"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Funds will be sent to this PayPal account
-                  </p>
+                  {user ? (
+                    <UnifiedPayPalLinker
+                      userId={user.uid}
+                      role="guest"
+                      linkedInfo={linkedPayPal ?? undefined}
+                      onLinked={handlePayPalVerified}
+                      onUnlink={handleUnlinkPayPal}
+                      unlinkMessage="Unlinking will disable withdrawals until you connect a new PayPal account."
+                    />
+                  ) : (
+                    <div className="p-4 bg-muted rounded-lg">
+                      <p className="text-sm text-muted-foreground">
+                        Please sign in to link your PayPal account
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <Button
@@ -330,10 +375,8 @@ const Wallet = () => {
                     withdrawing || 
                     !withdrawAmount || 
                     Number(withdrawAmount) <= 0 || 
-                    !paypalEmail || 
-                    (adminAbsorbsFees 
-                      ? Number(withdrawAmount) > balance 
-                      : calculateWithdrawalWithFees(Number(withdrawAmount)) > balance)
+                    !linkedPayPal?.email ||
+                    Number(withdrawAmount) > balance
                   }
                   className="w-full h-12"
                   variant="default"

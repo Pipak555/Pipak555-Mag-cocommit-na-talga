@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { getBookings, updateBooking, getListing, getUserProfile, getBookingReview, toggleWishlist, updateWishlistRecommendations } from "@/lib/firestore";
-import { createCancellationRequest } from "@/lib/cancellationRequestService";
+import { processBookingRefund } from "@/lib/paymentService";
 import { collection, query, where, onSnapshot, doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
@@ -143,19 +143,33 @@ const MyBookings = () => {
         
         // Apply filter if specified
         let filteredBookings = bookingsData;
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        
         if (filter === 'upcoming') {
-          const now = new Date();
+          // Upcoming: confirmed or pending bookings with future check-in dates
           filteredBookings = bookingsData.filter(b => {
             const checkIn = new Date(b.checkIn);
-            return checkIn >= now && b.status === 'confirmed';
+            checkIn.setHours(0, 0, 0, 0);
+            return checkIn >= now && (b.status === 'confirmed' || b.status === 'pending');
           });
         } else if (filter === 'past') {
-          const now = new Date();
+          // Past: only successful bookings (confirmed/completed) with check-out date passed
           filteredBookings = bookingsData.filter(b => {
             const checkOut = new Date(b.checkOut);
-            // Past bookings: check-out date has passed, or status is completed/cancelled
-            return checkOut < now || b.status === 'completed' || b.status === 'cancelled';
+            checkOut.setHours(0, 0, 0, 0);
+            // Only show confirmed or completed bookings where check-out has passed
+            return (b.status === 'confirmed' || b.status === 'completed') && checkOut < now;
           });
+        } else if (filter === 'pending') {
+          // Pending: only bookings with pending status
+          filteredBookings = bookingsData.filter(b => b.status === 'pending');
+        } else if (filter === 'cancelled') {
+          // Cancelled: only cancelled bookings
+          filteredBookings = bookingsData.filter(b => b.status === 'cancelled');
+        } else if (filter === 'confirmed') {
+          // Confirmed: only confirmed bookings
+          filteredBookings = bookingsData.filter(b => b.status === 'confirmed');
         }
         
         setBookings(filteredBookings);
@@ -177,11 +191,13 @@ const MyBookings = () => {
     if (!user || bookings.length === 0) return;
 
     const loadReviews = async () => {
-      // Only load reviews for past bookings (check-out date has passed or status is completed/cancelled)
+      // Only load reviews for past successful bookings (check-out date has passed and status is confirmed/completed)
       const pastBookings = bookings.filter(b => {
         const checkOut = new Date(b.checkOut);
+        checkOut.setHours(0, 0, 0, 0);
         const now = new Date();
-        return checkOut < now || b.status === 'completed' || b.status === 'cancelled';
+        now.setHours(0, 0, 0, 0);
+        return (b.status === 'confirmed' || b.status === 'completed') && checkOut < now;
       });
 
       for (const booking of pastBookings) {
@@ -251,9 +267,11 @@ const MyBookings = () => {
       return;
     }
     
-    // Check if check-in date has passed
+    // Check if check-in date has passed (normalize dates for comparison)
     const checkIn = new Date(booking.checkIn);
+    checkIn.setHours(0, 0, 0, 0);
     const now = new Date();
+    now.setHours(0, 0, 0, 0);
     if (checkIn < now) {
       toast.error('Cannot cancel bookings with check-in dates in the past');
       return;
@@ -434,6 +452,24 @@ const MyBookings = () => {
       return;
     }
 
+    // Debug: Log auth state before cancellation
+    console.log('🔍 MyBookings confirmCancel debug:', {
+      currentUser: user?.uid,
+      bookingId: bookingToCancel.id,
+      bookingGuestId: bookingToCancel.guestId,
+      bookingHostId: bookingToCancel.hostId,
+      bookingStatus: bookingToCancel.status,
+      isAuthenticated: !!user,
+      isGuestOwner: user?.uid === bookingToCancel.guestId,
+      bookingData: {
+        id: bookingToCancel.id,
+        guestId: bookingToCancel.guestId,
+        hostId: bookingToCancel.hostId,
+        status: bookingToCancel.status,
+        totalPrice: bookingToCancel.totalPrice
+      }
+    });
+
     // Double-check validation before proceeding
     if (bookingToCancel.status === 'cancelled' || bookingToCancel.status === 'completed') {
       toast.error('This booking cannot be cancelled');
@@ -443,8 +479,11 @@ const MyBookings = () => {
       return;
     }
 
+    // Normalize dates for comparison
     const checkIn = new Date(bookingToCancel.checkIn);
+    checkIn.setHours(0, 0, 0, 0);
     const now = new Date();
+    now.setHours(0, 0, 0, 0);
     if (checkIn < now) {
       toast.error('Cannot cancel bookings with check-in dates in the past');
       setCancelDialogOpen(false);
@@ -455,17 +494,43 @@ const MyBookings = () => {
     
     setCancelling(true);
     try {
-      // Create cancellation request instead of immediate cancellation
-      await createCancellationRequest(bookingToCancel.id, cancellationReason.trim() || undefined);
-      
-      toast.success('Cancellation request submitted successfully. An admin will review your request and process the refund if approved.');
+      console.log('🔄 Step 1: Updating booking status to cancelled...');
+      // Cancel booking directly and process refund
+      // First update booking status to cancelled
+      await updateBooking(bookingToCancel.id, {
+        status: 'cancelled'
+      });
+      console.log('✅ Step 1: Booking status updated to cancelled');
+
+      console.log('🔄 Step 2: Processing refund...');
+      // Process refund (this will credit guest's wallet and deduct from host's wallet)
+      const refundResult = await processBookingRefund(
+        bookingToCancel,
+        'guest',
+        cancellationReason.trim() || undefined
+      );
+      console.log('✅ Step 2: Refund processed successfully', refundResult);
+
+      // Show success message with refund details
+      if (refundResult.refundAmount > 0) {
+        toast.success(
+          `Booking cancelled successfully! Refund of ${formatPHP(refundResult.refundAmount)} has been credited to your wallet.`,
+          { duration: 5000 }
+        );
+      } else {
+        toast.success(
+          `Booking cancelled successfully. ${refundResult.refundReason || 'No refund applicable based on cancellation policy.'}`,
+          { duration: 5000 }
+        );
+      }
+
       setCancelDialogOpen(false);
       setBookingToCancel(null);
       setCancellationReason('');
     } catch (error: any) {
-      console.error('Error creating cancellation request:', error);
+      console.error('Error cancelling booking:', error);
       const errorMessage = error.message || 'Unknown error occurred';
-      toast.error(`Failed to submit cancellation request: ${errorMessage}`);
+      toast.error(`Failed to cancel booking: ${errorMessage}`);
     } finally {
       setCancelling(false);
     }
@@ -484,13 +549,24 @@ const MyBookings = () => {
             </div>
             <div className="min-w-0 flex-1">
               <h1 className="text-base sm:text-lg font-bold truncate">
-                {filter === 'upcoming' ? 'Upcoming Trips' : filter === 'past' ? 'Past Bookings' : 'My Bookings'}
+                {filter === 'upcoming' ? 'Upcoming Trips' 
+                  : filter === 'past' ? 'Past Bookings' 
+                  : filter === 'pending' ? 'Pending Bookings'
+                  : filter === 'cancelled' ? 'Cancelled Bookings'
+                  : filter === 'confirmed' ? 'Confirmed Bookings'
+                  : 'My Bookings'}
               </h1>
               <p className="text-xs text-muted-foreground">
                 {filter === 'upcoming' 
-                  ? 'Your confirmed upcoming trips' 
+                  ? 'Your confirmed and pending upcoming trips' 
                   : filter === 'past' 
-                  ? 'Your completed and past trips'
+                  ? 'Your completed successful trips'
+                  : filter === 'pending'
+                  ? 'Bookings awaiting confirmation'
+                  : filter === 'cancelled'
+                  ? 'Your cancelled bookings'
+                  : filter === 'confirmed'
+                  ? 'Your confirmed bookings'
                   : 'View your trips'}
               </p>
             </div>
@@ -500,6 +576,59 @@ const MyBookings = () => {
       </header>
       
       <div className="max-w-4xl mx-auto p-4 sm:p-6">
+        {/* Filter Tabs */}
+        <div className="mb-6">
+          <div className="flex flex-wrap gap-2 border-b pb-2">
+            <Button
+              variant={!filter || filter === 'all' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => navigate('/guest/bookings')}
+              className="rounded-full"
+            >
+              All
+            </Button>
+            <Button
+              variant={filter === 'upcoming' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => navigate('/guest/bookings?filter=upcoming')}
+              className="rounded-full"
+            >
+              Upcoming
+            </Button>
+            <Button
+              variant={filter === 'pending' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => navigate('/guest/bookings?filter=pending')}
+              className="rounded-full"
+            >
+              Pending
+            </Button>
+            <Button
+              variant={filter === 'past' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => navigate('/guest/bookings?filter=past')}
+              className="rounded-full"
+            >
+              Past
+            </Button>
+            <Button
+              variant={filter === 'cancelled' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => navigate('/guest/bookings?filter=cancelled')}
+              className="rounded-full"
+            >
+              Cancelled
+            </Button>
+            <Button
+              variant={filter === 'confirmed' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => navigate('/guest/bookings?filter=confirmed')}
+              className="rounded-full"
+            >
+              Confirmed
+            </Button>
+          </div>
+        </div>
 
         {loading ? (
           <BookingListSkeleton count={5} />
@@ -512,10 +641,25 @@ const MyBookings = () => {
                   ? 'No upcoming trips' 
                   : filter === 'past' 
                   ? 'No past bookings yet'
+                  : filter === 'pending'
+                  ? 'No pending bookings'
+                  : filter === 'cancelled'
+                  ? 'No cancelled bookings'
+                  : filter === 'confirmed'
+                  ? 'No confirmed bookings'
                   : 'No bookings yet'}
               </p>
               {filter === 'past' && (
-                <p className="text-xs mt-2">Your past bookings will appear here once trips are completed.</p>
+                <p className="text-xs mt-2">Your successful completed trips will appear here.</p>
+              )}
+              {filter === 'pending' && (
+                <p className="text-xs mt-2">Bookings awaiting host confirmation will appear here.</p>
+              )}
+              {filter === 'cancelled' && (
+                <p className="text-xs mt-2">Cancelled bookings will appear here.</p>
+              )}
+              {filter === 'confirmed' && (
+                <p className="text-xs mt-2">Your confirmed bookings will appear here.</p>
               )}
             </CardContent>
           </Card>
@@ -523,14 +667,21 @@ const MyBookings = () => {
           <div className="space-y-4">
             {bookings.map((booking) => {
               // Check if booking can be cancelled (pending or confirmed, and check-in hasn't passed, and no pending cancellation request)
+              const checkInDate = new Date(booking.checkIn);
+              checkInDate.setHours(0, 0, 0, 0);
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
               const canCancel = (booking.status === 'pending' || booking.status === 'confirmed') && 
-                                new Date(booking.checkIn) >= new Date() &&
+                                checkInDate >= today &&
                                 !booking.cancellationRequestId;
               
-              // Check if this is a past booking
+              // Check if this is a past successful booking (for showing review/wishlist options)
               const checkOut = new Date(booking.checkOut);
+              checkOut.setHours(0, 0, 0, 0);
               const now = new Date();
-              const isPastBooking = filter === 'past' || checkOut < now || booking.status === 'completed' || booking.status === 'cancelled';
+              now.setHours(0, 0, 0, 0);
+              // Only consider it a past booking if it's confirmed/completed and check-out has passed
+              const isPastBooking = (booking.status === 'confirmed' || booking.status === 'completed') && checkOut < now;
               
               // Check if booking has been reviewed
               const hasReview = bookingReviews[booking.id] !== undefined;
@@ -731,20 +882,8 @@ const MyBookings = () => {
                           className="w-full"
                         >
                           <X className="h-4 w-4 mr-2" />
-                          Request Cancellation
+                          Cancel Booking
                         </Button>
-                      </div>
-                    )}
-                    {booking.cancellationRequestId && (
-                      <div className="pt-4 border-t">
-                        <div className="p-3 bg-yellow-500/10 border border-yellow-500/50 rounded-md">
-                          <p className="text-sm font-medium text-yellow-700 dark:text-yellow-400">
-                            Cancellation Request Pending
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Your cancellation request is being reviewed by an admin. You will be notified once a decision is made.
-                          </p>
-                        </div>
                       </div>
                     )}
                   </CardContent>
@@ -764,44 +903,51 @@ const MyBookings = () => {
       }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Request Booking Cancellation</AlertDialogTitle>
-            <AlertDialogDescription>
-              Submit a cancellation request for admin review. If approved, a refund will be processed automatically.
-              {bookingToCancel && (
-                <div className="mt-3 space-y-3">
-                  <div className="p-3 bg-muted rounded-md">
-                    <p className="text-sm font-medium">Booking Details:</p>
-                    <p className="text-sm text-muted-foreground">
-                      Status: <span className="font-medium capitalize">{bookingToCancel.status}</span>
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Check-in: {new Date(bookingToCancel.checkIn).toLocaleDateString()}
-                    </p>
-                  </div>
-                  {bookingToCancel.totalPrice > 0 && (
-                    <div className="p-3 bg-primary/10 rounded-md border border-primary/20">
-                      <p className="text-sm font-medium text-primary">Refund Information:</p>
+            <AlertDialogTitle>Cancel Booking</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                <p>Cancel this booking immediately. A refund will be processed automatically based on the cancellation policy.</p>
+                {bookingToCancel && (
+                  <div className="mt-3 space-y-3">
+                    <div className="p-3 bg-muted rounded-md">
+                      <p className="text-sm font-medium">Booking Details:</p>
                       <p className="text-sm text-muted-foreground">
-                        If approved, a refund of {formatPHP(bookingToCancel.totalPrice)} will be credited to your wallet balance.
+                        Status: <span className="font-medium capitalize">{bookingToCancel.status}</span>
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Check-in: {new Date(bookingToCancel.checkIn).toLocaleDateString()}
                       </p>
                     </div>
-                  )}
-                  <div className="space-y-2">
-                    <Label htmlFor="cancellation-reason">Reason for Cancellation (Optional)</Label>
-                    <Textarea
-                      id="cancellation-reason"
-                      placeholder="Please provide a reason for cancelling this booking..."
-                      value={cancellationReason}
-                      onChange={(e) => setCancellationReason(e.target.value)}
-                      className="min-h-[80px] resize-none"
-                      maxLength={500}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {cancellationReason.length}/500 characters
-                    </p>
+                    {bookingToCancel.totalPrice > 0 && (
+                      <div className="p-3 bg-primary/10 rounded-md border border-primary/20">
+                        <p className="text-sm font-medium text-primary">Refund Information:</p>
+                        <p className="text-sm text-muted-foreground">
+                          Based on the cancellation policy, a refund (if eligible) will be automatically credited to your wallet balance and deducted from the host's wallet.
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          • 48+ hours before check-in: Full refund (100%)<br/>
+                          • 24-48 hours before check-in: 50% refund<br/>
+                          • Less than 24 hours: No refund (0%)
+                        </p>
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <Label htmlFor="cancellation-reason">Reason for Cancellation (Optional)</Label>
+                      <Textarea
+                        id="cancellation-reason"
+                        placeholder="Please provide a reason for cancelling this booking..."
+                        value={cancellationReason}
+                        onChange={(e) => setCancellationReason(e.target.value)}
+                        className="min-h-[80px] resize-none"
+                        maxLength={500}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {cancellationReason.length}/500 characters
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -811,7 +957,7 @@ const MyBookings = () => {
               disabled={cancelling}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {cancelling ? 'Submitting Request...' : 'Submit Cancellation Request'}
+              {cancelling ? 'Cancelling...' : 'Cancel Booking'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

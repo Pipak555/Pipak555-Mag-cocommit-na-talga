@@ -14,14 +14,14 @@ import {
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Shield, Users, Home, DollarSign, TrendingUp, FileText, Settings, AlertCircle, Loader2, MessageSquare, CreditCard, Megaphone, Gift, Calendar } from 'lucide-react';
+import { Shield, Users, Home, DollarSign, TrendingUp, FileText, Settings, AlertCircle, Loader2, MessageSquare, CreditCard, Megaphone, Gift, Calendar, Star, TrendingDown } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
 import { collection, onSnapshot, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { toast } from 'sonner';
 import { formatPHP } from '@/lib/currency';
-import type { Transaction, Booking, Listing, PlatformEvent } from '@/types';
+import type { Transaction, Booking, Listing, PlatformEvent, Review } from '@/types';
 import { getAllEvents } from '@/lib/eventService';
 import { readTransactionAmount } from '@/lib/financialUtils';
 import {
@@ -61,6 +61,15 @@ const AdminDashboard = () => {
   const [loadingBreakdown, setLoadingBreakdown] = useState(false);
   const [recentEvents, setRecentEvents] = useState<PlatformEvent[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(false);
+  const [analytics, setAnalytics] = useState({
+    topRatedListings: [] as Array<{ id: string; title: string; rating: number; reviewCount: number; price: number }>,
+    lowestRatedListings: [] as Array<{ id: string; title: string; rating: number; reviewCount: number; price: number }>,
+    revenueTrends: [] as Array<{ week: string; revenue: number; percentage: number }>,
+    avgRating: 0,
+    listingChange: 0,
+    bookingChange: 0,
+  });
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
 
   useEffect(() => {
     if (!user || userRole !== 'admin') {
@@ -220,6 +229,163 @@ const AdminDashboard = () => {
     };
 
     loadEvents();
+
+    // Load analytics
+    const loadAnalytics = async () => {
+      setLoadingAnalytics(true);
+      try {
+        const [listingsSnap, bookingsSnap, reviewsSnap, transactionsSnap] = await Promise.all([
+          getDocs(collection(db, 'listing')),
+          getDocs(collection(db, 'bookings')),
+          getDocs(collection(db, 'reviews')),
+          getDocs(collection(db, 'transactions'))
+        ]);
+
+        const listings = listingsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Listing));
+        const approvedListings = listings.filter(l => l.status === 'approved');
+        const bookings = bookingsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+        const confirmedBookings = bookings.filter(b => b.status === 'confirmed' || b.status === 'completed');
+        const reviews = reviewsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Review));
+
+        // Calculate average rating
+        const avgRating = reviews.length > 0
+          ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+          : 0;
+
+        // Calculate top rated listings
+        const listingRatings = new Map<string, { totalRating: number; count: number }>();
+        reviews.forEach(review => {
+          const existing = listingRatings.get(review.listingId) || { totalRating: 0, count: 0 };
+          listingRatings.set(review.listingId, {
+            totalRating: existing.totalRating + review.rating,
+            count: existing.count + 1
+          });
+        });
+
+        const topListings = Array.from(listingRatings.entries())
+          .map(([listingId, data]) => {
+            const listing = approvedListings.find(l => l.id === listingId);
+            if (!listing) return null;
+            return {
+              id: listingId,
+              title: listing.title,
+              rating: data.totalRating / data.count,
+              reviewCount: data.count,
+              price: listing.price
+            };
+          })
+          .filter((listing): listing is { id: string; title: string; rating: number; reviewCount: number; price: number } => listing !== null)
+          .sort((a, b) => {
+            if (b.rating !== a.rating) return b.rating - a.rating;
+            return b.reviewCount - a.reviewCount;
+          })
+          .slice(0, 3);
+
+        const lowestListings = Array.from(listingRatings.entries())
+          .map(([listingId, data]) => {
+            const listing = approvedListings.find(l => l.id === listingId);
+            if (!listing) return null;
+            return {
+              id: listingId,
+              title: listing.title,
+              rating: data.totalRating / data.count,
+              reviewCount: data.count,
+              price: listing.price
+            };
+          })
+          .filter((listing): listing is { id: string; title: string; rating: number; reviewCount: number; price: number } => listing !== null)
+          .sort((a, b) => {
+            if (a.rating !== b.rating) return a.rating - b.rating;
+            return b.reviewCount - a.reviewCount;
+          })
+          .slice(0, 3);
+
+        // Calculate revenue trends (last 30 days)
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        const subscriptionTransactions = transactionsSnap.docs
+          .map(doc => doc.data())
+          .filter((t: any) => 
+            (t.description?.toLowerCase().includes('host subscription') || 
+             t.description?.toLowerCase().includes('subscription')) &&
+            t.status === 'completed'
+          );
+
+        const weeklyRevenue: Array<{ week: string; revenue: number; percentage: number }> = [];
+        const maxRevenue = Math.max(...subscriptionTransactions.map((t: any) => readTransactionAmount(t.amount || 0)), 1);
+
+        for (let week = 0; week < 4; week++) {
+          const weekStart = new Date(thirtyDaysAgo);
+          weekStart.setDate(weekStart.getDate() + week * 7);
+          weekStart.setHours(0, 0, 0, 0);
+          const weekEnd = new Date(weekStart);
+          weekEnd.setDate(weekEnd.getDate() + 7);
+
+          const weekTransactions = subscriptionTransactions.filter((t: any) => {
+            const transactionDate = new Date(t.createdAt);
+            return transactionDate >= weekStart && transactionDate < weekEnd;
+          });
+
+          const weekRev = weekTransactions.reduce((sum: number, t: any) => 
+            sum + readTransactionAmount(t.amount || 0), 0);
+          const percentage = maxRevenue > 0 ? (weekRev / maxRevenue) * 100 : 0;
+
+          weeklyRevenue.push({
+            week: `Week ${week + 1}`,
+            revenue: weekRev,
+            percentage: Math.min(percentage, 100)
+          });
+        }
+
+        // Calculate percentage changes
+        const firstHalfBookings = confirmedBookings.filter(b => {
+          const bookingDate = new Date(b.createdAt);
+          const daysAgo = (now.getTime() - bookingDate.getTime()) / (1000 * 60 * 60 * 24);
+          return daysAgo <= 30 && daysAgo > 15;
+        }).length;
+
+        const secondHalfBookings = confirmedBookings.filter(b => {
+          const bookingDate = new Date(b.createdAt);
+          const daysAgo = (now.getTime() - bookingDate.getTime()) / (1000 * 60 * 60 * 24);
+          return daysAgo <= 15;
+        }).length;
+
+        const bookingChangePercent = firstHalfBookings > 0
+          ? ((secondHalfBookings - firstHalfBookings) / firstHalfBookings) * 100
+          : 0;
+
+        const firstHalfListings = approvedListings.filter(l => {
+          const listingDate = new Date(l.createdAt);
+          const daysAgo = (now.getTime() - listingDate.getTime()) / (1000 * 60 * 60 * 24);
+          return daysAgo <= 30 && daysAgo > 15;
+        }).length;
+
+        const secondHalfListings = approvedListings.filter(l => {
+          const listingDate = new Date(l.createdAt);
+          const daysAgo = (now.getTime() - listingDate.getTime()) / (1000 * 60 * 60 * 24);
+          return daysAgo <= 15;
+        }).length;
+
+        const listingChangePercent = firstHalfListings > 0
+          ? ((secondHalfListings - firstHalfListings) / firstHalfListings) * 100
+          : 0;
+
+        setAnalytics({
+          topRatedListings: topListings,
+          lowestRatedListings: lowestListings,
+          revenueTrends: weeklyRevenue,
+          avgRating,
+          listingChange: listingChangePercent,
+          bookingChange: bookingChangePercent,
+        });
+      } catch (error: any) {
+        console.error('Error loading analytics:', error);
+      } finally {
+        setLoadingAnalytics(false);
+      }
+    };
+
+    loadAnalytics();
 
     return () => {
       // Only unsubscribe if the functions were created
@@ -464,6 +630,16 @@ const AdminDashboard = () => {
             </CardHeader>
             <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
               <div className="text-xl sm:text-2xl font-bold">{stats.totalBookings}</div>
+              {analytics.bookingChange !== 0 && (
+                <div className={`flex items-center text-xs mt-1 ${analytics.bookingChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {analytics.bookingChange >= 0 ? (
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3 mr-1" />
+                  )}
+                  {analytics.bookingChange >= 0 ? '+' : ''}{analytics.bookingChange.toFixed(1)}% from last period
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -483,6 +659,140 @@ const AdminDashboard = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* Analytics Section */}
+        <Card className="shadow-medium mb-4 sm:mb-6 md:mb-8">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5 text-role-admin" />
+                  Platform Analytics
+                </CardTitle>
+                <CardDescription>Key performance metrics and insights</CardDescription>
+              </div>
+              <Button onClick={() => navigate('/admin/analytics')} size="sm" variant="outline">
+                View Full Analytics
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loadingAnalytics ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-role-admin" />
+                <p className="ml-3 text-muted-foreground">Loading analytics...</p>
+              </div>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                {/* Top Rated Listings */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Star className="h-4 w-4 text-yellow-500" />
+                      Top Rated Listings
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {analytics.topRatedListings.length === 0 ? (
+                      <div className="text-center py-4 text-muted-foreground text-sm">
+                        <Star className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p>No reviews yet</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {analytics.topRatedListings.map((listing) => (
+                          <div key={listing.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-sm truncate">{listing.title}</p>
+                              <div className="flex items-center text-xs text-muted-foreground mt-1">
+                                <Star className="h-3 w-3 fill-yellow-400 text-yellow-400 mr-1" />
+                                {listing.rating.toFixed(1)} ({listing.reviewCount} reviews)
+                              </div>
+                            </div>
+                            <div className="text-xs text-muted-foreground ml-2">
+                              {formatPHP(listing.price)}/night
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Lowest Rated Listings */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <TrendingDown className="h-4 w-4 text-red-500" />
+                      Lowest Rated Listings
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {analytics.lowestRatedListings.length === 0 ? (
+                      <div className="text-center py-4 text-muted-foreground text-sm">
+                        <TrendingDown className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p>No reviews yet</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {analytics.lowestRatedListings.map((listing) => (
+                          <div key={listing.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-sm truncate">{listing.title}</p>
+                              <div className="flex items-center text-xs text-muted-foreground mt-1">
+                                <Star className="h-3 w-3 fill-yellow-400 text-yellow-400 mr-1" />
+                                {listing.rating.toFixed(1)} ({listing.reviewCount} reviews)
+                              </div>
+                            </div>
+                            <div className="text-xs text-muted-foreground ml-2">
+                              {formatPHP(listing.price)}/night
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Revenue Trends */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <DollarSign className="h-4 w-4 text-green-500" />
+                      Revenue Trends
+                    </CardTitle>
+                    <CardDescription className="text-xs">Last 30 days</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {analytics.revenueTrends.length === 0 ? (
+                      <div className="text-center py-4 text-muted-foreground text-sm">
+                        <DollarSign className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p>No revenue data yet</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {analytics.revenueTrends.map((week, index) => (
+                          <div key={index} className="space-y-1">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">{week.week}</span>
+                              <span className="font-medium">{formatPHP(week.revenue)}</span>
+                            </div>
+                            <div className="w-full bg-muted rounded-full h-2">
+                              <div 
+                                className="bg-role-admin h-2 rounded-full transition-all" 
+                                style={{ width: `${week.percentage}%` }} 
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Admin Tools */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">

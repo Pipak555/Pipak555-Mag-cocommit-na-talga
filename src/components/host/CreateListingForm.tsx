@@ -88,6 +88,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
   const [isPublished, setIsPublished] = useState(false); // Track if listing has been published
   const [isPromoCodeGenerated, setIsPromoCodeGenerated] = useState(false); // Track if promo code was auto-generated
   const [isGeneratingPromoCode, setIsGeneratingPromoCode] = useState(false); // Track if generating promo code
+  const [lastEditedField, setLastEditedField] = useState<string | null>(null); // Track last edited field for draft resume
 
   // debounce timer ref
   const saveTimeoutRef = useRef<number | null>(null);
@@ -191,6 +192,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
     return cleaned;
   };
 
+  // Helper: track last edited field for draft resume
+  const trackFieldEdit = (fieldName: string) => {
+    setLastEditedField(fieldName);
+  };
+
   // Image validation
   const validateImage = (file: File): string | null => {
     if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
@@ -231,6 +237,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
 
     setImages(newImages);
     form.setValue("images", newImages, { shouldValidate: true });
+    trackFieldEdit('images');
     
     // Reset file input
     e.target.value = '';
@@ -240,6 +247,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
     const newImages = images.filter((_, i) => i !== index);
     setImages(newImages);
     form.setValue("images", newImages, { shouldValidate: true });
+    trackFieldEdit('images');
   };
 
   // Save draft to Firestore (debounced by caller)
@@ -321,6 +329,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         images: imagesToSave, // Save existing images (and newly uploaded for manual saves)
         status: "draft", // Only save as draft
         isManualDraft: opts?.manual || false, // Track if this is a manual save
+        lastEditedField: lastEditedField || undefined, // Track last edited field for resume
         // Also save dateRange directly for easier loading
         dateRange: dateRange?.from && dateRange?.to ? {
           from: dateRange.from.toISOString(),
@@ -378,7 +387,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         setTimeout(() => setSaveStatus("idle"), 3000);
       }
     },
-    [user, getDraftDocId, form, availableDates, blockedDates, isPublished]
+    [user, getDraftDocId, form, availableDates, blockedDates, isPublished, lastEditedField]
   );
 
   // Debounced autosave effect (disabled in edit mode)
@@ -590,6 +599,23 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
         setIsPromoCodeGenerated(true);
       }
 
+      // Restore last edited field and navigate to it
+      const savedLastEditedField = (data as any).lastEditedField;
+      if (savedLastEditedField) {
+        setLastEditedField(savedLastEditedField);
+        // Use setTimeout to ensure DOM is ready after form reset
+        setTimeout(() => {
+          const fieldElement = document.querySelector(`[name="${savedLastEditedField}"]`) as HTMLElement;
+          if (fieldElement) {
+            fieldElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Focus the field after a short delay to ensure it's visible
+            setTimeout(() => {
+              fieldElement.focus();
+            }, 300);
+          }
+        }, 100);
+      }
+
       // Show notification that draft was restored
       toast.success("Draft restored. You can continue editing where you left off.");
     } catch (err: any) {
@@ -696,6 +722,23 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
       // Set promo code generated state if exists
       if (formData.promoCode && formData.promoCode.startsWith('PROMO-')) {
         setIsPromoCodeGenerated(true);
+      }
+
+      // Restore last edited field and navigate to it
+      const savedLastEditedField = data.lastEditedField;
+      if (savedLastEditedField) {
+        setLastEditedField(savedLastEditedField);
+        // Use setTimeout to ensure DOM is ready after form reset
+        setTimeout(() => {
+          const fieldElement = document.querySelector(`[name="${savedLastEditedField}"]`) as HTMLElement;
+          if (fieldElement) {
+            fieldElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Focus the field after a short delay to ensure it's visible
+            setTimeout(() => {
+              fieldElement.focus();
+            }, 300);
+          }
+        }, 100);
       }
 
       setShowDraftDialog(false);
@@ -1346,6 +1389,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                         placeholder="Enter a descriptive title for your listing"
                         {...field}
                         value={field.value || ""}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          trackFieldEdit('title');
+                        }}
+                        onFocus={() => trackFieldEdit('title')}
                       />
                     </FormControl>
                     <div className="flex justify-between">
@@ -1373,6 +1421,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                         className="min-h-[120px]"
                         {...field}
                         value={field.value || ""}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          trackFieldEdit('description');
+                        }}
+                        onFocus={() => trackFieldEdit('description')}
                       />
                     </FormControl>
                     <div className="flex justify-between">
@@ -1395,9 +1448,15 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                       <FormLabel>
                         Category <span className="text-destructive">*</span>
                       </FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || defaultCategory}>
+                      <Select 
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          trackFieldEdit('category');
+                        }} 
+                        value={field.value || defaultCategory}
+                      >
                         <FormControl>
-                          <SelectTrigger>
+                          <SelectTrigger onFocus={() => trackFieldEdit('category')}>
                             <SelectValue placeholder="Select category" />
                           </SelectTrigger>
                         </FormControl>
@@ -1433,7 +1492,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                         placeholder="0.00"
                         {...field}
                         value={field.value || ""}
-                        onChange={(e) => field.onChange(e.target.value)}
+                        onChange={(e) => {
+                          field.onChange(e.target.value);
+                          trackFieldEdit('price');
+                        }}
+                        onFocus={() => trackFieldEdit('price')}
                       />
                     </FormControl>
                     <FormMessage />
@@ -1458,7 +1521,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                             placeholder="0"
                             {...field}
                             value={field.value || ""}
-                            onChange={(e) => field.onChange(e.target.value)}
+                            onChange={(e) => {
+                              field.onChange(e.target.value);
+                              trackFieldEdit('discount');
+                            }}
+                            onFocus={() => trackFieldEdit('discount')}
                           />
                         </FormControl>
                         <FormDescription>Optional discount percentage (0-100)</FormDescription>
@@ -1479,6 +1546,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                             maxLength={100}
                             {...field}
                             value={field.value || ""}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              trackFieldEdit('promo');
+                            }}
+                            onFocus={() => trackFieldEdit('promo')}
                           />
                         </FormControl>
                         <FormDescription>Optional promotional message</FormDescription>
@@ -1515,6 +1587,12 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                                     if (!isGenerated) {
                                       field.onChange(e.target.value.toUpperCase());
                                       setIsPromoCodeGenerated(false);
+                                      trackFieldEdit('promoCode');
+                                    }
+                                  }}
+                                  onFocus={() => {
+                                    if (!isGenerated) {
+                                      trackFieldEdit('promoCode');
                                     }
                                   }}
                                   disabled={isGenerated}
@@ -1569,6 +1647,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                                       const uniqueCode = await generateUniquePromoCode();
                                       field.onChange(uniqueCode);
                                       setIsPromoCodeGenerated(true);
+                                      trackFieldEdit('promoCode');
                                       toast.success('Unique promo code generated successfully!');
                                     } catch (error: any) {
                                       toast.error(error.message || 'Failed to generate promo code. Please try again.');
@@ -1620,6 +1699,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                               maxLength={100}
                               {...field}
                               value={field.value || ""}
+                              onChange={(e) => {
+                                field.onChange(e);
+                                trackFieldEdit('promoDescription');
+                              }}
+                              onFocus={() => trackFieldEdit('promoDescription')}
                             />
                           </FormControl>
                           <FormDescription>Optional promotional message</FormDescription>
@@ -1643,7 +1727,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                                 placeholder="15"
                                 {...field}
                                 value={field.value || ""}
-                                onChange={(e) => field.onChange(e.target.value)}
+                                onChange={(e) => {
+                                  field.onChange(e.target.value);
+                                  trackFieldEdit('promoDiscount');
+                                }}
+                                onFocus={() => trackFieldEdit('promoDiscount')}
                               />
                             </FormControl>
                             <FormMessage />
@@ -1664,7 +1752,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                                 placeholder="Unlimited"
                                 {...field}
                                 value={field.value || ""}
-                                onChange={(e) => field.onChange(e.target.value)}
+                                onChange={(e) => {
+                                  field.onChange(e.target.value);
+                                  trackFieldEdit('promoMaxUses');
+                                }}
+                                onFocus={() => trackFieldEdit('promoMaxUses')}
                               />
                             </FormControl>
                             <FormDescription>Leave empty for unlimited uses</FormDescription>
@@ -1691,6 +1783,7 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                         value={field.value || ""}
                         onChange={(location) => {
                           field.onChange(location);
+                          trackFieldEdit('location');
                         }}
                       />
                     </FormControl>
@@ -1719,7 +1812,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                               placeholder="1"
                               {...field}
                               value={field.value || ""}
-                              onChange={(e) => field.onChange(e.target.value)}
+                              onChange={(e) => {
+                                field.onChange(e.target.value);
+                                trackFieldEdit('maxGuests');
+                              }}
+                              onFocus={() => trackFieldEdit('maxGuests')}
                             />
                           </FormControl>
                           <FormMessage />
@@ -1740,7 +1837,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                               placeholder="0"
                               {...field}
                               value={field.value || ""}
-                              onChange={(e) => field.onChange(e.target.value)}
+                              onChange={(e) => {
+                                field.onChange(e.target.value);
+                                trackFieldEdit('bedrooms');
+                              }}
+                              onFocus={() => trackFieldEdit('bedrooms')}
                             />
                           </FormControl>
                           <FormMessage />
@@ -1762,7 +1863,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                               placeholder="0"
                               {...field}
                               value={field.value || ""}
-                              onChange={(e) => field.onChange(e.target.value)}
+                              onChange={(e) => {
+                                field.onChange(e.target.value);
+                                trackFieldEdit('bathrooms');
+                              }}
+                              onFocus={() => trackFieldEdit('bathrooms')}
                             />
                           </FormControl>
                           <FormMessage />
@@ -1778,7 +1883,13 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>House Type</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                        <Select 
+                          onValueChange={(value) => {
+                            field.onChange(value);
+                            trackFieldEdit('houseType');
+                          }} 
+                          value={field.value || ""}
+                        >
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select house type (optional)" />
@@ -1810,6 +1921,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                             placeholder="WiFi, Pool, Kitchen, Parking (comma separated)"
                             {...field}
                             value={field.value || ""}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              trackFieldEdit('amenities');
+                            }}
+                            onFocus={() => trackFieldEdit('amenities')}
                           />
                         </FormControl>
                         <FormDescription>Separate multiple amenities with commas</FormDescription>
@@ -1834,6 +1950,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                             placeholder="e.g., 2 hours, 1 day, 30 minutes"
                             {...field}
                             value={field.value || ""}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              trackFieldEdit('duration');
+                            }}
+                            onFocus={() => trackFieldEdit('duration')}
                           />
                         </FormControl>
                         <FormDescription>How long does this service take?</FormDescription>
@@ -1853,6 +1974,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                             placeholder="e.g., Cleaning, Repair, Consultation, Photography"
                             {...field}
                             value={field.value || ""}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              trackFieldEdit('serviceType');
+                            }}
+                            onFocus={() => trackFieldEdit('serviceType')}
                           />
                         </FormControl>
                         <FormDescription>What type of service is this?</FormDescription>
@@ -1873,6 +1999,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                             className="min-h-[100px]"
                             {...field}
                             value={field.value || ""}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              trackFieldEdit('requirements');
+                            }}
+                            onFocus={() => trackFieldEdit('requirements')}
                           />
                         </FormControl>
                         <FormDescription>What do customers need to know or provide?</FormDescription>
@@ -1901,7 +2032,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                             placeholder="10"
                             {...field}
                             value={field.value || ""}
-                            onChange={(e) => field.onChange(e.target.value)}
+                            onChange={(e) => {
+                              field.onChange(e.target.value);
+                              trackFieldEdit('capacity');
+                            }}
+                            onFocus={() => trackFieldEdit('capacity')}
                           />
                         </FormControl>
                         <FormDescription>Maximum number of participants</FormDescription>
@@ -1921,6 +2056,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                             placeholder="e.g., 3 hours, Half day, Full day"
                             {...field}
                             value={field.value || ""}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              trackFieldEdit('duration');
+                            }}
+                            onFocus={() => trackFieldEdit('duration')}
                           />
                         </FormControl>
                         <FormDescription>How long is this experience?</FormDescription>
@@ -1940,6 +2080,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                             placeholder="e.g., Daily 9 AM - 5 PM, Weekends only, By appointment"
                             {...field}
                             value={field.value || ""}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              trackFieldEdit('schedule');
+                            }}
+                            onFocus={() => trackFieldEdit('schedule')}
                           />
                         </FormControl>
                         <FormDescription>When is this experience available?</FormDescription>
@@ -1959,6 +2104,11 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                             placeholder="Equipment, Guide, Refreshments, Materials (comma separated)"
                             {...field}
                             value={field.value || ""}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              trackFieldEdit('whatsIncluded');
+                            }}
+                            onFocus={() => trackFieldEdit('whatsIncluded')}
                           />
                         </FormControl>
                         <FormDescription>Separate multiple items with commas</FormDescription>
@@ -1981,7 +2131,10 @@ export const CreateListingForm = ({ onSuccess }: { onSuccess: () => void }) => {
                     <FormControl>
                       <DateRangePicker
                         value={field.value as { from: Date | undefined; to: Date | undefined } | undefined}
-                        onChange={field.onChange}
+                        onChange={(range) => {
+                          field.onChange(range);
+                          trackFieldEdit('dateRange');
+                        }}
                         placeholder="Select your listing availability period"
                         className="mt-2"
                         error={!!formErrors.dateRange}

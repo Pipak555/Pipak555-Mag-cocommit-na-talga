@@ -153,6 +153,7 @@ export const sendWelcomeEmail = async (
 // Add this new template ID constant at the top with the others
 const TEMPLATE_ID_BOOKING = import.meta.env.VITE_EMAILJS_TEMPLATE_BOOKING || '';
 const TEMPLATE_ID_PASSWORD_RESET = import.meta.env.VITE_EMAILJS_TEMPLATE_PASSWORD_RESET || '';
+const TEMPLATE_ID_CANCELLATION = import.meta.env.VITE_EMAILJS_TEMPLATE_CANCELLATION || '';
 
 /**
  * Send booking confirmation email to guest
@@ -346,6 +347,133 @@ export const sendPasswordResetEmail = async (
       publicKey2: PUBLIC_KEY_2 ? 'Set' : 'Missing',
       serviceId2: SERVICE_ID_2 ? 'Set' : 'Missing',
       templateId: TEMPLATE_ID_PASSWORD_RESET ? 'Set' : 'Missing'
+    });
+    return false;
+  }
+};
+
+/**
+ * Send booking cancellation email to host
+ * Notifies host when a guest cancels their booking
+ */
+export const sendBookingCancellationEmailToHost = async (
+  hostEmail: string,
+  hostName: string,
+  guestName: string,
+  listingTitle: string,
+  listingLocation: string,
+  checkIn: string,
+  checkOut: string,
+  guests: number,
+  totalPrice: number,
+  bookingId: string,
+  refundAmount?: number,
+  cancellationReason?: string
+): Promise<boolean> => {
+  try {
+    // Use Account 2's service for cancellation emails (same as password reset)
+    if (!SERVICE_ID_2 || !PUBLIC_KEY_2 || !TEMPLATE_ID_CANCELLATION) {
+      console.warn('⚠️ EmailJS Account 2 cancellation template not configured. Skipping email send.');
+      console.warn('   Required: VITE_EMAILJS_SERVICE_ID_2, VITE_EMAILJS_PUBLIC_KEY_2, VITE_EMAILJS_TEMPLATE_CANCELLATION');
+      return false;
+    }
+
+    console.log('📧 EmailJS cancellation email config (Account 2):', {
+      serviceId: SERVICE_ID_2,
+      templateId: TEMPLATE_ID_CANCELLATION,
+      publicKey: PUBLIC_KEY_2 ? 'Set' : 'Missing'
+    });
+
+    // Validate required fields
+    if (!hostEmail || !hostName || !listingTitle) {
+      console.error('❌ Missing required fields for cancellation email:', {
+        hostEmail: !!hostEmail,
+        hostName: !!hostName,
+        listingTitle: !!listingTitle
+      });
+      return false;
+    }
+
+    // Format dates properly
+    let checkInDate = '';
+    let checkOutDate = '';
+    
+    try {
+      checkInDate = new Date(checkIn).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    } catch (e) {
+      checkInDate = new Date(checkIn).toLocaleDateString('en-US');
+    }
+    
+    try {
+      checkOutDate = new Date(checkOut).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    } catch (e) {
+      checkOutDate = new Date(checkOut).toLocaleDateString('en-US');
+    }
+
+    // Format guests text
+    const guestsText = guests ? (guests === 1 ? '1 guest' : `${guests} guests`) : '1 guest';
+    
+    // Format prices
+    const formattedTotalPrice = totalPrice ? formatPHP(totalPrice) : formatPHP(0);
+    const formattedRefundAmount = refundAmount !== undefined ? formatPHP(refundAmount) : 'N/A';
+    
+    // Get the app URL from environment variable or use production URL as fallback
+    const appUrl = import.meta.env.VITE_APP_URL || 'https://mojo-dojo-casa-house-f31a5.web.app';
+    
+    // Use base64 embedded logo (works even when email clients block external images)
+    const logoUrl = getLogoUrl();
+    
+    // Template parameters for cancellation email
+    const templateParams = {
+      to_email: String(hostEmail || ''),
+      to_name: String(hostName || 'Host'),
+      guest_name: String(guestName || 'Guest'),
+      listing_title: String(listingTitle || 'Your Listing'),
+      listing_location: String(listingLocation || 'Location not specified'),
+      check_in: String(checkInDate || new Date(checkIn).toLocaleDateString()),
+      check_out: String(checkOutDate || new Date(checkOut).toLocaleDateString()),
+      guests: String(guestsText),
+      total_price: String(formattedTotalPrice),
+      refund_amount: String(formattedRefundAmount),
+      booking_id: String(bookingId || 'N/A'),
+      cancellation_reason: String(cancellationReason || 'No reason provided'),
+      booking_link: String(`${appUrl}/host/bookings`),
+      platform_name: 'Mojo Dojo Casa House',
+      support_email: 'johnpatrickrobles143@gmail.com',
+      year: String(new Date().getFullYear()),
+      logo_url: logoUrl,
+      logo_alt: 'Mojo Dojo Casa House Logo',
+    };
+
+    console.log('📧 Sending booking cancellation email to host with params:', {
+      to_email: templateParams.to_email,
+      to_name: templateParams.to_name,
+      guest_name: templateParams.guest_name,
+      listing_title: templateParams.listing_title,
+    });
+
+    // Use Account 2's public key by passing it as 4th parameter to emailjs.send
+    // This allows us to use Account 2's service for cancellation emails
+    await emailjs.send(SERVICE_ID_2, TEMPLATE_ID_CANCELLATION, templateParams, PUBLIC_KEY_2);
+    
+    console.log('✅ Booking cancellation email sent successfully to host:', hostEmail);
+    return true;
+  } catch (error: any) {
+    console.error('❌ Failed to send booking cancellation email to host:', error);
+    console.error('Error details:', {
+      message: error?.message,
+      status: error?.status,
+      text: error?.text
     });
     return false;
   }

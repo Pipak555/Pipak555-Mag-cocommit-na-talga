@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { collection, getDocs, query, where, orderBy, doc, getDoc, updateDoc } from "firebase/firestore";
+import { collection, getDocs, query, where, orderBy, doc, getDoc, updateDoc, onSnapshot, deleteField } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,16 +26,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { DollarSign, TrendingUp, Wallet, Loader2, AlertCircle, ArrowUpRight, CheckCircle2, CreditCard } from "lucide-react";
+import { DollarSign, TrendingUp, Wallet, Loader2, AlertCircle, ArrowUpRight, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 import { getUserTransactions } from "@/lib/firestore";
 import { requestWithdrawal } from "@/lib/hostPayoutService";
 import { calculatePayPalPayoutFee, calculateWithdrawalWithFees } from "@/lib/financialUtils";
-import type { Transaction } from "@/types";
+import type { Transaction, PayPalLinkInfo } from "@/types";
 import { formatPHP } from "@/lib/currency";
 import LoadingScreen from "@/components/ui/loading-screen";
 import { BackButton } from "@/components/shared/BackButton";
-import PayPalIdentity from "@/components/payments/PayPalIdentity";
+import UnifiedPayPalLinker from "@/components/payments/UnifiedPayPalLinker";
+import { getPayPalLink } from "@/lib/paypalLinks";
 
 const HostPayments = () => {
   const navigate = useNavigate();
@@ -43,8 +44,7 @@ const HostPayments = () => {
   const { user, userRole, refreshUserProfile, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(true);
   const [walletBalance, setWalletBalance] = useState(0);
-  const [paypalEmail, setPaypalEmail] = useState<string | null>(null);
-  const [paypalVerified, setPaypalVerified] = useState(false);
+  const [paypalLink, setPaypalLink] = useState<PayPalLinkInfo | null>(null);
   const [withdrawDialogOpen, setWithdrawDialogOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawing, setWithdrawing] = useState(false);
@@ -54,31 +54,22 @@ const HostPayments = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [earningsPayoutMethod, setEarningsPayoutMethod] = useState<'wallet' | 'paypal'>('wallet');
 
+  const hasPayPalLinked = !!paypalLink?.email;
+
   useEffect(() => {
     // Check if we're processing a PayPal callback
     const code = searchParams.get('code');
     const state = searchParams.get('state');
     const isPayPalCallback = code && state && state.startsWith('host-paypal-verify-');
     
-    // If we're processing a PayPal callback, wait for auth to be restored
-    // Don't redirect immediately as auth state might not be restored yet after redirect
+    // If we're processing a PayPal callback, DON'T redirect to login
+    // The PayPalIdentity component will handle the verification
+    // Auth state might not be immediately restored after PayPal redirect
     if (isPayPalCallback) {
-      if (authLoading) {
-        return; // Wait for auth to load
-      }
-      // Give auth a moment to restore after redirect, even if loading is false
-      const timer = setTimeout(() => {
-        if (user && userRole === 'host') {
-          loadPaymentsData();
-        } else if (!user || userRole !== 'host') {
-          // If still not authenticated after waiting, then redirect
-          // This should rarely happen, but handle it gracefully
-          console.warn('User not authenticated after PayPal callback, redirecting to login');
-          navigate('/host/login');
-        }
-      }, 500); // Small delay to allow auth state to restore
-      
-      return () => clearTimeout(timer);
+      // Just wait and let PayPalIdentity component handle the callback
+      // Don't check auth or redirect - PayPalIdentity will handle everything
+      // The component will process the OAuth code and update the user's PayPal info
+      return;
     }
     
     // Normal flow: only redirect if auth is loaded and user is not authenticated
@@ -111,6 +102,28 @@ const HostPayments = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, searchParams]);
 
+  // Set up real-time listener for wallet balance updates
+  useEffect(() => {
+    if (!user) return;
+
+    const userRef = doc(db, 'users', user.uid);
+    const unsubscribe = onSnapshot(userRef, async (userDoc) => {
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        const { readWalletBalance } = await import('@/lib/financialUtils');
+        setWalletBalance(readWalletBalance(userData.walletBalance));
+        // Use host-specific PayPal fields (separate from guest PayPal)
+        setPaypalLink(getPayPalLink(userData as any, 'host'));
+        // Load earnings payout method preference
+        setEarningsPayoutMethod(userData.earningsPayoutMethod || 'wallet');
+      }
+    }, (error) => {
+      console.error('Error in wallet balance listener:', error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
   const loadPaymentsData = async () => {
     if (!user) return;
     setLoading(true);
@@ -121,9 +134,8 @@ const HostPayments = () => {
         const userData = userDoc.data();
         const { readWalletBalance } = await import('@/lib/financialUtils');
         setWalletBalance(readWalletBalance(userData.walletBalance));
-        setPaypalEmail(userData.paypalEmail || null);
-        // Check for either paypalEmailVerified or paypalOAuthVerified (fallback method)
-        setPaypalVerified(userData.paypalEmailVerified || userData.paypalOAuthVerified || false);
+        // Use host-specific PayPal fields (separate from guest PayPal)
+        setPaypalLink(getPayPalLink(userData as any, 'host'));
         // Load earnings payout method preference
         setEarningsPayoutMethod(userData.earningsPayoutMethod || 'wallet');
       }
@@ -151,10 +163,13 @@ const HostPayments = () => {
       return;
     }
 
-    // Get base URL from environment variable or use current origin
-    // In production, use VITE_APP_URL to ensure consistent redirect URIs
-    const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
-    let baseUrl = import.meta.env.PROD ? appUrl : window.location.origin;
+    // Get base URL - in production, always use current origin (actual deployed URL)
+    // This ensures we use the correct Firebase project URL even after project changes
+    // In development, use VITE_APP_URL if set, otherwise use current origin
+    const appUrl = import.meta.env.VITE_APP_URL;
+    let baseUrl = import.meta.env.PROD 
+      ? window.location.origin  // Production: always use actual deployed URL
+      : (appUrl || window.location.origin);  // Development: use env var or current origin
     
     // Build redirect URI - PayPal sandbox doesn't accept IP addresses, so use localhost for local dev
     // IMPORTANT: This exact URI must be added to PayPal app's allowed redirect URIs
@@ -175,8 +190,15 @@ const HostPayments = () => {
         }
       } else if (baseUrl.includes('localhost') && !baseUrl.includes(':8081')) {
         // Replace localhost with 127.0.0.1 for consistency (except port 8081)
-      redirectUri = redirectUri.replace('localhost', '127.0.0.1');
+        redirectUri = redirectUri.replace('localhost', '127.0.0.1');
       }
+    }
+
+    // Validate redirect URI format
+    if (!redirectUri || (!redirectUri.startsWith('http://') && !redirectUri.startsWith('https://'))) {
+      toast.error('Invalid redirect URI configuration. Please check your environment settings.');
+      console.error('Invalid redirect URI:', redirectUri);
+      return;
     }
 
     // Generate OAuth URL for PayPal login
@@ -187,27 +209,47 @@ const HostPayments = () => {
     const responseType = 'code';
     
     // PayPal OAuth URL format (OpenID Connect)
-    const authUrl = `https://www${isSandbox ? '.sandbox' : ''}.paypal.com/webapps/auth/protocol/openidconnect/v1/authorize?` +
-      `client_id=${clientId}&` +
-      `response_type=${responseType}&` +
-      `scope=${encodeURIComponent(scope)}&` +
-      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-      `state=${state}`;
+    // Note: PayPal requires exact redirect URI match in app settings
+    // Build URL using URLSearchParams for proper encoding
+    const authBaseUrl = `https://www${isSandbox ? '.sandbox' : ''}.paypal.com/webapps/auth/protocol/openidconnect/v1/authorize`;
+    const authParams = new URLSearchParams({
+      client_id: clientId,
+      response_type: responseType,
+      scope: scope,
+      redirect_uri: redirectUri,
+      state: state
+    });
+    const authUrl = `${authBaseUrl}?${authParams.toString()}`;
 
-    // Debug: Log what we're sending (only in development)
+    // Debug: Log redirect URI (always log for troubleshooting)
+    console.log('🔍 Host PayPal OAuth Configuration:', {
+      redirectUri,
+      currentOrigin: window.location.origin,
+      isProduction: import.meta.env.PROD,
+      isSandbox,
+      clientIdPrefix: clientId ? clientId.substring(0, 20) + '...' : 'MISSING',
+      note: 'This redirect URI must be EXACTLY added to your PayPal app settings'
+    });
+
     if (import.meta.env.DEV) {
-      console.log('🔍 PayPal OAuth Debug:', {
+      console.log('📋 Host PayPal OAuth Debug Details:', {
         clientId: clientId ? (clientId.substring(0, 20) + '...') : 'MISSING',
         redirectUri,
         baseUrl,
         isSandbox,
-        fullUrl: authUrl.substring(0, 200) + '...'
+        scope,
+        state,
+        authUrlPreview: authUrl.substring(0, 150) + '...'
       });
-      console.warn('⚠️ IMPORTANT: Make sure this EXACT redirect URI is in PayPal:', redirectUri);
-      console.warn('⚠️ Current URL:', window.location.href);
-      console.warn('⚠️ Redirect URI being sent:', redirectUri);
-      console.warn('📝 To fix: Go to PayPal Developer Dashboard → Your App → Add Redirect URI:', redirectUri);
-      console.warn('📝 PayPal Dashboard: https://developer.paypal.com/dashboard/applications/sandbox');
+      console.warn('⚠️ CRITICAL: Make sure this EXACT redirect URI is in PayPal:');
+      console.warn('   ' + redirectUri);
+      console.warn('📝 Steps to fix:');
+      console.warn('   1. Go to: https://developer.paypal.com/dashboard/applications/sandbox');
+      console.warn('   2. Click on your app: "Mojo Dojo Casa House"');
+      console.warn('   3. Go to: "Log in with PayPal" → "Advanced Settings"');
+      console.warn('   4. Under "Return URL", add this EXACT URI:');
+      console.warn('      ' + redirectUri);
+      console.warn('   5. Save and try again');
     }
 
     // Redirect to PayPal login
@@ -218,16 +260,16 @@ const HostPayments = () => {
     if (!user) return;
 
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        paypalEmail: null,
-        paypalEmailVerified: false,
-        paypalVerifiedAt: null,
-        paypalOAuthVerified: false,
-        paypalLinkedViaPayment: false
-      });
+        await updateDoc(doc(db, 'users', user.uid), {
+          ['paypalLinks.host']: deleteField(),
+          hostPayPalEmail: null,
+          hostPayPalEmailVerified: false,
+          hostPayPalVerifiedAt: null,
+          hostPayPalOAuthVerified: false,
+          paypalLinkedViaPayment: false
+        });
 
-      setPaypalEmail(null);
-      setPaypalVerified(false);
+      setPaypalLink(null);
       setUnlinkDialogOpen(false);
       await refreshUserProfile();
       await loadPaymentsData();
@@ -266,21 +308,14 @@ const HostPayments = () => {
       return;
     }
 
-    const fee = calculatePayPalPayoutFee(amount);
-    const totalRequired = adminAbsorbsFees ? amount : calculateWithdrawalWithFees(amount);
-
-    if (totalRequired > walletBalance) {
-      if (adminAbsorbsFees) {
-        toast.error(`Insufficient balance. Available: ${formatPHP(walletBalance)}, Required: ${formatPHP(amount)}`);
-      } else {
-        toast.error(`Insufficient balance. Available: ${formatPHP(walletBalance)}, Required: ${formatPHP(totalRequired)} (withdrawal: ${formatPHP(amount)} + fees: ${formatPHP(fee)})`);
-      }
+    if (amount > walletBalance) {
+      toast.error(`Insufficient balance. Available: ${formatPHP(walletBalance)}, Required: ${formatPHP(amount)}`);
       return;
     }
 
     // This check should not be needed since we prevent opening the dialog,
     // but keeping it as a safety check
-    if (!paypalVerified) {
+    if (!hasPayPalLinked) {
       toast.error('Please link and verify your PayPal account first');
       setWithdrawDialogOpen(false);
       setLinkPayPalDialogOpen(true);
@@ -289,8 +324,8 @@ const HostPayments = () => {
 
     setWithdrawing(true);
     try {
-      const result = await requestWithdrawal(user.uid, amount, !adminAbsorbsFees);
-      toast.success(result.message || `Withdrawal request submitted successfully!${paypalEmail ? ` Funds will be sent to ${paypalEmail}` : ' Funds will be sent to your linked PayPal account'} once processed by admin.`);
+      const result = await requestWithdrawal(user.uid, amount);
+      toast.success(result.message || `Withdrawal request submitted successfully!${paypalLink?.email ? ` Funds will be sent to ${paypalLink.email}` : ' Funds will be sent to your linked PayPal account'} once processed by admin.`);
       setWithdrawDialogOpen(false);
       setWithdrawAmount('');
       // Reload data to update wallet balance
@@ -327,30 +362,26 @@ const HostPayments = () => {
 
         {/* Wallet Balance Card */}
         <Card className="mb-8 relative overflow-hidden border-0 shadow-md">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-primary" />
+          <div className="absolute top-0 left-0 right-0 h-1 bg-blue-600" />
           <CardHeader>
             <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
               Wallet Balance
             </CardTitle>
             </CardHeader>
             <CardContent>
-            <div className="text-4xl font-bold text-primary mb-2">{formatPHP(walletBalance)}</div>
+            <div className="text-4xl font-bold text-blue-600 dark:text-blue-400 mb-2">{formatPHP(walletBalance)}</div>
             <p className="text-sm text-muted-foreground mb-4">Available for withdrawal to your PayPal account</p>
               {walletBalance > 0 && (
-                <Button
+              <Button
                 size="lg"
-                className="w-full sm:w-auto"
-                  onClick={() => {
-                    if (!paypalVerified) {
-                      setLinkPayPalDialogOpen(true);
-                    } else {
-                      setWithdrawDialogOpen(true);
-                    }
-                  }}
-                >
-                  <ArrowUpRight className="h-4 w-4 mr-2" />
-                  Withdraw to PayPal
-                </Button>
+                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={() => {
+                  setWithdrawDialogOpen(true);
+                }}
+              >
+                <ArrowUpRight className="h-4 w-4 mr-2" />
+                Withdraw to PayPal
+              </Button>
               )}
             {walletBalance === 0 && (
               <div className="p-4 bg-muted rounded-lg">
@@ -369,74 +400,6 @@ const HostPayments = () => {
             </CardContent>
           </Card>
 
-        {/* PayPal Account Status */}
-        {!paypalVerified && (
-          <Card id="paypal-linking-section" className="mb-8 border-yellow-500/50 bg-yellow-500/10">
-            <CardContent className="pt-6">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
-                <div className="flex-1">
-                  <h3 className="font-semibold mb-1">PayPal Account Required</h3>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Link your PayPal account to receive payouts from your bookings. Payments will be sent directly to your PayPal account.
-                  </p>
-                  {user && (
-                    <PayPalIdentity
-                      userId={user.uid}
-                      paypalEmail={paypalEmail || undefined}
-                      paypalVerified={paypalVerified}
-                      statePrefix="host-paypal-verify"
-                      onVerified={async (email: string) => {
-                        // Update local state immediately for instant UI feedback
-                        setPaypalEmail(email || paypalEmail);
-                        setPaypalVerified(true);
-                        // Refresh data from server to get latest info
-                        await refreshUserProfile();
-                        await loadPaymentsData();
-                        toast.success('PayPal account linked successfully! You can now withdraw funds.');
-                      }}
-                    />
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {paypalVerified && (
-          <Card className="mb-8 border-green-500/50 bg-green-500/10">
-            <CardContent className="pt-6">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3 flex-1">
-                  <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5" />
-                  <div className="flex-1">
-                    <h3 className="font-semibold mb-1">PayPal Account Linked</h3>
-                    {paypalEmail ? (
-                      <>
-                        <p className="text-sm font-medium text-muted-foreground mb-1">{paypalEmail}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Payouts will be sent to this PayPal account
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">
-                        Your PayPal account has been verified. Email will be stored on your first payment.
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setUnlinkDialogOpen(true)}
-                >
-                  Unlink
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Payment Preference Selection */}
         <Card className="mb-8">
           <CardHeader>
@@ -448,15 +411,15 @@ const HostPayments = () => {
               <div
                 className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition-all ${
                   earningsPayoutMethod === 'wallet'
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/50'
+                    ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20'
+                    : 'border-border hover:border-blue-500/50'
                 }`}
                 onClick={() => setEarningsPayoutMethod('wallet')}
               >
                 <div className="flex items-center gap-3 flex-1">
                   <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
                     earningsPayoutMethod === 'wallet'
-                      ? 'border-primary bg-primary'
+                      ? 'border-blue-600 bg-blue-600 dark:border-blue-400 dark:bg-blue-400'
                       : 'border-muted-foreground'
                   }`}>
                     {earningsPayoutMethod === 'wallet' && (
@@ -465,7 +428,7 @@ const HostPayments = () => {
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <Wallet className="h-5 w-5 text-primary" />
+                      <Wallet className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                       <Label className="text-base font-semibold cursor-pointer">
                         E-Wallet
                       </Label>
@@ -480,11 +443,11 @@ const HostPayments = () => {
               <div
                 className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition-all ${
                   earningsPayoutMethod === 'paypal'
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/50'
+                    ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20'
+                    : 'border-border hover:border-blue-500/50'
                 }`}
                 onClick={() => {
-                  if (!paypalVerified) {
+                  if (!hasPayPalLinked) {
                     toast.error('Please link and verify your PayPal account first');
                     return;
                   }
@@ -494,7 +457,7 @@ const HostPayments = () => {
                 <div className="flex items-center gap-3 flex-1">
                   <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
                     earningsPayoutMethod === 'paypal'
-                      ? 'border-primary bg-primary'
+                      ? 'border-blue-600 bg-blue-600 dark:border-blue-400 dark:bg-blue-400'
                       : 'border-muted-foreground'
                   }`}>
                     {earningsPayoutMethod === 'paypal' && (
@@ -503,7 +466,7 @@ const HostPayments = () => {
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <CreditCard className="h-5 w-5 text-primary" />
+                      <CreditCard className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                       <Label className="text-base font-semibold cursor-pointer">
                         PayPal Account
                       </Label>
@@ -511,12 +474,12 @@ const HostPayments = () => {
                         <p className="text-sm text-muted-foreground">
                       Earnings will be sent directly to your linked PayPal account automatically.
                         </p>
-                    {paypalEmail && (
+                    {paypalLink?.email && (
                         <p className="text-xs text-muted-foreground mt-1">
-                        Linked account: {paypalEmail}
+                        Linked account: {paypalLink.email}
                       </p>
                     )}
-                    {!paypalVerified && (
+                    {!hasPayPalLinked && (
                       <div className="mt-2 p-2 bg-yellow-500/10 border border-yellow-500/50 rounded text-xs text-yellow-700 dark:text-yellow-400">
                         <AlertCircle className="h-3 w-3 inline mr-1" />
                         You need to link and verify your PayPal account first
@@ -527,7 +490,7 @@ const HostPayments = () => {
                     </div>
                     </div>
 
-            {earningsPayoutMethod === 'paypal' && !paypalVerified && (
+            {earningsPayoutMethod === 'paypal' && !hasPayPalLinked && (
               <div className="p-4 bg-yellow-500/10 border border-yellow-500/50 rounded-lg">
                 <div className="flex items-start gap-3">
                   <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
@@ -543,9 +506,10 @@ const HostPayments = () => {
 
             <div className="pt-4 border-t">
               <Button 
+                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white"
                 onClick={async () => {
                   if (!user) return;
-                  if (earningsPayoutMethod === 'paypal' && !paypalVerified) {
+                  if (earningsPayoutMethod === 'paypal' && !hasPayPalLinked) {
                     toast.error('Please link and verify your PayPal account first');
                     return;
                   }
@@ -564,8 +528,7 @@ const HostPayments = () => {
                     setLoading(false);
                   }
                 }}
-                disabled={loading || (earningsPayoutMethod === 'paypal' && !paypalVerified)}
-                className="w-full sm:w-auto"
+                disabled={loading || (earningsPayoutMethod === 'paypal' && !hasPayPalLinked)}
               >
                 {loading ? (
                   <>
@@ -680,8 +643,8 @@ const HostPayments = () => {
               <AlertDialogTitle>Unlink PayPal Account</AlertDialogTitle>
               <AlertDialogDescription>
                 Are you sure you want to unlink your PayPal account? You won't be able to withdraw funds until you link a PayPal account again.
-                {paypalEmail && (
-                  <span className="block mt-2 font-medium">Account: {paypalEmail}</span>
+                {paypalLink?.email && (
+                  <span className="block mt-2 font-medium">Account: {paypalLink.email}</span>
                 )}
               </AlertDialogDescription>
             </AlertDialogHeader>
@@ -736,7 +699,7 @@ const HostPayments = () => {
             <div className="space-y-4 py-4">
               <div>
                 <Label>Available Balance</Label>
-                <div className="text-2xl font-bold text-primary mt-1">{formatPHP(walletBalance)}</div>
+                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">{formatPHP(walletBalance)}</div>
               </div>
               <div>
                 <Label htmlFor="withdrawAmount">Withdrawal Amount</Label>
@@ -755,48 +718,20 @@ const HostPayments = () => {
                   <div className="mt-2 p-3 bg-muted rounded-lg space-y-1">
                     {(() => {
                       const amount = parseFloat(withdrawAmount);
-                      const fee = calculatePayPalPayoutFee(amount);
-                      const totalRequired = adminAbsorbsFees ? amount : calculateWithdrawalWithFees(amount);
-                      const amountReceived = adminAbsorbsFees ? amount : amount - fee;
                       
                       return (
                         <>
                           <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">PayPal Fee:</span>
-                            <span className="font-medium">{formatPHP(fee)}</span>
+                            <span className="text-muted-foreground">You will receive:</span>
+                            <span className="font-semibold text-green-600 dark:text-green-400">{formatPHP(amount)}</span>
                           </div>
-                          {adminAbsorbsFees ? (
-                            <>
-                              <div className="flex justify-between text-sm">
-                                <span className="text-muted-foreground">You will receive:</span>
-                                <span className="font-semibold text-green-600 dark:text-green-400">{formatPHP(amountReceived)}</span>
-                              </div>
-                              <div className="flex justify-between text-sm">
-                                <span className="text-muted-foreground">Deducted from wallet:</span>
-                                <span className="font-medium">{formatPHP(amount)}</span>
-                              </div>
-                              <p className="text-xs text-muted-foreground mt-2 pt-2 border-t">
-                                ✓ Fees paid by admin
-                              </p>
-                            </>
-                          ) : (
-                            <>
-                              <div className="flex justify-between text-sm">
-                                <span className="text-muted-foreground">You will receive:</span>
-                                <span className="font-semibold text-green-600 dark:text-green-400">{formatPHP(amountReceived)}</span>
-                              </div>
-                              <div className="flex justify-between text-sm">
-                                <span className="text-muted-foreground">Total deducted from wallet:</span>
-                                <span className="font-medium">{formatPHP(totalRequired)}</span>
-                              </div>
-                              <p className="text-xs text-muted-foreground mt-2 pt-2 border-t">
-                                Fees deducted from your wallet
-                              </p>
-                            </>
-                          )}
-                          {totalRequired > walletBalance && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Deducted from wallet:</span>
+                            <span className="font-medium">{formatPHP(amount)}</span>
+                          </div>
+                          {amount > walletBalance && (
                             <p className="text-xs text-destructive mt-1">
-                              Insufficient balance. Need {formatPHP(totalRequired - walletBalance)} more.
+                              Insufficient balance. Need {formatPHP(amount - walletBalance)} more.
                             </p>
                           )}
                         </>
@@ -808,12 +743,30 @@ const HostPayments = () => {
                   Enter amount to withdraw (max: {formatPHP(walletBalance)})
                 </p>
               </div>
-              {paypalEmail && (
-                <div className="p-3 bg-muted rounded-lg">
-                  <p className="text-sm font-medium mb-1">PayPal Account</p>
-                  <p className="text-sm text-muted-foreground">{paypalEmail}</p>
-                </div>
-              )}
+              <div>
+                <Label className="text-sm font-medium mb-2 block">
+                  Linked PayPal Account
+                </Label>
+                {user ? (
+                  <UnifiedPayPalLinker
+                    userId={user.uid}
+                    role="host"
+                    linkedInfo={paypalLink ?? undefined}
+                    onLinked={async () => {
+                      await refreshUserProfile();
+                      await loadPaymentsData();
+                    }}
+                    onUnlink={handleUnlinkPayPal}
+                    unlinkMessage="You must link another PayPal account before requesting new withdrawals."
+                  />
+                ) : (
+                  <div className="p-3 bg-muted rounded-lg">
+                    <p className="text-sm text-muted-foreground">
+                      Please sign in as a host to link your PayPal account.
+                    </p>
+                  </div>
+                )}
+              </div>
               <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                 <p className="text-xs text-muted-foreground">
                   ⚠️ <strong>Sandbox Mode:</strong> This is a simulation. No real money will be transferred. 
@@ -826,14 +779,14 @@ const HostPayments = () => {
                 Cancel
               </Button>
               <Button 
+                className="bg-blue-600 hover:bg-blue-700 text-white"
                 onClick={handleWithdraw} 
                 disabled={
                   withdrawing || 
                   !withdrawAmount || 
                   parseFloat(withdrawAmount) <= 0 ||
-                  (adminAbsorbsFees 
-                    ? parseFloat(withdrawAmount) > walletBalance 
-                    : calculateWithdrawalWithFees(parseFloat(withdrawAmount)) > walletBalance)
+                  parseFloat(withdrawAmount) > walletBalance ||
+                  !hasPayPalLinked
                 }
               >
                 {withdrawing ? (

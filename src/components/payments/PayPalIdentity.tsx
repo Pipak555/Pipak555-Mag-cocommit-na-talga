@@ -1,12 +1,15 @@
 /**
  * PayPal Account Verification Component
  * 
- * Uses PayPal OAuth redirect flow to verify accounts:
+ * Client-side only implementation (no Cloud Functions - cost-free):
  * 1. User clicks "Link PayPal Account"
  * 2. Redirects to PayPal login page
  * 3. User logs in with their PayPal credentials
  * 4. PayPal redirects back with authorization code
- * 5. Account is verified and email is stored
+ * 5. Account is verified and user's account email is stored as PayPal email
+ * 
+ * Note: Since we can't exchange OAuth code server-side (requires Cloud Functions),
+ * we use the user's account email as their PayPal email (they logged in with this email).
  * 
  * ⚠️ IMPORTANT: This is configured for SANDBOX mode only - NO REAL MONEY will be processed.
  */
@@ -14,33 +17,83 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { AlertCircle, CheckCircle2, ExternalLink, CreditCard, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import type { PayPalLinkInfo, PayPalRole } from "@/types";
+import { buildClientLinkedInfo, getPayPalLinkPath } from "@/lib/paypalLinks";
+import { diagnosePayPalOAuth, logPayPalOAuthDiagnostics } from "@/lib/paypalOAuthDiagnostics";
 
 interface PayPalIdentityProps {
   userId: string;
   onVerified: (email: string) => void;
   paypalEmail?: string;
   paypalVerified?: boolean;
-  statePrefix?: string; // Optional: 'host-paypal-verify' for hosts, 'paypal-verify' for guests (default)
+  statePrefix?: string; // Optional legacy prefix
+  role?: PayPalRole;
+  linkedInfo?: PayPalLinkInfo | null;
 }
 
-const PayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified, statePrefix = 'paypal-verify' }: PayPalIdentityProps) => {
+const PayPalIdentity = ({
+  userId,
+  onVerified,
+  paypalEmail,
+  paypalVerified,
+  statePrefix,
+  role = 'guest',
+  linkedInfo
+}: PayPalIdentityProps) => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [paypalEmailInput, setPaypalEmailInput] = useState('');
+
+  const effectiveRole: PayPalRole = (() => {
+    if (role) return role;
+    if (statePrefix?.startsWith('host-paypal-verify')) return 'host';
+    if (statePrefix?.startsWith('admin-paypal-verify')) return 'admin';
+    return 'guest';
+  })();
+
+  const resolvedStatePrefix = statePrefix || `${effectiveRole}-paypal-verify`;
+  const resolvedEmail = linkedInfo?.email ?? paypalEmail;
+  const resolvedVerified = !!(linkedInfo?.email || paypalVerified);
 
   const clientId = import.meta.env.VITE_PAYPAL_CLIENT_ID || '';
   const paypalEnv = import.meta.env.VITE_PAYPAL_ENV || 'sandbox';
   const isSandbox = paypalEnv !== 'production';
   
-  // Get base URL from environment variable or use current origin
-  // In production, use VITE_APP_URL to ensure consistent redirect URIs
-  const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
-  let baseUrl = import.meta.env.PROD ? appUrl : window.location.origin;
+  // Debug: Log the actual Client ID being used (always log to catch env var issues)
+  if (import.meta.env.DEV) {
+    console.log('🔑 PayPal Client ID Check:', {
+      clientId: clientId ? `${clientId.substring(0, 20)}...` : 'MISSING',
+      clientIdLength: clientId?.length || 0,
+      startsWith: clientId ? clientId.substring(0, 5) : 'N/A',
+      envVar: import.meta.env.VITE_PAYPAL_CLIENT_ID ? 'Present' : 'Missing',
+      note: 'If this shows old Client ID, restart dev server after updating .env'
+    });
+  }
+  
+  // Get base URL - in production, always use current origin (actual deployed URL)
+  // This ensures we use the correct Firebase project URL even after project changes
+  // In development, use VITE_APP_URL if set, otherwise use current origin
+  const appUrl = import.meta.env.VITE_APP_URL;
+  let baseUrl = import.meta.env.PROD 
+    ? window.location.origin  // Production: always use actual deployed URL
+    : (appUrl || window.location.origin);  // Development: use env var or current origin
   
   // Use the same redirect URI as guests (already configured in PayPal app)
   // The callback handler will route back based on state
@@ -68,74 +121,26 @@ const PayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified, state
   // Note: In production, ensure VITE_APP_URL is set correctly in .env.production
   // Example: VITE_APP_URL=https://your-project-id.web.app
 
-  const handleOAuthCallback = useCallback(async (authCode: string) => {
+  const handleOAuthCallback = useCallback(async () => {
     setVerifying(true);
     try {
-      // Try to exchange OAuth code for access token (server-side) if Cloud Function is available
-      // If it fails, fall back to just marking as verified (like admin does)
-      let email = '';
-      let accessToken = '';
+      // Client-side only - no Cloud Functions (cost-free implementation)
+      // OAuth callback means user successfully logged into PayPal
+      // Since we can't exchange OAuth code for user info client-side (requires secret),
+      // we need to prompt the user to confirm the PayPal email they just logged in with
       
-      try {
-        const { exchangePayPalOAuthCode } = await import('@/lib/paypalOAuthService');
-        
-        // Get redirect URI (use same logic as above)
-        const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
-        let baseUrl = import.meta.env.PROD ? appUrl : window.location.origin;
-        let redirectUri = `${baseUrl}/paypal-callback`;
-        
-        // For local development, convert IP addresses to localhost (PayPal sandbox requirement)
-        if (!import.meta.env.PROD) {
-          const ipAddressMatch = baseUrl.match(/^https?:\/\/(\d+\.\d+\.\d+\.\d+)(:\d+)?/);
-          if (ipAddressMatch) {
-            const port = ipAddressMatch[2] || ':8080';
-            redirectUri = `http://127.0.0.1${port}/paypal-callback`;
-          } else if (baseUrl.includes('localhost') && !baseUrl.includes(':8081')) {
-            redirectUri = redirectUri.replace('localhost', '127.0.0.1');
-          }
-        }
-
-        // Try to exchange code for access token and email
-        const result = await exchangePayPalOAuthCode(authCode, redirectUri);
-        
-        if (result.success) {
-          email = result.email || '';
-          // Access token is stored server-side, we just get the email
-        }
-      } catch (cloudFunctionError: any) {
-        // Cloud Function not available or failed - fall back to simple verification
-        // This is expected - OAuth exchange requires server-side secrets
-        // We'll just mark the account as verified
-        if (import.meta.env.DEV) {
-          console.log('ℹ️ Using client-side PayPal verification (Cloud Function not available)');
-        }
-        // Continue with fallback approach
+      // Get the authorization code from URL
+      const code = searchParams.get('code');
+      if (!code) {
+        toast.error('No authorization code received from PayPal.');
+        return;
       }
 
-      // Fallback: Just mark as verified (like admin does)
-      // The email will be stored when user makes a payment or we can get it later
-      const userRef = doc(db, 'users', userId);
-      const updateData: any = {
-        paypalEmailVerified: true,
-        paypalVerifiedAt: new Date().toISOString(),
-        paypalOAuthVerified: true,
-      };
-
-      // If we got email from Cloud Function, store it
-      if (email) {
-        updateData.paypalEmail = email;
-        toast.success('PayPal account linked successfully! You can now withdraw funds and pay for subscriptions.');
-      } else {
-        // Account verified but email not available yet
-        // For hosts, email will be stored when they make a payment or we can get it from PayPal API later
-        toast.success('PayPal account verified! Email will be stored when you make your first payment.');
-      }
-
-      await updateDoc(userRef, updateData);
-      onVerified(email);
-
-      // Clean up URL
-      navigate(window.location.pathname, { replace: true });
+      // Show dialog to ask for PayPal email
+      // This is necessary because we can't securely exchange the OAuth code client-side
+      setShowEmailDialog(true);
+      setVerifying(false);
+      return; // Wait for user to enter email in dialog
     } catch (error: any) {
       if (import.meta.env.DEV) {
         console.error('PayPal verification error:', error);
@@ -145,7 +150,73 @@ const PayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified, state
     } finally {
       setVerifying(false);
     }
-  }, [userId, navigate, onVerified]);
+  }, [userId, navigate, onVerified, effectiveRole, searchParams]);
+
+  // Handle email submission from dialog
+  const handleEmailSubmit = useCallback(async () => {
+    if (!paypalEmailInput || !paypalEmailInput.trim()) {
+      toast.error('Please enter the PayPal email address you logged in with.');
+      return;
+    }
+
+    const accountEmail = paypalEmailInput.trim().toLowerCase();
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(accountEmail)) {
+      toast.error('Please enter a valid email address.');
+      return;
+    }
+
+    setVerifying(true);
+    setShowEmailDialog(false);
+    
+    try {
+      const userRef = doc(db, 'users', userId);
+      const updateData: Record<string, unknown> = {};
+      const linkInfo = buildClientLinkedInfo(accountEmail, effectiveRole);
+      updateData[getPayPalLinkPath(effectiveRole)] = linkInfo;
+
+      if (effectiveRole === 'admin') {
+        const { setDoc } = await import('firebase/firestore');
+        await setDoc(doc(db, 'adminSettings', 'paypal'), {
+          paypalEmail: accountEmail,
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+      }
+
+      // Legacy fields (keep for compatibility)
+      if (effectiveRole === 'admin') {
+        updateData.adminPayPalEmailVerified = true;
+        updateData.adminPayPalOAuthVerified = true;
+        updateData.adminPayPalEmail = accountEmail;
+      } else if (effectiveRole === 'host') {
+        updateData.hostPayPalEmailVerified = true;
+        updateData.hostPayPalOAuthVerified = true;
+        updateData.hostPayPalEmail = accountEmail;
+      } else {
+        updateData.paypalEmailVerified = true;
+        updateData.paypalOAuthVerified = true;
+        updateData.paypalEmail = accountEmail;
+      }
+
+      await updateDoc(userRef, updateData);
+      onVerified(accountEmail);
+      setPaypalEmailInput('');
+
+      // Clean up URL
+      navigate(window.location.pathname, { replace: true });
+      
+      toast.success('PayPal account linked successfully!');
+    } catch (error: any) {
+      if (import.meta.env.DEV) {
+        console.error('PayPal verification error:', error);
+      }
+      toast.error(error.message || 'Failed to link PayPal account. Please try again.');
+    } finally {
+      setVerifying(false);
+    }
+  }, [paypalEmailInput, userId, effectiveRole, navigate, onVerified]);
 
   // Handle OAuth callback
   useEffect(() => {
@@ -154,15 +225,25 @@ const PayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified, state
     const error = searchParams.get('error');
     const errorDescription = searchParams.get('error_description') || '';
 
-    // Log all URL parameters for debugging
-    if (import.meta.env.DEV) {
-      console.log('🔍 PayPal OAuth Callback Debug:', {
-        code: code ? 'Present' : 'Missing',
-        state,
+    // Log all URL parameters for debugging (ALWAYS log, not just in dev)
+    console.log('🔍 PayPal OAuth Callback Debug:', {
+      code: code ? 'Present' : 'Missing',
+      state,
+      error,
+      errorDescription,
+      fullUrl: window.location.href,
+      allParams: Object.fromEntries(new URLSearchParams(window.location.search)),
+      redirectUri: redirectUri
+    });
+    
+    // If there's an error, log it prominently
+    if (error) {
+      console.error('❌ PAYPAL OAUTH ERROR DETECTED:', {
         error,
         errorDescription,
         fullUrl: window.location.href,
-        allParams: Object.fromEntries(new URLSearchParams(window.location.search))
+        redirectUri: redirectUri,
+        note: 'Check if redirect URI matches exactly in PayPal settings'
       });
     }
 
@@ -227,9 +308,9 @@ const PayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified, state
     }
 
     // Handle PayPal verification state based on prefix
-    const expectedState = `${statePrefix}-${userId}`;
+    const expectedState = `${resolvedStatePrefix}-${userId}`;
     if (code && state === expectedState) {
-      handleOAuthCallback(code);
+      handleOAuthCallback();
     } else if (code) {
       // Code present but state doesn't match - log for debugging
       if (import.meta.env.DEV) {
@@ -248,36 +329,98 @@ const PayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified, state
       return;
     }
 
+    // Validate redirect URI format
+    if (!redirectUri || (!redirectUri.startsWith('http://') && !redirectUri.startsWith('https://'))) {
+      toast.error('Invalid redirect URI configuration. Please check your environment settings.');
+      console.error('Invalid redirect URI:', redirectUri);
+      return;
+    }
+
     setLoading(true);
+
+    // Run diagnostics before proceeding
+    const diagnostics = diagnosePayPalOAuth(clientId, redirectUri, isSandbox);
+    logPayPalOAuthDiagnostics(diagnostics);
+    
+    if (!diagnostics.isValid) {
+      toast.error('PayPal OAuth configuration has issues. Check console for details.');
+      setLoading(false);
+      return;
+    }
 
     // Generate OAuth URL for PayPal login
     // Using PayPal's authorization endpoint
-    // Include payment permissions so we can charge the linked account
-    const state = `${statePrefix}-${userId}`;
-    const scope = 'openid email profile https://uri.paypal.com/services/payments/futurepayments';
+    // Use basic OpenID Connect scopes for account linking
+    const state = `${resolvedStatePrefix}-${userId}`;
+    const scope = 'openid email profile';
     const responseType = 'code';
     
     // PayPal OAuth URL format (OpenID Connect)
-    const authUrl = `https://www${isSandbox ? '.sandbox' : ''}.paypal.com/webapps/auth/protocol/openidconnect/v1/authorize?` +
-      `client_id=${clientId}&` +
-      `response_type=${responseType}&` +
-      `scope=${encodeURIComponent(scope)}&` +
-      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-      `state=${state}`;
+    // Note: PayPal requires exact redirect URI match in app settings
+    // Build URL using URLSearchParams for proper encoding
+    const authBaseUrl = `https://www${isSandbox ? '.sandbox' : ''}.paypal.com/webapps/auth/protocol/openidconnect/v1/authorize`;
+    const authParams = new URLSearchParams({
+      client_id: clientId,
+      response_type: responseType,
+      scope: scope,
+      redirect_uri: redirectUri,
+      state: state
+    });
+    const authUrl = `${authBaseUrl}?${authParams.toString()}`;
 
-    // Debug: Log what we're sending (only in development)
+    // Debug: Log redirect URI (always log for troubleshooting)
+    console.log('🔍 PayPal OAuth Configuration:', {
+      redirectUri,
+      currentOrigin: window.location.origin,
+      isProduction: import.meta.env.PROD,
+      isSandbox,
+      clientIdPrefix: clientId ? clientId.substring(0, 20) + '...' : 'MISSING',
+      note: 'This redirect URI must be EXACTLY added to your PayPal app settings'
+    });
+    
+    // Always log the full OAuth URL for debugging (even in production, but truncated)
+    console.log('🔗 Full PayPal OAuth URL:', authUrl);
+    
+    // Parse and display OAuth parameters for verification
+    try {
+      const urlObj = new URL(authUrl);
+      const params = new URLSearchParams(urlObj.search);
+      console.log('📊 OAuth Parameters Breakdown:', {
+        client_id: params.get('client_id')?.substring(0, 20) + '...',
+        redirect_uri: params.get('redirect_uri'),
+        scope: params.get('scope'),
+        state: params.get('state')?.substring(0, 50) + '...',
+        response_type: params.get('response_type')
+      });
+    } catch (e) {
+      console.warn('Could not parse OAuth URL:', e);
+    }
+    
     if (import.meta.env.DEV) {
-      console.log('PayPal OAuth Debug:', {
+      console.log('📋 PayPal OAuth Debug Details:', {
         clientId: clientId ? (clientId.substring(0, 20) + '...') : 'MISSING',
         redirectUri,
         baseUrl,
         isSandbox,
-        fullUrl: authUrl.substring(0, 200) + '...'
+        scope,
+        state,
+        authUrlPreview: authUrl.substring(0, 150) + '...'
       });
-      console.warn('⚠️ IMPORTANT: Make sure this EXACT redirect URI is in PayPal:', redirectUri);
-      console.warn('⚠️ Current URL:', window.location.href);
-      console.warn('⚠️ Redirect URI being sent:', redirectUri);
-      console.warn('📝 To fix: Go to PayPal Developer Dashboard → Your App → Add Redirect URI:', redirectUri);
+      console.warn('⚠️ CRITICAL: Make sure this EXACT redirect URI is in PayPal:');
+      console.warn('   ' + redirectUri);
+      console.warn('📝 Steps to fix:');
+      console.warn('   1. Go to: https://developer.paypal.com/dashboard/applications/sandbox');
+      console.warn('   2. Click on your app: "Mojo Dojo Casa House"');
+      console.warn('   3. Go to: "Log in with PayPal" → "Advanced Settings"');
+      console.warn('   4. Under "Return URL", add this EXACT URI:');
+      console.warn('      ' + redirectUri);
+      console.warn('   5. Save and try again');
+      console.warn('');
+      console.warn('🔍 TROUBLESHOOTING: If login still fails after adding redirect URI:');
+      console.warn('   1. Check that the redirect URI matches EXACTLY (including http/https, port, trailing slash)');
+      console.warn('   2. Verify your Client ID is correct in .env file');
+      console.warn('   3. Make sure you are using the correct PayPal sandbox account credentials');
+      console.warn('   4. Try creating a new sandbox account if the current one has issues');
     }
 
     // Redirect to PayPal login
@@ -285,7 +428,7 @@ const PayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified, state
   };
 
   // If already verified, show success state (email is optional - account can be verified without email)
-  if (paypalVerified) {
+  if (resolvedVerified) {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
@@ -293,8 +436,8 @@ const PayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified, state
             <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
             <div>
               <p className="font-medium text-green-900 dark:text-green-100">PayPal Account Verified</p>
-              {paypalEmail ? (
-                <p className="text-sm text-green-700 dark:text-green-300">{paypalEmail}</p>
+              {resolvedEmail ? (
+                <p className="text-sm text-green-700 dark:text-green-300">{resolvedEmail}</p>
               ) : (
                 <p className="text-sm text-green-700 dark:text-green-300">Email will be stored on your first payment</p>
               )}
@@ -390,6 +533,65 @@ const PayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified, state
           You'll be redirected to PayPal to log in with your account credentials
         </p>
       </div>
+
+      {/* Email Input Dialog */}
+      <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Enter PayPal Email</DialogTitle>
+            <DialogDescription>
+              Please enter the PayPal email address you just logged in with. This will be used for all PayPal transactions.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="paypal-email">PayPal Email Address</Label>
+              <Input
+                id="paypal-email"
+                type="email"
+                placeholder="your-email@example.com"
+                value={paypalEmailInput}
+                onChange={(e) => setPaypalEmailInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleEmailSubmit();
+                  }
+                }}
+                autoFocus
+                className="mt-2"
+              />
+              <p className="text-xs text-muted-foreground mt-2">
+                This should be the email address of the PayPal account you just logged into.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowEmailDialog(false);
+                setPaypalEmailInput('');
+                navigate(window.location.pathname, { replace: true });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleEmailSubmit}
+              disabled={!paypalEmailInput.trim() || verifying}
+            >
+              {verifying ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Linking...
+                </>
+              ) : (
+                'Link Account'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -608,3 +608,239 @@ export const notifyCancellationRequestReviewed = async (
   }
 };
 
+/**
+ * Create notification for wallet deposit (top-up)
+ */
+export const notifyWalletDeposit = async (
+  userId: string,
+  transactionId: string,
+  amount: number,
+  role?: 'host' | 'guest' | 'admin'
+): Promise<void> => {
+  try {
+    // Get user profile to determine role if not provided
+    let userRole = role;
+    if (!userRole) {
+      const { getUserProfile } = await import('./firestore');
+      const userProfile = await getUserProfile(userId);
+      userRole = userProfile?.role || 'guest';
+    }
+    
+    await createNotification({
+      userId,
+      role: userRole,
+      type: 'payment',
+      title: 'Wallet Top-Up Successful',
+      message: `Your wallet has been credited with ₱${amount.toFixed(2)}.`,
+      relatedId: transactionId,
+      relatedType: 'transaction',
+      read: false,
+      priority: 'medium',
+      actionUrl: userRole === 'host' ? '/host/payments' : '/guest/wallet'
+    });
+  } catch (error) {
+    console.error('Error creating wallet deposit notification:', error);
+  }
+};
+
+/**
+ * Create notification for admin when they receive a deposit payment
+ */
+export const notifyAdminDepositReceived = async (
+  adminUserId: string,
+  transactionId: string,
+  amount: number,
+  guestUserId?: string
+): Promise<void> => {
+  try {
+    let message = `You received ₱${amount.toFixed(2)} from a wallet top-up.`;
+    if (guestUserId) {
+      // Try to get guest name
+      try {
+        const { getDoc, doc } = await import('firebase/firestore');
+        const { db } = await import('./firebase');
+        const guestDoc = await getDoc(doc(db, 'users', guestUserId));
+        if (guestDoc.exists()) {
+          const guestData = guestDoc.data();
+          const guestName = guestData?.name || guestData?.email || 'a guest';
+          message = `You received ₱${amount.toFixed(2)} from ${guestName}'s wallet top-up.`;
+        }
+      } catch (error) {
+        // If we can't get guest name, use default message
+      }
+    }
+    
+    await createNotification({
+      userId: adminUserId,
+      role: 'admin',
+      type: 'payment',
+      title: 'Payment Received',
+      message,
+      relatedId: transactionId,
+      relatedType: 'transaction',
+      read: false,
+      priority: 'medium',
+      actionUrl: '/admin/payments'
+    });
+  } catch (error) {
+    console.error('Error creating admin deposit notification:', error);
+  }
+};
+
+/**
+ * Create notification for withdrawal request created
+ */
+export const notifyWithdrawalRequest = async (
+  userId: string,
+  transactionId: string,
+  amount: number,
+  paypalEmail: string,
+  role?: 'host' | 'guest' | 'admin'
+): Promise<void> => {
+  try {
+    // Get user profile to determine role if not provided
+    let userRole = role;
+    if (!userRole) {
+      const { getUserProfile } = await import('./firestore');
+      const userProfile = await getUserProfile(userId);
+      userRole = userProfile?.role || 'guest';
+    }
+    
+    await createNotification({
+      userId,
+      role: userRole,
+      type: 'payment',
+      title: 'Withdrawal Request Submitted',
+      message: `Your withdrawal request of ₱${amount.toFixed(2)} to ${paypalEmail} has been submitted and is pending admin approval.`,
+      relatedId: transactionId,
+      relatedType: 'transaction',
+      read: false,
+      priority: 'medium',
+      actionUrl: userRole === 'host' ? '/host/payments' : '/guest/wallet'
+    });
+  } catch (error) {
+    console.error('Error creating withdrawal request notification:', error);
+  }
+};
+
+/**
+ * Create notification for admin when withdrawal request is created
+ */
+export const notifyAdminWithdrawalRequest = async (
+  adminUserId: string,
+  transactionId: string,
+  amount: number,
+  userUserId: string,
+  paypalEmail: string,
+  userRole?: 'host' | 'guest'
+): Promise<void> => {
+  try {
+    // Try to get user name
+    let userName = 'a user';
+    try {
+      const { getDoc, doc } = await import('firebase/firestore');
+      const { db } = await import('./firebase');
+      const userDoc = await getDoc(doc(db, 'users', userUserId));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        userName = userData?.name || userData?.email || 'a user';
+      }
+    } catch (error) {
+      // If we can't get user name, use default
+    }
+    
+    const roleText = userRole === 'host' ? 'host' : 'guest';
+    
+    await createNotification({
+      userId: adminUserId,
+      role: 'admin',
+      type: 'system',
+      title: 'New Withdrawal Request',
+      message: `${userName} (${roleText}) has requested a withdrawal of ₱${amount.toFixed(2)} to ${paypalEmail}.`,
+      relatedId: transactionId,
+      relatedType: 'transaction',
+      read: false,
+      priority: 'high',
+      actionUrl: '/admin/payments'
+    });
+  } catch (error) {
+    console.error('Error creating admin withdrawal request notification:', error);
+  }
+};
+
+/**
+ * Create notification for withdrawal confirmed
+ */
+export const notifyWithdrawalConfirmed = async (
+  userId: string,
+  transactionId: string,
+  amount: number,
+  paypalEmail: string,
+  role?: 'host' | 'guest' | 'admin'
+): Promise<void> => {
+  try {
+    // Get user profile to determine role if not provided
+    let userRole = role;
+    if (!userRole) {
+      const { getUserProfile } = await import('./firestore');
+      const userProfile = await getUserProfile(userId);
+      userRole = userProfile?.role || 'guest';
+    }
+    
+    await createNotification({
+      userId,
+      role: userRole,
+      type: 'payment',
+      title: 'Withdrawal Confirmed',
+      message: `Your withdrawal of ₱${amount.toFixed(2)} to ${paypalEmail} has been confirmed. Your wallet balance has been deducted.`,
+      relatedId: transactionId,
+      relatedType: 'transaction',
+      read: false,
+      priority: 'high',
+      actionUrl: userRole === 'host' ? '/host/payments' : '/guest/wallet'
+    });
+  } catch (error) {
+    console.error('Error creating withdrawal confirmed notification:', error);
+  }
+};
+
+/**
+ * Create notification for withdrawal failed
+ */
+export const notifyWithdrawalFailed = async (
+  userId: string,
+  transactionId: string,
+  amount: number,
+  reason?: string,
+  role?: 'host' | 'guest' | 'admin'
+): Promise<void> => {
+  try {
+    // Get user profile to determine role if not provided
+    let userRole = role;
+    if (!userRole) {
+      const { getUserProfile } = await import('./firestore');
+      const userProfile = await getUserProfile(userId);
+      userRole = userProfile?.role || 'guest';
+    }
+    
+    const message = reason 
+      ? `Your withdrawal of ₱${amount.toFixed(2)} failed. Reason: ${reason}`
+      : `Your withdrawal of ₱${amount.toFixed(2)} failed. Please contact support.`;
+    
+    await createNotification({
+      userId,
+      role: userRole,
+      type: 'payment',
+      title: 'Withdrawal Failed',
+      message,
+      relatedId: transactionId,
+      relatedType: 'transaction',
+      read: false,
+      priority: 'high',
+      actionUrl: userRole === 'host' ? '/host/payments' : '/guest/wallet'
+    });
+  } catch (error) {
+    console.error('Error creating withdrawal failed notification:', error);
+  }
+};
+

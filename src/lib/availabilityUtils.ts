@@ -42,13 +42,15 @@ function generateDateRange(startDate: Date, endDate: Date): Date[] {
  * @param checkIn - Check-in date
  * @param checkOut - Check-out date
  * @param confirmedBookings - Array of confirmed bookings for this listing (optional, for more accurate checking)
+ * @param pendingBookings - Array of pending bookings for this listing (optional, to prevent conflicts)
  * @returns true if the listing is available for the entire date range
  */
 export function isListingAvailableForDates(
   listing: Listing,
   checkIn: Date,
   checkOut: Date,
-  confirmedBookings: Booking[] = []
+  confirmedBookings: Booking[] = [],
+  pendingBookings: Booking[] = []
 ): boolean {
   // Normalize dates (set to midnight)
   const checkInDate = new Date(checkIn);
@@ -64,6 +66,9 @@ export function isListingAvailableForDates(
   
   // Generate all dates in the requested range
   const requestedDates = generateDateRange(checkInDate, checkOutDate);
+  
+  // Combine confirmed and pending bookings for checking
+  const allBookings = [...confirmedBookings, ...pendingBookings];
   
   // Check each date in the range
   for (const date of requestedDates) {
@@ -82,16 +87,16 @@ export function isListingAvailableForDates(
       }
     }
     
-    // 3. Check if date is already booked (if bookings are provided)
-    if (confirmedBookings.length > 0) {
-      const isBooked = confirmedBookings.some(booking => {
+    // 3. Check if date is already booked (confirmed or pending)
+    if (allBookings.length > 0) {
+      const isBooked = allBookings.some(booking => {
         const bookingCheckIn = new Date(booking.checkIn);
         bookingCheckIn.setHours(0, 0, 0, 0);
         
         const bookingCheckOut = new Date(booking.checkOut);
         bookingCheckOut.setHours(0, 0, 0, 0);
         
-        // Check if the date falls within any confirmed booking
+        // Check if the date falls within any booking (confirmed or pending)
         return isDateInRange(date, bookingCheckIn, bookingCheckOut);
       });
       
@@ -113,7 +118,8 @@ export function hasPartialAvailability(
   listing: Listing,
   checkIn: Date,
   checkOut: Date,
-  confirmedBookings: Booking[] = []
+  confirmedBookings: Booking[] = [],
+  pendingBookings: Booking[] = []
 ): boolean {
   const checkInDate = new Date(checkIn);
   checkInDate.setHours(0, 0, 0, 0);
@@ -126,6 +132,9 @@ export function hasPartialAvailability(
   }
   
   const requestedDates = generateDateRange(checkInDate, checkOutDate);
+  
+  // Combine confirmed and pending bookings for checking
+  const allBookings = [...confirmedBookings, ...pendingBookings];
   
   // Check if at least one date is available
   for (const date of requestedDates) {
@@ -143,9 +152,9 @@ export function hasPartialAvailability(
       }
     }
     
-    // Check if booked
-    if (confirmedBookings.length > 0) {
-      const isBooked = confirmedBookings.some(booking => {
+    // Check if booked (confirmed or pending)
+    if (allBookings.length > 0) {
+      const isBooked = allBookings.some(booking => {
         const bookingCheckIn = new Date(booking.checkIn);
         bookingCheckIn.setHours(0, 0, 0, 0);
         

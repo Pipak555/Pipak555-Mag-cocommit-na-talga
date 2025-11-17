@@ -215,11 +215,58 @@ export const redeemHostPointsForEwallet = async (
     const newPoints = currentPoints - pointsToRedeem;
     const newWalletBalanceCentavos = addCentavos(currentWalletBalanceCentavos, walletAmountCentavos);
 
+    if (import.meta.env.DEV) {
+      console.log('🔍 Before update:', {
+        currentPoints,
+        currentWalletBalanceCentavos,
+        currentWalletBalancePHP: centavosToPHP(currentWalletBalanceCentavos),
+        pointsToRedeem,
+        walletAmountPHP,
+        walletAmountCentavos,
+        newPoints,
+        newWalletBalanceCentavos,
+        newWalletBalancePHP: centavosToPHP(newWalletBalanceCentavos)
+      });
+    }
+
     // Update both points and wallet balance
-    await updateDoc(doc(db, 'users', hostId), {
-      hostPoints: newPoints,
-      walletBalance: newWalletBalanceCentavos // Store as integer centavos
-    });
+    try {
+      await updateDoc(doc(db, 'users', hostId), {
+        hostPoints: newPoints,
+        walletBalance: newWalletBalanceCentavos // Store as integer centavos
+      });
+      
+      // Verify the update was successful by reading the document
+      const updatedDoc = await getDoc(doc(db, 'users', hostId));
+      if (updatedDoc.exists()) {
+        const updatedData = updatedDoc.data();
+        const updatedWalletBalanceCentavos = readWalletBalanceCentavos(updatedData.walletBalance);
+        const updatedHostPoints = updatedData.hostPoints || 0;
+        
+        if (import.meta.env.DEV) {
+          console.log('🔍 After update verification:', {
+            updatedHostPoints,
+            updatedWalletBalanceCentavos,
+            updatedWalletBalancePHP: centavosToPHP(updatedWalletBalanceCentavos),
+            expectedHostPoints: newPoints,
+            expectedWalletBalanceCentavos: newWalletBalanceCentavos,
+            pointsMatch: updatedHostPoints === newPoints,
+            walletMatch: updatedWalletBalanceCentavos === newWalletBalanceCentavos
+          });
+        }
+        
+        if (updatedHostPoints !== newPoints || updatedWalletBalanceCentavos !== newWalletBalanceCentavos) {
+          console.error('❌ Update verification failed!', {
+            expected: { hostPoints: newPoints, walletBalance: newWalletBalanceCentavos },
+            actual: { hostPoints: updatedHostPoints, walletBalance: updatedWalletBalanceCentavos }
+          });
+          throw new Error('Wallet balance update verification failed');
+        }
+      }
+    } catch (updateError: any) {
+      console.error('❌ Error updating wallet balance:', updateError);
+      throw new Error(`Failed to update wallet balance: ${updateError.message}`);
+    }
 
     // Create transaction for points redemption (negative amount for points deduction)
     await createTransaction({
@@ -243,13 +290,15 @@ export const redeemHostPointsForEwallet = async (
       console.log('✅ Host points redeemed for e-wallet:', {
         hostId,
         pointsRedeemed: pointsToRedeem,
-        walletAmount,
+        walletAmountPHP,
+        walletAmountCentavos,
         newPoints,
-        newWalletBalance
+        newWalletBalancePHP: centavosToPHP(newWalletBalanceCentavos),
+        newWalletBalanceCentavos
       });
     }
 
-    return walletAmount;
+    return walletAmountPHP;
   } catch (error: any) {
     console.error('Error redeeming host points for e-wallet:', error);
     throw error;

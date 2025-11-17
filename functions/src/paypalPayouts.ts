@@ -160,17 +160,29 @@ export async function processHostPayout(
     }
 
     const hostData = hostDoc.data();
-    const hostPayPalEmail = hostData?.paypalEmail;
 
-    if (!hostPayPalEmail) {
-      throw new Error('Host PayPal email not found. Host must link their PayPal account first.');
+    // STRICT: Use host's manually linked PayPal account (hostPayPalEmail)
+    const hostPayPalEmail = hostData?.hostPayPalEmail as string | undefined;
+    const hostPayPalVerified = !!(
+      hostData?.hostPayPalEmailVerified || hostData?.hostPayPalOAuthVerified
+    );
+
+    console.log('🔍 Host PayPal verification for payout (STRICT):', {
+      hostId,
+      hostPayPalEmail: hostPayPalEmail || 'NOT SET',
+      hostPayPalEmailVerified: hostData?.hostPayPalEmailVerified || false,
+      hostPayPalOAuthVerified: hostData?.hostPayPalOAuthVerified || false,
+      isLinked: !!hostPayPalEmail && hostPayPalVerified
+    });
+
+    if (!hostPayPalEmail || !hostPayPalVerified) {
+      throw new Error(
+        'Host PayPal account is not linked or verified. ' +
+        'Host must link their PayPal account in Host Payments before payouts can be processed.'
+      );
     }
 
-    if (!hostData?.paypalEmailVerified) {
-      throw new Error('Host PayPal email not verified. Host must verify their PayPal account first.');
-    }
-
-    // Send payout
+    // Send payout using the STRICT hostPayPalEmail
     const description = `Earnings from booking #${bookingId.slice(0, 8)}`;
     const payoutResult = await sendPayPalPayout(
       hostPayPalEmail,
@@ -189,9 +201,92 @@ export async function processHostPayout(
       payoutMethod: 'paypal',
     });
 
-    console.log(`✅ Host payout processed: ${hostId}, Amount: ${amount}, Payout ID: ${payoutResult.payoutId}`);
+    console.log(`✅ Host payout processed (STRICT hostPayPalEmail):`, {
+      hostId,
+      hostPayPalEmail,
+      amount,
+      payoutId: payoutResult.payoutId,
+      batchId: payoutResult.batchId,
+      status: payoutResult.status
+    });
   } catch (error: any) {
     console.error('Error processing host payout:', error);
+    
+    // Update transaction with error
+    try {
+      await db.collection('transactions').doc(transactionId).update({
+        payoutStatus: 'failed',
+        payoutError: error.message,
+        payoutProcessedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (updateError) {
+      console.error('Error updating transaction with payout error:', updateError);
+    }
+    
+    throw error;
+  }
+}
+
+/**
+ * Process withdrawal payout (for guest/host/admin withdrawals)
+ * Automatically sends PayPal payout when admin confirms withdrawal
+ */
+export async function processWithdrawalPayout(
+  transactionId: string,
+  recipientEmail: string,
+  amount: number,
+  userRole: 'guest' | 'host' | 'admin'
+): Promise<{ payoutId: string; status: string; batchId: string }> {
+  try {
+    console.log(`🔄 Processing withdrawal payout:`, {
+      transactionId,
+      recipientEmail,
+      amount,
+      userRole
+    });
+
+    // Validate email
+    if (!recipientEmail || !recipientEmail.includes('@')) {
+      throw new Error('Invalid recipient email address');
+    }
+
+    // Validate amount
+    if (!amount || amount <= 0) {
+      throw new Error('Invalid payout amount');
+    }
+
+    // Send payout
+    const description = `Withdrawal from ${userRole} wallet - Transaction #${transactionId.slice(0, 8)}`;
+    const payoutResult = await sendPayPalPayout(
+      recipientEmail,
+      amount,
+      'PHP',
+      description,
+      transactionId
+    );
+
+    // Update transaction with payout information
+    await db.collection('transactions').doc(transactionId).update({
+      payoutId: payoutResult.payoutId,
+      payoutStatus: payoutResult.status,
+      payoutBatchId: payoutResult.batchId,
+      payoutProcessedAt: admin.firestore.FieldValue.serverTimestamp(),
+      payoutMethod: 'paypal',
+      payoutNote: `Automatic PayPal payout sent to ${recipientEmail}`,
+    });
+
+    console.log(`✅ Withdrawal payout processed successfully:`, {
+      transactionId,
+      recipientEmail,
+      amount,
+      payoutId: payoutResult.payoutId,
+      batchId: payoutResult.batchId,
+      status: payoutResult.status
+    });
+
+    return payoutResult;
+  } catch (error: any) {
+    console.error('Error processing withdrawal payout:', error);
     
     // Update transaction with error
     try {

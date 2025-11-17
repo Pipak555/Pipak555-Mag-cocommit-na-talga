@@ -49,14 +49,15 @@ export const createCancellationRequest = async (
     }
 
     // Create cancellation request
+    // Only include reason if it's provided (Firestore doesn't allow undefined values)
     const requestData: Omit<CancellationRequest, 'id'> = {
       bookingId: booking.id,
       guestId: booking.guestId,
       hostId: booking.hostId,
       listingId: booking.listingId,
-      reason: reason || undefined,
       status: 'pending',
       requestedAt: new Date().toISOString(),
+      ...(reason && reason.trim() ? { reason: reason.trim() } : {})
     };
 
     const requestRef = await addDoc(collection(db, 'cancellationRequests'), requestData);
@@ -199,12 +200,16 @@ export const approveCancellationRequest = async (
     const booking = { id: bookingDoc.id, ...bookingDoc.data() } as Booking;
 
     // Update cancellation request
-    await updateDoc(doc(db, 'cancellationRequests', requestId), {
+    // Only include adminNotes if it has a value (Firestore doesn't allow undefined)
+    const updateData: any = {
       status: 'approved',
       reviewedAt: new Date().toISOString(),
       reviewedBy: adminId,
-      adminNotes: adminNotes || undefined,
-    });
+    };
+    if (adminNotes && adminNotes.trim()) {
+      updateData.adminNotes = adminNotes.trim();
+    }
+    await updateDoc(doc(db, 'cancellationRequests', requestId), updateData);
 
     // Update booking status to cancelled
     await updateBooking(request.bookingId, { 
@@ -213,11 +218,15 @@ export const approveCancellationRequest = async (
     });
 
     // Process refund automatically
+    let refundAmount: number | undefined;
     try {
       const refundResult = await processBookingRefund(booking, 'guest', request.reason);
       if (!refundResult.success) {
         console.error('Refund processing failed:', refundResult);
         // Don't throw - the cancellation is still processed, but refund failed
+      } else {
+        // Get refund amount from the refund result
+        refundAmount = refundResult.refundAmount;
       }
     } catch (refundError: any) {
       console.error('Error processing refund:', refundError);
@@ -226,13 +235,47 @@ export const approveCancellationRequest = async (
 
     // Send notifications
     try {
-      // Get listing title for notification
+      // Get listing and user details for notifications
       const listingDoc = await getDoc(doc(db, 'listing', booking.listingId));
       const listingTitle = listingDoc.exists() ? listingDoc.data().title : 'Your booking';
+      const listingLocation = listingDoc.exists() ? listingDoc.data().location : 'Location not specified';
 
-      // Notify guest and host about cancellation
-      await notifyBookingCancelled(booking.guestId, booking.id, listingTitle, 'admin');
-      await notifyBookingCancelled(booking.hostId, booking.id, listingTitle, 'admin');
+      // Get guest and host user profiles for email notifications
+      const guestDoc = await getDoc(doc(db, 'users', booking.guestId));
+      const hostDoc = await getDoc(doc(db, 'users', booking.hostId));
+      const guestName = guestDoc.exists() ? guestDoc.data().fullName : 'Guest';
+      const hostName = hostDoc.exists() ? hostDoc.data().fullName : 'Host';
+      const hostEmail = hostDoc.exists() ? hostDoc.data().email : null;
+
+      // Notify guest and host about cancellation (in-app notifications)
+      await notifyBookingCancelled(booking.guestId, booking.id, listingTitle, 'admin', 'guest');
+      await notifyBookingCancelled(booking.hostId, booking.id, listingTitle, 'admin', 'host');
+
+      // Send email to host when admin approves guest cancellation request
+      if (hostEmail) {
+        try {
+          const { sendBookingCancellationEmailToHost } = await import('./emailjs');
+          // Use refund amount from refund result, or fallback to booking total price
+          const finalRefundAmount = refundAmount !== undefined ? refundAmount : booking.totalPrice;
+          await sendBookingCancellationEmailToHost(
+            hostEmail,
+            hostName,
+            guestName,
+            listingTitle,
+            listingLocation,
+            booking.checkIn,
+            booking.checkOut,
+            booking.guests,
+            booking.totalPrice,
+            booking.id,
+            finalRefundAmount,
+            request.reason || adminNotes
+          );
+        } catch (emailError) {
+          console.error('⚠️ Error sending cancellation email to host:', emailError);
+          // Don't fail if email fails - in-app notification was sent
+        }
+      }
 
       // Notify about request review
       await notifyCancellationRequestReviewed(request.guestId, requestId, 'approved', adminNotes);
@@ -270,12 +313,16 @@ export const rejectCancellationRequest = async (
     }
 
     // Update cancellation request
-    await updateDoc(doc(db, 'cancellationRequests', requestId), {
+    // Only include adminNotes if it has a value (Firestore doesn't allow undefined)
+    const updateData: any = {
       status: 'rejected',
       reviewedAt: new Date().toISOString(),
       reviewedBy: adminId,
-      adminNotes: adminNotes || undefined,
-    });
+    };
+    if (adminNotes && adminNotes.trim()) {
+      updateData.adminNotes = adminNotes.trim();
+    }
+    await updateDoc(doc(db, 'cancellationRequests', requestId), updateData);
 
     // Clear cancellationRequestId from booking
     await updateBooking(request.bookingId, { 

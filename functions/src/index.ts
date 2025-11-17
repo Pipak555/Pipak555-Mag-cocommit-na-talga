@@ -15,7 +15,7 @@
 
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import { processHostPayout, processAdminPayout, sendPayPalPayout } from './paypalPayouts';
+import { processHostPayout, processAdminPayout, processWithdrawalPayout } from './paypalPayouts';
 import { exchangePayPalOAuthCode, getPayPalUserInfo } from './paypalPayments';
 
 admin.initializeApp();
@@ -151,13 +151,79 @@ export const processAdminPayoutFunction = functions.https.onCall(async (data, co
 });
 
 /**
+ * Process Withdrawal Payout
+ * 
+ * Automatically sends PayPal payout when admin confirms a withdrawal request
+ * This is called from the client-side confirmTransaction function
+ */
+export const processWithdrawalPayoutFunction = functions.https.onCall(async (data, context) => {
+  // Verify authentication
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  // Verify user is admin
+  const userDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
+  if (!userDoc.exists) {
+    throw new functions.https.HttpsError('not-found', 'User not found');
+  }
+
+  const userData = userDoc.data();
+  const isAdmin = userData?.role === 'admin' || userData?.roles?.includes('admin');
+
+  if (!isAdmin) {
+    throw new functions.https.HttpsError('permission-denied', 'Only admin can process withdrawal payouts');
+  }
+
+  try {
+    const { transactionId, recipientEmail, amount, userRole } = data;
+
+    if (!transactionId || !recipientEmail || !amount || !userRole) {
+      throw new functions.https.HttpsError('invalid-argument', 'Missing required fields: transactionId, recipientEmail, amount, userRole');
+    }
+
+    // Validate userRole
+    if (!['guest', 'host', 'admin'].includes(userRole)) {
+      throw new functions.https.HttpsError('invalid-argument', 'Invalid userRole. Must be guest, host, or admin');
+    }
+
+    // Process the withdrawal payout
+    const payoutResult = await processWithdrawalPayout(
+      transactionId,
+      recipientEmail,
+      amount,
+      userRole
+    );
+
+    return {
+      success: true,
+      payoutId: payoutResult.payoutId,
+      batchId: payoutResult.batchId,
+      status: payoutResult.status,
+      message: 'Withdrawal payout processed successfully'
+    };
+  } catch (error: any) {
+    console.error('Error in processWithdrawalPayoutFunction:', error);
+    throw new functions.https.HttpsError('internal', error.message || 'Failed to process withdrawal payout');
+  }
+});
+
+/**
  * Firestore Trigger: Automatically process host payout when transaction is created
+ * 
+ * DISABLED: To avoid Cloud Functions costs, this auto-processing is disabled.
+ * Admin must manually process payouts via the admin panel.
  * 
  * This trigger fires when a host earnings transaction is created with status 'completed'
  */
 export const autoProcessHostPayout = functions.firestore
   .document('transactions/{transactionId}')
   .onCreate(async (snap, context) => {
+    // DISABLED: Auto-processing disabled to avoid Cloud Functions costs
+    // Admin must manually process payouts via the admin panel
+    return;
+    
+    /* DISABLED CODE - Uncomment if you want to enable auto-processing (costs money)
     const transaction = snap.data();
     const transactionId = context.params.transactionId;
 
@@ -200,10 +266,14 @@ export const autoProcessHostPayout = functions.firestore
         // Don't throw - we'll log the error and the transaction will be marked as failed
       }
     }
+    */ // END DISABLED CODE
   });
 
 /**
  * Firestore Trigger: Automatically process admin payout when subscription transaction is created
+ * 
+ * DISABLED: To avoid Cloud Functions costs, this auto-processing is disabled.
+ * Admin must manually process payouts via the admin panel.
  * 
  * This trigger fires when:
  * Subscription payment transactions are created (type: 'payment', description contains 'subscription', payoutStatus: 'pending')
@@ -211,6 +281,13 @@ export const autoProcessHostPayout = functions.firestore
 export const autoProcessAdminPayout = functions.firestore
   .document('transactions/{transactionId}')
   .onCreate(async (snap, context) => {
+    // DISABLED: Auto-processing disabled to avoid Cloud Functions costs
+    // Admin must manually process payouts via the admin panel
+    return;
+    
+    /* DISABLED CODE - Uncomment if you want to enable auto-processing (costs money)
+    const transaction = snap.data();
+    const transactionId = context.params.transactionId;
     const transaction = snap.data();
     const transactionId = context.params.transactionId;
 
@@ -247,15 +324,27 @@ export const autoProcessAdminPayout = functions.firestore
         // Don't throw - we'll log the error and the transaction will be marked as failed
       }
     }
+    */ // END DISABLED CODE
   });
 
 /**
  * Request Host Withdrawal
  * 
+ * DISABLED: To avoid Cloud Functions costs, this function is disabled.
+ * Withdrawals are now handled entirely client-side via hostPayoutService.ts
+ * Admin processes withdrawals manually via the admin panel.
+ * 
  * Called when host requests withdrawal from wallet to PayPal
  * Sends payout via PayPal Payouts API and deducts from wallet
  */
 export const requestHostWithdrawal = functions.region('us-central1').https.onCall(async (data, context) => {
+  // DISABLED: This function is disabled to avoid Cloud Functions costs
+  // Withdrawals are now handled client-side via hostPayoutService.ts
+  // Admin processes withdrawals manually via the admin panel
+  throw new functions.https.HttpsError('unimplemented', 'This function is disabled. Withdrawals are processed client-side and admin must manually complete them.');
+  
+  /* DISABLED CODE - Uncomment if you want to enable auto-processing (costs money)
+  // Note: This code references sendPayPalPayout which would need to be imported
   // Verify authentication
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
@@ -329,15 +418,11 @@ export const requestHostWithdrawal = functions.region('us-central1').https.onCal
       }
 
       // Send payout to PayPal (only if email is available)
+      // Note: sendPayPalPayout would need to be imported from './paypalPayouts'
       let payoutResult = null;
       if (recipientEmail) {
-        payoutResult = await sendPayPalPayout(
-          recipientEmail,
-          amount,
-          'PHP',
-          `Withdrawal from wallet to ${recipientEmail}`,
-          transactionId
-        );
+        // payoutResult = await sendPayPalPayout(...);
+        throw new Error('PayPal payout functionality disabled');
       } else {
         throw new Error('PayPal email not found. Please re-link your PayPal account to store your email.');
       }
@@ -384,6 +469,7 @@ export const requestHostWithdrawal = functions.region('us-central1').https.onCal
     // Otherwise, wrap it in an HttpsError
     throw new functions.https.HttpsError('internal', error.message || 'Failed to process withdrawal');
   }
+  */ // END DISABLED CODE
 });
 
 /**
@@ -674,4 +760,3 @@ export const exchangePayPalOAuth = functions.region('us-central1').https.onCall(
     throw new functions.https.HttpsError('internal', error.message || 'Failed to exchange PayPal OAuth code');
   }
 });
-

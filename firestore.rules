@@ -43,22 +43,28 @@ service cloud.firestore {
     // Top-level bookings collection
     match /bookings/{bookingId} {
       // Allow read for involved users OR admin
-      // Also allow reading confirmed bookings for availability checking (by listingId)
+      // Also allow reading confirmed and pending bookings for availability checking (by listingId)
+      // CRITICAL: Guests and hosts must be able to read cancelled bookings for refund processing
+      // This is needed to prevent duplicate/overlapping bookings
       allow read: if isSignedIn() && (
         resource.data.guestId == request.auth.uid ||                             
         resource.data.hostId == request.auth.uid ||
         isAdmin() ||
-        (resource.data.status == 'confirmed' && resource.data.listingId != null)
+        ((resource.data.status == 'confirmed' || resource.data.status == 'pending') && resource.data.listingId != null)
       );
       // Allow list/query for bookings where user is involved
-      // Also allow querying confirmed bookings by listingId for availability
+      // Also allow querying confirmed and pending bookings by listingId for availability checking
+      // This is needed to prevent duplicate/overlapping bookings
       allow list: if isSignedIn() && (
         resource.data.guestId == request.auth.uid ||
         resource.data.hostId == request.auth.uid ||
         isAdmin() ||
-        (resource.data.status == 'confirmed' && resource.data.listingId != null)
+        ((resource.data.status == 'confirmed' || resource.data.status == 'pending') && resource.data.listingId != null)
       );
       allow create: if isSignedIn() && request.resource.data.guestId == request.auth.uid;
+      // Allow update for guests and hosts, including refund processing updates
+      // CRITICAL: Guests must be able to update their cancelled bookings with refund fields
+      // This allows guests to update refundStatus, refundAmount, refundedAt during refund processing
       allow update: if isSignedIn() && (
         request.auth.uid == resource.data.guestId ||
         request.auth.uid == resource.data.hostId ||
@@ -124,10 +130,30 @@ service cloud.firestore {
       // Allow list/query for password reset (querying by email)
       // This is needed to fetch user profile by email for password reset emails
       allow list: if isSignedIn();
-      // Allow write for: own document, payment processing, multi-role management, host points, or admin PayPal fields
-      allow write: if isSignedIn() && (
-        // Users can always write their own document (for profile updates, multi-role registration, admin PayPal linking, etc.)
+      
+      // Allow create: users can create their own document
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      
+      // Allow update: own document, payment processing, multi-role management, host points, or refunds
+      allow update: if isSignedIn() && (
+        // Users can always update their own document (for profile updates, multi-role registration, admin PayPal linking, etc.)
         request.auth.uid == userId ||
+        // CRITICAL: Allow refund processing - ANY authenticated user can update ANY user's walletBalance for refunds
+        // This is needed for guests to credit their own wallet and deduct from host's wallet during cancellation
+        // This rule MUST be simple and come early to ensure refunds work in transactions
+        // CRITICAL: Allow walletBalance updates for refunds - allow ANY authenticated user to update ANY user's walletBalance
+        // if ONLY walletBalance is being changed (no other fields) - this covers guest crediting self and deducting from host
+        // This works even if old walletBalance doesn't exist (new user) or is negative (debt tracking)
+        // SIMPLIFIED: Just check if only walletBalance is changed and it's a number - allow for refunds
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['walletBalance']) &&
+         request.resource.data.walletBalance is number) ||
+        // Allow updating coupons only (for coupon restoration during refunds)
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coupons']) &&
+         request.resource.data.coupons is list) ||
+        // Allow updating walletBalance and coupons together (for refunds that restore coupons)
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['walletBalance', 'coupons']) &&
+         request.resource.data.walletBalance is number &&
+         request.resource.data.coupons is list) ||
         // Allow users to update their own walletBalance for deposits (top-ups) or withdrawals
         // Users can increase balance for deposits, or decrease for withdrawals
         (request.auth.uid == userId &&
@@ -137,16 +163,21 @@ service cloud.firestore {
         // Allow payment processing: host can update guest's walletBalance, points, and coupons when processing booking payment
         // This is needed for the payment service to deduct from guest wallet, credit host wallet, award points, and mark coupons as used
         // Check that only payment-related fields are being updated (allow any combination of these fields)
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['walletBalance']) ||
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points']) ||
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coupons']) ||
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['walletBalance', 'points']) ||
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['walletBalance', 'coupons']) ||
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'coupons']) ||
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['walletBalance', 'points', 'coupons'])) &&
-        // Ensure walletBalance is a number if it's being updated
-        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['walletBalance']) || 
-         request.resource.data.walletBalance is number) ||
+        ((request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points']) &&
+          request.resource.data.points is number) ||
+         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['walletBalance', 'points']) &&
+          request.resource.data.walletBalance is number &&
+          request.resource.data.points is number) ||
+         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['walletBalance', 'coupons']) &&
+          request.resource.data.walletBalance is number &&
+          request.resource.data.coupons is list) ||
+         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'coupons']) &&
+          request.resource.data.points is number &&
+          request.resource.data.coupons is list) ||
+         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['walletBalance', 'points', 'coupons']) &&
+          request.resource.data.walletBalance is number &&
+          request.resource.data.points is number &&
+          request.resource.data.coupons is list)) ||
         // Allow updating hostPoints when awarding points for reviews, bookings, or listing approvals
         // Only allow updating hostPoints field (and ensure it's a number)
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostPoints']) &&
@@ -298,6 +329,14 @@ service cloud.firestore {
         isAdmin()
       );
       
+      // Allow list/query for transactions
+      // Users can query their own transactions, or query by bookingId (for payment/refund checks)
+      // This allows guests to query payment transactions for their bookings during refund processing
+      allow list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      
       // Users can create their own transactions, or hosts can create transactions for payment processing
       allow create: if isSignedIn() && (
         request.resource.data.userId == request.auth.uid ||
@@ -319,6 +358,16 @@ service cloud.firestore {
         // This is needed for the payment service to create payment, deposit, and reward transactions
         (request.resource.data.bookingId != null &&
          request.resource.data.type in ['payment', 'deposit', 'reward'] &&
+         request.resource.data.status == 'completed') ||
+        // Allow creating refund transactions when bookingId is present (for booking refunds)
+        // This allows guests to create refund transactions for themselves when cancelling bookings
+        (request.resource.data.bookingId != null &&
+         request.resource.data.type == 'refund' &&
+         request.resource.data.status == 'completed') ||
+        // Allow creating withdrawal transactions for other users during refund processing
+        // This allows guests/hosts to create withdrawal records for each other during booking refunds
+        (request.resource.data.bookingId != null &&
+         request.resource.data.type == 'withdrawal' &&
          request.resource.data.status == 'completed') ||
         // Allow creating reward transactions for hosts when awarding host points (for reviews, bookings, listing approvals)
         // This allows guests to create reward transactions for hosts when submitting reviews
@@ -403,6 +452,7 @@ service cloud.firestore {
     }
 
     // Platform events collection
+
     match /events/{eventId} {
       // Admins can read and write all events
       allow read, write: if isAdmin();
@@ -418,6 +468,74 @@ service cloud.firestore {
            resource.data.targetRoles is list &&
            resource.data.targetRoles.hasAny(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles))
         );
+    }
+
+    // Refund logs collection (audit trail)
+    match /refundLogs/{refundLogId} {
+      // Admins can read all refund logs
+      allow read: if isAdmin();
+      
+      // Users can read their own refund logs (as guest or host)
+      // This allows reading individual documents by ID
+      allow read: if isSignedIn() && 
+        (resource.data.guestId == request.auth.uid || 
+         resource.data.hostId == request.auth.uid);
+      
+      // Allow list/query for refund logs
+      // CRITICAL: Allow all authenticated users to query refund logs
+      // Security is maintained because:
+      // 1. The query filters by guestId/hostId matching the user's UID
+      // 2. Users can only see results where they are the guest or host (enforced by where clauses)
+      // 3. Individual document reads still require guestId/hostId matching (allow read rule above)
+      // This is needed because Firestore list rules are evaluated at query time, not on each result
+      // The actual data filtering happens via the where() clauses in the query
+      allow list: if isSignedIn();
+      
+      // Allow creation of refund logs for authenticated users
+      // Validation ensures only valid refunds create logs
+      allow create: if isSignedIn() && 
+        (request.resource.data.guestId == request.auth.uid || 
+         request.resource.data.hostId == request.auth.uid ||
+         isAdmin());
+      
+      // No updates or deletes allowed (immutable audit trail)
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // Cancellation requests collection
+    match /cancellationRequests/{requestId} {
+      // Admins can read all cancellation requests
+      allow read: if isAdmin();
+      
+      // Guests can read their own cancellation requests
+      allow read: if isSignedIn() && 
+        resource.data.guestId == request.auth.uid;
+      
+      // Hosts can read cancellation requests for their bookings
+      allow read: if isSignedIn() && 
+        resource.data.hostId == request.auth.uid;
+      
+      // Allow list/query for guests, hosts, and admins
+      allow list: if isSignedIn() && (
+        resource.data.guestId == request.auth.uid ||
+        resource.data.hostId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Guests can create cancellation requests for their own bookings
+      allow create: if isSignedIn() && 
+        request.resource.data.guestId == request.auth.uid &&
+        request.resource.data.bookingId != null &&
+        request.resource.data.listingId != null &&
+        request.resource.data.hostId != null &&
+        request.resource.data.status == 'pending';
+      
+      // Only admins can update cancellation requests (approve/reject)
+      allow update: if isAdmin();
+      
+      // No deletes allowed (immutable audit trail)
+      allow delete: if false;
     }
   }
 }

@@ -17,7 +17,7 @@ import { redeemPointsForCoupon } from "@/lib/pointsService";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getBookings, updateBooking, toggleWishlist, toggleFavorite, getListing } from "@/lib/firestore";
-import { createCancellationRequest } from "@/lib/cancellationRequestService";
+import { processBookingRefund } from "@/lib/paymentService";
 import { ListingCard } from "@/components/listings/ListingCard";
 import type { UserProfile, Booking, NotificationPreferences, Listing } from "@/types";
 import { formatPHP } from "@/lib/currency";
@@ -243,19 +243,41 @@ const GuestAccountSettings = () => {
     
     setCancelling(true);
     try {
-      // Create cancellation request instead of immediate cancellation
-      await createCancellationRequest(bookingToCancel.id, cancellationReason.trim() || undefined);
-      
-      toast.success('Cancellation request submitted successfully. An admin will review your request and process the refund if approved.');
+      // Cancel booking directly and process refund
+      // First update booking status to cancelled
+      await updateBooking(bookingToCancel.id, {
+        status: 'cancelled'
+      });
+
+      // Process refund (this will credit guest's wallet and deduct from host's wallet)
+      const refundResult = await processBookingRefund(
+        bookingToCancel,
+        'guest',
+        cancellationReason.trim() || undefined
+      );
+
+      // Show success message with refund details
+      if (refundResult.refundAmount > 0) {
+        toast.success(
+          `Booking cancelled successfully! Refund of ${formatPHP(refundResult.refundAmount)} has been credited to your wallet.`,
+          { duration: 5000 }
+        );
+      } else {
+        toast.success(
+          `Booking cancelled successfully. ${refundResult.refundReason || 'No refund applicable based on cancellation policy.'}`,
+          { duration: 5000 }
+        );
+      }
+
       setCancelDialogOpen(false);
       setBookingToCancel(null);
       setCancellationReason('');
-      // Reload bookings to reflect the cancellation request
+      // Reload bookings to reflect the cancellation
       loadBookings();
     } catch (error: any) {
-      console.error('Error creating cancellation request:', error);
+      console.error('Error cancelling booking:', error);
       const errorMessage = error.message || 'Unknown error occurred';
-      toast.error(`Failed to submit cancellation request: ${errorMessage}`);
+      toast.error(`Failed to cancel booking: ${errorMessage}`);
     } finally {
       setCancelling(false);
     }
@@ -526,20 +548,8 @@ const GuestAccountSettings = () => {
                                 className="w-full"
                               >
                                 <X className="h-4 w-4 mr-2" />
-                                Request Cancellation
+                                Cancel Booking
                               </Button>
-                            </div>
-                          )}
-                          {booking.cancellationRequestId && (
-                            <div className="pt-4 mt-4 border-t">
-                              <div className="p-3 bg-yellow-500/10 border border-yellow-500/50 rounded-md">
-                                <p className="text-sm font-medium text-yellow-700 dark:text-yellow-400">
-                                  Cancellation Request Pending
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  Your cancellation request is being reviewed by an admin. You will be notified once a decision is made.
-                                </p>
-                              </div>
                             </div>
                           )}
                         </div>
@@ -757,44 +767,51 @@ const GuestAccountSettings = () => {
       }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Request Booking Cancellation</AlertDialogTitle>
-            <AlertDialogDescription>
-              Submit a cancellation request for admin review. If approved, a refund will be processed automatically.
-              {bookingToCancel && (
-                <div className="mt-3 space-y-3">
-                  <div className="p-3 bg-muted rounded-md">
-                    <p className="text-sm font-medium">Booking Details:</p>
-                    <p className="text-sm text-muted-foreground">
-                      Status: <span className="font-medium capitalize">{bookingToCancel.status}</span>
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Check-in: {new Date(bookingToCancel.checkIn).toLocaleDateString()}
-                    </p>
-                  </div>
-                  {bookingToCancel.totalPrice > 0 && (
-                    <div className="p-3 bg-primary/10 rounded-md border border-primary/20">
-                      <p className="text-sm font-medium text-primary">Refund Information:</p>
+            <AlertDialogTitle>Cancel Booking</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                <p>Cancel this booking immediately. A refund will be processed automatically based on the cancellation policy.</p>
+                {bookingToCancel && (
+                  <div className="mt-3 space-y-3">
+                    <div className="p-3 bg-muted rounded-md">
+                      <p className="text-sm font-medium">Booking Details:</p>
                       <p className="text-sm text-muted-foreground">
-                        If approved, a refund of {formatPHP(bookingToCancel.totalPrice)} will be credited to your wallet balance.
+                        Status: <span className="font-medium capitalize">{bookingToCancel.status}</span>
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Check-in: {new Date(bookingToCancel.checkIn).toLocaleDateString()}
                       </p>
                     </div>
-                  )}
-                  <div className="space-y-2">
-                    <Label htmlFor="cancellation-reason">Reason for Cancellation (Optional)</Label>
-                    <Textarea
-                      id="cancellation-reason"
-                      placeholder="Please provide a reason for cancelling this booking..."
-                      value={cancellationReason}
-                      onChange={(e) => setCancellationReason(e.target.value)}
-                      className="min-h-[80px] resize-none"
-                      maxLength={500}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {cancellationReason.length}/500 characters
-                    </p>
+                    {bookingToCancel.totalPrice > 0 && (
+                      <div className="p-3 bg-primary/10 rounded-md border border-primary/20">
+                        <p className="text-sm font-medium text-primary">Refund Information:</p>
+                        <p className="text-sm text-muted-foreground">
+                          Based on the cancellation policy, a refund (if eligible) will be automatically credited to your wallet balance and deducted from the host's wallet.
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          • 48+ hours before check-in: Full refund (100%)<br/>
+                          • 24-48 hours before check-in: 50% refund<br/>
+                          • Less than 24 hours: No refund (0%)
+                        </p>
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <Label htmlFor="cancellation-reason">Reason for Cancellation (Optional)</Label>
+                      <Textarea
+                        id="cancellation-reason"
+                        placeholder="Please provide a reason for cancelling this booking..."
+                        value={cancellationReason}
+                        onChange={(e) => setCancellationReason(e.target.value)}
+                        className="min-h-[80px] resize-none"
+                        maxLength={500}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {cancellationReason.length}/500 characters
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -804,7 +821,7 @@ const GuestAccountSettings = () => {
               disabled={cancelling}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {cancelling ? 'Submitting Request...' : 'Submit Cancellation Request'}
+              {cancelling ? 'Cancelling...' : 'Cancel Booking'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

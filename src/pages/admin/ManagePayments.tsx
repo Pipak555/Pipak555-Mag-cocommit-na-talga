@@ -26,7 +26,7 @@ import {
 import type { Transaction, HostSubscription } from "@/types";
 import { formatPHP } from "@/lib/currency";
 import LoadingScreen from "@/components/ui/loading-screen";
-import { processTransactionRefund, confirmTransaction } from "@/lib/paymentService";
+import { processTransactionRefund, confirmTransaction, declineWithdrawal } from "@/lib/paymentService";
 import { readTransactionAmount } from "@/lib/financialUtils";
 
 interface TransactionWithUser extends Transaction {
@@ -42,8 +42,9 @@ const ManagePayments = () => {
   const [subscriptions, setSubscriptions] = useState<Array<HostSubscription & { userName?: string; userEmail?: string }>>([]);
   const [transactionToUpdate, setTransactionToUpdate] = useState<TransactionWithUser | null>(null);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-  const [action, setAction] = useState<'confirm' | 'refund' | null>(null);
+  const [action, setAction] = useState<'confirm' | 'refund' | 'decline' | null>(null);
   const [refundReason, setRefundReason] = useState('');
+  const [declineReason, setDeclineReason] = useState('');
   const [processing, setProcessing] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
   const [adminPayPalLinked, setAdminPayPalLinked] = useState(false); // Add this line
@@ -151,10 +152,11 @@ const ManagePayments = () => {
     }
   };
 
-  const handleAction = (transaction: TransactionWithUser, actionType: 'confirm' | 'refund') => {
+  const handleAction = (transaction: TransactionWithUser, actionType: 'confirm' | 'refund' | 'decline') => {
     setTransactionToUpdate(transaction);
     setAction(actionType);
     setRefundReason('');
+    setDeclineReason('');
     setConfirmDialogOpen(true);
   };
 
@@ -180,6 +182,10 @@ const ManagePayments = () => {
         } else {
           throw new Error('Refund processing failed');
         }
+      } else if (action === 'decline') {
+        // Decline withdrawal transaction
+        await declineWithdrawal(transactionToUpdate.id, declineReason || undefined);
+        toast.success('Withdrawal declined successfully');
       }
       
       // Reload transactions
@@ -187,6 +193,7 @@ const ManagePayments = () => {
       setTransactionToUpdate(null);
       setAction(null);
       setRefundReason('');
+      setDeclineReason('');
     } catch (error: any) {
       console.error(`Error ${action}ing transaction:`, error);
       toast.error(error.message || `Failed to ${action} transaction`);
@@ -313,8 +320,9 @@ const ManagePayments = () => {
           </CardHeader>
           <CardContent>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="all">All Transactions</TabsTrigger>
+                <TabsTrigger value="withdrawals">Withdrawals</TabsTrigger>
                 <TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
                 <TabsTrigger value="subscription-payments">Subscription Payments</TabsTrigger>
               </TabsList>
@@ -352,19 +360,50 @@ const ManagePayments = () => {
                       </div>
                       {transaction.status === 'pending' && (
                         <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => handleAction(transaction, 'confirm')}
-                          >
-                            Confirm
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => handleAction(transaction, 'refund')}
-                          >
-                            Refund
-                          </Button>
+                          {transaction.type === 'withdrawal' ? (
+                            <>
+                              <Button
+                                size="sm"
+                                onClick={() => handleAction(transaction, 'confirm')}
+                                className="bg-green-600 hover:bg-green-700"
+                              >
+                                Approve & Deduct Wallet
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => handleAction(transaction, 'decline')}
+                              >
+                                Decline
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                size="sm"
+                                onClick={() => handleAction(transaction, 'confirm')}
+                              >
+                                Confirm
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => handleAction(transaction, 'refund')}
+                              >
+                                Refund
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      {transaction.status === 'completed' && transaction.type === 'withdrawal' && transaction.payoutStatus === 'pending' && (
+                        <div className="text-right">
+                          <p className="text-xs text-yellow-600 dark:text-yellow-400 font-medium">
+                            ⚠️ Send via PayPal
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {transaction.payoutNote || `Send ₱${formatPHP(transaction.amount)} to ${transaction.paypalEmail || 'user'}`}
+                          </p>
                         </div>
                       )}
                       {transaction.status === 'completed' && transaction.type === 'payment' && (
@@ -381,6 +420,90 @@ const ManagePayments = () => {
                     ))}
                   </div>
                 )}
+              </TabsContent>
+
+              <TabsContent value="withdrawals" className="mt-6">
+                {(() => {
+                  const withdrawalTransactions = transactions.filter(t => t.type === 'withdrawal');
+                  const pendingWithdrawals = withdrawalTransactions.filter(t => t.status === 'pending');
+                  
+                  return withdrawalTransactions.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <DollarSign className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No withdrawal requests found</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {pendingWithdrawals.length > 0 && (
+                        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4 mb-4">
+                          <p className="text-sm font-medium text-yellow-700 dark:text-yellow-400">
+                            ⚠️ {pendingWithdrawals.length} pending withdrawal{pendingWithdrawals.length > 1 ? 's' : ''} awaiting approval
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Approve to automatically process withdrawal and send PayPal payout
+                          </p>
+                        </div>
+                      )}
+                      {withdrawalTransactions.map((transaction) => (
+                        <div key={transaction.id} className="flex items-center justify-between p-4 border rounded-lg">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-4 mb-2">
+                              <p className="font-medium">{transaction.userName}</p>
+                              {getStatusBadge(transaction.status)}
+                              {transaction.status === 'completed' && transaction.payoutStatus === 'pending' && (
+                                <Badge variant="outline" className="border-yellow-500 text-yellow-600 dark:text-yellow-400">
+                                  Awaiting PayPal Transfer
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground">{transaction.description}</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {transaction.userEmail} • {new Date(transaction.createdAt).toLocaleDateString()}
+                            </p>
+                            {transaction.paypalEmail && (
+                              <p className="text-xs text-muted-foreground">PayPal: {transaction.paypalEmail}</p>
+                            )}
+                            {transaction.payoutNote && (
+                              <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1 font-medium">
+                                {transaction.payoutNote}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <div className="text-right">
+                              <p className="text-lg font-bold">{formatPHP(readTransactionAmount(transaction.amount))}</p>
+                              <p className="text-xs text-muted-foreground">To send</p>
+                              {transaction.walletDeduction && (
+                                <p className="text-xs text-muted-foreground">
+                                  Deduct: {formatPHP(transaction.walletDeduction)}
+                                </p>
+                              )}
+                            </div>
+                            {transaction.status === 'pending' && (
+                              <Button
+                                size="sm"
+                                onClick={() => handleAction(transaction, 'confirm')}
+                                className="bg-green-600 hover:bg-green-700"
+                              >
+                                Approve & Deduct Wallet
+                              </Button>
+                            )}
+                            {transaction.status === 'completed' && transaction.payoutStatus === 'pending' && (
+                              <div className="text-right">
+                                <p className="text-xs text-yellow-600 dark:text-yellow-400 font-medium">
+                                  ⚠️ Send via PayPal
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {transaction.payoutNote || `Send ₱${formatPHP(transaction.amount)} to ${transaction.paypalEmail || 'user'}`}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </TabsContent>
 
               <TabsContent value="subscriptions" className="mt-6">
@@ -480,19 +603,81 @@ const ManagePayments = () => {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>
-                {action === 'confirm' ? 'Confirm Transaction?' : 'Refund Transaction?'}
+                {action === 'confirm' ? 'Confirm Transaction?' : action === 'decline' ? 'Decline Withdrawal?' : 'Refund Transaction?'}
               </AlertDialogTitle>
               <AlertDialogDescription className="space-y-4">
-                {action === 'confirm' ? (
+                {action === 'decline' ? (
                   <>
-                    <p>Are you sure you want to confirm this transaction? This will process the payment and update wallet balances.</p>
-                    {transactionToUpdate && (
-                      <div className="bg-muted p-3 rounded-lg">
-                        <p className="text-sm font-medium">Transaction Details:</p>
-                        <p className="text-xs text-muted-foreground">Amount: {formatPHP(transactionToUpdate.amount)}</p>
-                        <p className="text-xs text-muted-foreground">Type: {transactionToUpdate.type}</p>
-                        <p className="text-xs text-muted-foreground">User: {transactionToUpdate.userName || transactionToUpdate.userEmail}</p>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <p className="font-medium">This will decline the withdrawal request. No wallet balances will be deducted.</p>
                       </div>
+                      {transactionToUpdate && (
+                        <div className="bg-muted p-3 rounded-lg space-y-1">
+                          <p className="text-sm font-medium">Withdrawal Details:</p>
+                          <p className="text-xs">Amount: <span className="font-semibold">{formatPHP(transactionToUpdate.amount)}</span></p>
+                          <p className="text-xs">User: {transactionToUpdate.userName || transactionToUpdate.userEmail}</p>
+                          <p className="text-xs">PayPal: {transactionToUpdate.paypalEmail || 'N/A'}</p>
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        <Label htmlFor="decline-reason">Decline Reason (Optional)</Label>
+                        <Textarea
+                          id="decline-reason"
+                          placeholder="Enter reason for declining..."
+                          value={declineReason}
+                          onChange={(e) => setDeclineReason(e.target.value)}
+                          rows={3}
+                        />
+                      </div>
+                    </div>
+                  </>
+                ) : action === 'confirm' ? (
+                  <>
+                    {transactionToUpdate?.type === 'withdrawal' ? (
+                      <>
+                        <div className="bg-yellow-500/10 border border-yellow-500/20 p-3 rounded-lg">
+                          <p className="text-sm font-medium text-yellow-700 dark:text-yellow-400 mb-2">
+                            ⚠️ Withdrawal Approval (Automatic Transfer)
+                          </p>
+                          <p className="text-sm mb-3">
+                            This will:
+                          </p>
+                          <ul className="list-disc list-inside text-sm space-y-1 mb-3">
+                            <li>Deduct <strong>{formatPHP(transactionToUpdate.walletDeduction || transactionToUpdate.amount)}</strong> from user's wallet</li>
+                            <li>Automatically send <strong>{formatPHP(transactionToUpdate.amount)}</strong> from your linked PayPal account to the recipient</li>
+                            <li>Mark the withdrawal as completed</li>
+                          </ul>
+                          <p className="text-sm font-medium text-green-700 dark:text-green-400 mt-3">
+                            ✅ After approval, the system will automatically send <strong>{formatPHP(transactionToUpdate.amount)}</strong> from your linked PayPal account to:
+                          </p>
+                          <p className="text-sm font-mono bg-background p-2 rounded mt-2">
+                            {transactionToUpdate.paypalEmail || 'N/A'}
+                          </p>
+                        </div>
+                        {transactionToUpdate && (
+                          <div className="bg-muted p-3 rounded-lg">
+                            <p className="text-sm font-medium">Transaction Details:</p>
+                            <p className="text-xs text-muted-foreground">Amount to send: {formatPHP(transactionToUpdate.amount)}</p>
+                            <p className="text-xs text-muted-foreground">Wallet deduction: {formatPHP(transactionToUpdate.walletDeduction || transactionToUpdate.amount)}</p>
+                            <p className="text-xs text-muted-foreground">User: {transactionToUpdate.userName || transactionToUpdate.userEmail}</p>
+                            <p className="text-xs text-muted-foreground">PayPal: {transactionToUpdate.paypalEmail || 'N/A'}</p>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <p>Are you sure you want to confirm this transaction? This will process the payment and update wallet balances.</p>
+                        {transactionToUpdate && (
+                          <div className="bg-muted p-3 rounded-lg">
+                            <p className="text-sm font-medium">Transaction Details:</p>
+                            <p className="text-xs text-muted-foreground">Amount: {formatPHP(transactionToUpdate.amount)}</p>
+                            <p className="text-xs text-muted-foreground">Type: {transactionToUpdate.type}</p>
+                            <p className="text-xs text-muted-foreground">User: {transactionToUpdate.userName || transactionToUpdate.userEmail}</p>
+                          </div>
+                        )}
+                      </>
                     )}
                   </>
                 ) : (
@@ -533,9 +718,9 @@ const ManagePayments = () => {
               <AlertDialogAction 
                 onClick={confirmAction}
                 disabled={processing}
-                className={action === 'refund' ? 'bg-destructive hover:bg-destructive/90' : ''}
+                className={action === 'refund' || action === 'decline' ? 'bg-destructive hover:bg-destructive/90' : ''}
               >
-                {processing ? 'Processing...' : action === 'confirm' ? 'Confirm' : 'Refund'}
+                {processing ? 'Processing...' : action === 'confirm' ? 'Confirm' : action === 'decline' ? 'Decline' : 'Refund'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

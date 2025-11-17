@@ -36,10 +36,13 @@ const AdminPayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified }
   const paypalEnv = import.meta.env.VITE_PAYPAL_ENV || 'sandbox';
   const isSandbox = paypalEnv !== 'production';
   
-  // Get base URL from environment variable or use current origin
-  // In production, use VITE_APP_URL to ensure consistent redirect URIs
-  const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
-  let baseUrl = import.meta.env.PROD ? appUrl : window.location.origin;
+  // Get base URL - in production, always use current origin (actual deployed URL)
+  // This ensures we use the correct Firebase project URL even after project changes
+  // In development, use VITE_APP_URL if set, otherwise use current origin
+  const appUrl = import.meta.env.VITE_APP_URL;
+  let baseUrl = import.meta.env.PROD 
+    ? window.location.origin  // Production: always use actual deployed URL
+    : (appUrl || window.location.origin);  // Development: use env var or current origin
   
   // Use the same redirect URI as guests (already configured in PayPal app)
   // The callback handler will route admin back to admin/paypal-settings based on state
@@ -147,6 +150,13 @@ const AdminPayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified }
       return;
     }
 
+    // Validate redirect URI format
+    if (!redirectUri || (!redirectUri.startsWith('http://') && !redirectUri.startsWith('https://'))) {
+      toast.error('Invalid redirect URI configuration. Please check your environment settings.');
+      console.error('Invalid redirect URI:', redirectUri);
+      return;
+    }
+
     setLoading(true);
 
     // Generate OAuth URL for PayPal login (admin-specific)
@@ -154,18 +164,48 @@ const AdminPayPalIdentity = ({ userId, onVerified, paypalEmail, paypalVerified }
     const scope = 'openid email profile';
     const responseType = 'code';
     
-    const authUrl = `https://www${isSandbox ? '.sandbox' : ''}.paypal.com/webapps/auth/protocol/openidconnect/v1/authorize?` +
-      `client_id=${clientId}&` +
-      `response_type=${responseType}&` +
-      `scope=${encodeURIComponent(scope)}&` +
-      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-      `state=${state}`;
+    // PayPal OAuth URL format (OpenID Connect)
+    // Note: PayPal requires exact redirect URI match in app settings
+    // Build URL using URLSearchParams for proper encoding
+    const authBaseUrl = `https://www${isSandbox ? '.sandbox' : ''}.paypal.com/webapps/auth/protocol/openidconnect/v1/authorize`;
+    const authParams = new URLSearchParams({
+      client_id: clientId,
+      response_type: responseType,
+      scope: scope,
+      redirect_uri: redirectUri,
+      state: state
+    });
+    const authUrl = `${authBaseUrl}?${authParams.toString()}`;
+
+    // Debug: Log redirect URI (always log for troubleshooting)
+    console.log('🔍 Admin PayPal OAuth Configuration:', {
+      redirectUri,
+      currentOrigin: window.location.origin,
+      isProduction: import.meta.env.PROD,
+      isSandbox,
+      clientIdPrefix: clientId ? clientId.substring(0, 20) + '...' : 'MISSING',
+      note: 'This redirect URI must be EXACTLY added to your PayPal app settings'
+    });
 
     if (import.meta.env.DEV) {
-      console.log('Admin PayPal OAuth:', {
+      console.log('📋 Admin PayPal OAuth Debug Details:', {
+        clientId: clientId ? (clientId.substring(0, 20) + '...') : 'MISSING',
         redirectUri,
+        baseUrl,
         isSandbox,
+        scope,
+        state,
+        authUrlPreview: authUrl.substring(0, 150) + '...'
       });
+      console.warn('⚠️ CRITICAL: Make sure this EXACT redirect URI is in PayPal:');
+      console.warn('   ' + redirectUri);
+      console.warn('📝 Steps to fix:');
+      console.warn('   1. Go to: https://developer.paypal.com/dashboard/applications/sandbox');
+      console.warn('   2. Click on your app: "Mojo Dojo Casa House"');
+      console.warn('   3. Go to: "Log in with PayPal" → "Advanced Settings"');
+      console.warn('   4. Under "Return URL", add this EXACT URI:');
+      console.warn('      ' + redirectUri);
+      console.warn('   5. Save and try again');
     }
 
     // Redirect to PayPal login
