@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Shield, Users, Home, DollarSign, TrendingUp, FileText, Settings, AlertCircle, Loader2, MessageSquare, CreditCard, Megaphone, Gift, Calendar, Star, TrendingDown } from 'lucide-react';
+import { Shield, Users, Home, DollarSign, TrendingUp, FileText, Settings, AlertCircle, Loader2, MessageSquare, CreditCard, Megaphone, Gift, Calendar, Star, TrendingDown, Bookmark } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import Logo from '@/components/shared/Logo';
 import { collection, onSnapshot, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
@@ -872,6 +872,16 @@ const AdminDashboard = () => {
               <CardTitle className="text-base sm:text-lg">Policies & Settings</CardTitle>
               <CardDescription className="text-xs sm:text-sm">
                 Manage platform policies
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="shadow-medium hover:shadow-hover hover:border-role-admin/50 hover:bg-role-admin/5 transition-smooth cursor-pointer touch-manipulation" onClick={() => navigate('/admin/wishlist')}>
+            <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+              <Bookmark className="w-6 h-6 sm:w-8 sm:h-8 text-role-admin mb-2" />
+              <CardTitle className="text-base sm:text-lg">User Wishlists</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                View what users want to book
               </CardDescription>
             </CardHeader>
           </Card>

@@ -57,6 +57,7 @@ const AdminPayPalSettings = lazy(() => import("./pages/admin/AdminPayPalSettings
 const CreateEvent = lazy(() => import("./pages/admin/CreateEvent"));
 const Reports = lazy(() => import("./pages/admin/Reports"));
 const Policies = lazy(() => import("./pages/admin/Policies"));
+const AdminWishlist = lazy(() => import("./pages/admin/AdminWishlist"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
@@ -125,6 +126,7 @@ const AppRoutes = () => {
             <Route path="/admin/analytics" element={<LazyRoute component={Analytics} />} />
             <Route path="/admin/reports" element={<LazyRoute component={Reports} />} />
             <Route path="/admin/policies" element={<LazyRoute component={Policies} />} />
+            <Route path="/admin/wishlist" element={<LazyRoute component={AdminWishlist} />} />
             <Route path="/settings" element={<LazyRoute component={AccountSettings} />} />
             <Route path="*" element={<LazyRoute component={NotFound} />} />
     </Routes>
